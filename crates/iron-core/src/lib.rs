@@ -6,16 +6,29 @@
 //! - Profile management (dotfile collections)
 //! - Module management (individual components)
 //! - State tracking and persistence
+//! - Comprehensive error handling
+//! - Configuration validation
 
-pub mod host;
 pub mod bundle;
-pub mod profile;
+pub mod error;
+pub mod host;
 pub mod module;
+pub mod profile;
 pub mod state;
 pub mod validation;
 
 // Re-exports for convenience
-pub use host::Host;
-pub use bundle::Bundle;
-pub use profile::Profile;
-pub use module::Module;
+pub use bundle::{Bundle, BundleState, BundleType};
+pub use error::{
+    ConfigError, FsError, GitError, IronError, IronResult, PackageError, Recoverable,
+    ServiceError, SnapshotError, StateError, ValidationError,
+};
+pub use host::{BootloaderType, ChassisType, HardwareSpec, Host, InstallParams, MonitorConfig};
+pub use module::{DotfileMapping, Module, ModuleKind, ModuleState};
+pub use profile::{Profile, ProfileState};
+pub use state::{IronState, MaintenanceState, OperationRecord, OperationStatus};
+pub use validation::{
+    check_dotfile_conflicts, check_module_conflicts, expand_home, resolve_dependencies,
+    validate_config, validate_id, validate_module, validate_path, validate_path_safe,
+    ValidationResult, ValidationWarning, WarningCode, MAX_ID_LENGTH,
+};

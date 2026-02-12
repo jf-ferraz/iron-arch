@@ -1,0 +1,10 @@
+[package]
+name = "iron-systemd"
+version.workspace = true
+edition.workspace = true
+description = "Systemd service management for Iron"
+
+[dependencies]
+iron-core = { path = "../iron-core" }
+thiserror.workspace = true
+tracing.workspace = true

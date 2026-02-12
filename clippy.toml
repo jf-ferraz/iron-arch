@@ -1,0 +1,20 @@
+# Iron Clippy Configuration
+# https://doc.rust-lang.org/clippy/configuration.html
+
+# Cognitive complexity threshold for functions
+cognitive-complexity-threshold = 25
+
+# Maximum number of lines in a function
+too-many-lines-threshold = 100
+
+# Maximum number of arguments for functions
+too-many-arguments-threshold = 7
+
+# Minimum length for single-char named bindings
+single-char-binding-names-threshold = 4
+
+# Documentation requirements
+missing-docs-in-crate-items = true
+
+# Allowed wildcard imports
+allowed-wildcard-imports = ["iron_core::*"]

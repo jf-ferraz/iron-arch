@@ -5,6 +5,8 @@ members = [
     "crates/iron-tui",
     "crates/iron-fs",
     "crates/iron-pacman",
+    "crates/iron-git",
+    "crates/iron-systemd",
 ]
 resolver = "2"
 
