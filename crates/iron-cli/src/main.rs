@@ -1,163 +1,16 @@
 //! Iron CLI - Command-line interface for Iron
+//!
+//! Less is More - Turning your Arch into Iron.
 
-use clap::{Parser, Subcommand};
+mod cli;
+mod commands;
+mod context;
+mod output;
+
 use anyhow::Result;
-
-#[derive(Parser)]
-#[command(name = "iron")]
-#[command(author, version, about = "Less is More - Turning your Arch into Iron")]
-struct Cli {
-    /// Iron root directory
-    #[arg(short, long, default_value = "~/.config/iron")]
-    root: String,
-
-    #[command(subcommand)]
-    command: Option<Commands>,
-}
-
-#[derive(Subcommand)]
-enum Commands {
-    /// Initialize Iron configuration
-    Init,
-
-    /// Show system status
-    Status,
-
-    /// Safe system update with risk assessment
-    Update {
-        /// Dry run (preview only)
-        #[arg(long)]
-        dry_run: bool,
-
-        /// Skip risk assessment
-        #[arg(long)]
-        force: bool,
-    },
-
-    /// Bundle management
-    Bundle {
-        #[command(subcommand)]
-        action: BundleAction,
-    },
-
-    /// Profile management
-    Profile {
-        #[command(subcommand)]
-        action: ProfileAction,
-    },
-
-    /// Module management
-    Module {
-        #[command(subcommand)]
-        action: ModuleAction,
-    },
-
-    /// Host management
-    Host {
-        #[command(subcommand)]
-        action: HostAction,
-    },
-
-    /// Git sync operations
-    Sync {
-        #[command(subcommand)]
-        action: SyncAction,
-    },
-
-    /// Secrets management
-    Secrets {
-        #[command(subcommand)]
-        action: SecretsAction,
-    },
-
-    /// System doctor (health check)
-    Doctor,
-
-    /// System cleanup
-    Clean,
-
-    /// Recovery workflow
-    Recover,
-
-    /// Launch TUI dashboard
-    Go,
-}
-
-#[derive(Subcommand)]
-enum BundleAction {
-    /// List available bundles
-    List,
-    /// Show bundle status
-    Status { id: Option<String> },
-    /// Install a bundle
-    Install { id: String },
-    /// Switch active bundle
-    Switch { id: String },
-    /// Remove a bundle
-    Remove { id: String },
-}
-
-#[derive(Subcommand)]
-enum ProfileAction {
-    /// List available profiles
-    List,
-    /// Show profile details
-    Show { id: String },
-    /// Select/activate a profile
-    Select { id: String },
-    /// Create new profile
-    Create { name: String },
-    /// Edit existing profile
-    Edit { id: String },
-}
-
-#[derive(Subcommand)]
-enum ModuleAction {
-    /// List all modules
-    List,
-    /// Show module details
-    Show { id: String },
-    /// Enable a module
-    Enable { id: String },
-    /// Disable a module
-    Disable { id: String },
-}
-
-#[derive(Subcommand)]
-enum HostAction {
-    /// List configured hosts
-    List,
-    /// Show current host
-    Current,
-    /// Catalog hardware for current host
-    Catalog,
-    /// Select active host
-    Select { id: String },
-    /// Create snapshot
-    Snapshot,
-}
-
-#[derive(Subcommand)]
-enum SyncAction {
-    /// Push changes to remote
-    Push,
-    /// Pull changes from remote
-    Pull,
-    /// Show sync status
-    Status,
-}
-
-#[derive(Subcommand)]
-enum SecretsAction {
-    /// Unlock encrypted secrets
-    Unlock,
-    /// Lock secrets before push
-    Lock,
-    /// Link secrets to proper locations
-    Link,
-    /// Show secrets status
-    Status,
-}
+use clap::Parser;
+use cli::{Cli, Commands};
+use context::AppContext;
 
 fn main() -> Result<()> {
     // Initialize logging
@@ -165,29 +18,68 @@ fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
+    // Create application context
+    let ctx = AppContext::new(
+        &cli.root,
+        cli.format,
+        cli.verbose,
+        cli.quiet,
+        cli.no_color,
+    )?;
+
+    // Execute command
     match cli.command {
-        Some(Commands::Init) => {
-            println!("Initializing Iron...");
-            // TODO: Implement init
+        Some(Commands::Init { id, name, force }) => {
+            commands::init::execute(&ctx, id, name, force)
         }
         Some(Commands::Status) => {
-            println!("Iron Status");
-            println!("============");
-            // TODO: Implement status
+            commands::status::execute(&ctx)
+        }
+        Some(Commands::Update { dry_run, force, no_snapshot }) => {
+            commands::update::execute(&ctx, dry_run, force, no_snapshot)
+        }
+        Some(Commands::Bundle { action }) => {
+            commands::bundle::execute(&ctx, action)
+        }
+        Some(Commands::Profile { action }) => {
+            commands::profile::execute(&ctx, action)
+        }
+        Some(Commands::Module { action }) => {
+            commands::module::execute(&ctx, action)
+        }
+        Some(Commands::Host { action }) => {
+            commands::host::execute(&ctx, action)
+        }
+        Some(Commands::Sync { action }) => {
+            commands::sync::execute(&ctx, action)
+        }
+        Some(Commands::Secrets { action }) => {
+            commands::secrets::execute(&ctx, action)
+        }
+        Some(Commands::Doctor) => {
+            commands::doctor::execute(&ctx)
+        }
+        Some(Commands::Clean { orphans, cache, symlinks, all }) => {
+            commands::clean::execute(&ctx, orphans, cache, symlinks, all)
+        }
+        Some(Commands::Recover { export, import, script }) => {
+            commands::recover::execute(&ctx, export, import, script)
         }
         Some(Commands::Go) => {
-            println!("Launching Iron TUI...");
-            // TODO: Launch TUI
+            ctx.output.info("Launching Iron TUI...");
+            ctx.output.warning("TUI not yet implemented. Use CLI commands for now.");
+            ctx.output.info("Run 'iron --help' for available commands.");
+            Ok(())
         }
         None => {
-            // No command = launch TUI
-            println!("Welcome to Iron!");
-            println!("Run 'iron --help' for CLI commands, or 'iron go' for TUI.");
-        }
-        _ => {
-            println!("Command not yet implemented.");
+            // No command = show welcome message
+            ctx.output.header("Welcome to Iron");
+            ctx.output.info("Less is More - Turning your Arch into Iron");
+            ctx.output.raw("");
+            ctx.output.info("Run 'iron --help' for CLI commands");
+            ctx.output.info("Run 'iron init' to initialize Iron on this host");
+            ctx.output.info("Run 'iron go' for TUI dashboard (coming soon)");
+            Ok(())
         }
     }
-
-    Ok(())
 }
