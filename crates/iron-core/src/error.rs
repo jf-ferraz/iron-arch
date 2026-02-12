@@ -169,6 +169,10 @@ pub enum PackageError {
     /// Pacman error
     #[error("Pacman error: {message}")]
     PacmanError { message: String },
+
+    /// Pacman command failed
+    #[error("Pacman failed: {message}")]
+    PacmanFailed { message: String },
 }
 
 /// Git operation errors
@@ -188,7 +192,7 @@ pub enum GitError {
 
     /// Merge conflict
     #[error("Merge conflict in {files:?}")]
-    MergeConflict { files: Vec<PathBuf> },
+    MergeConflict { files: Vec<String> },
 
     /// Push failed
     #[error("Push failed: {message}")]
@@ -209,6 +213,10 @@ pub enum GitError {
     /// Clone failed
     #[error("Failed to clone repository: {message}")]
     CloneFailed { message: String },
+
+    /// Git command failed
+    #[error("Git command failed: {message}")]
+    CommandFailed { message: String },
 }
 
 /// Filesystem operation errors
@@ -325,6 +333,14 @@ pub enum ServiceError {
     /// Systemctl not found
     #[error("systemctl not found. Is systemd installed?")]
     SystemctlNotFound,
+
+    /// Service not available
+    #[error("Service '{service}' is not available")]
+    NotAvailable { service: String },
+
+    /// Service operation failed
+    #[error("Service '{service}' operation failed: {message}")]
+    OperationFailed { service: String, message: String },
 }
 
 /// Snapshot (timeshift/snapper) errors
@@ -416,7 +432,7 @@ impl Recoverable for IronError {
             IronError::Git(GitError::MergeConflict { files }) => {
                 let mut steps = vec!["Resolve the following merge conflicts:".to_string()];
                 for file in files {
-                    steps.push(format!("  - {}", file.display()));
+                    steps.push(format!("  - {}", file));
                 }
                 steps.push("Then run 'git add' and 'git commit'".to_string());
                 steps

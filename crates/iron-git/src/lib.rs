@@ -189,10 +189,10 @@ impl GitManager for DefaultGitManager {
             Err(e) => {
                 // Check if it's a merge conflict
                 if let Ok(status) = self.run_git(&["status", "--porcelain"]) {
-                    let conflicts: Vec<PathBuf> = status
+                    let conflicts: Vec<String> = status
                         .lines()
                         .filter(|l| l.starts_with("UU") || l.starts_with("AA"))
-                        .map(|l| PathBuf::from(l[3..].trim()))
+                        .map(|l| l[3..].trim().to_string())
                         .collect();
 
                     if !conflicts.is_empty() {

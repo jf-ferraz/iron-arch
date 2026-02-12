@@ -15,6 +15,7 @@ pub mod error;
 pub mod host;
 pub mod module;
 pub mod profile;
+pub mod services;
 pub mod snapshot;
 pub mod state;
 pub mod validation;
