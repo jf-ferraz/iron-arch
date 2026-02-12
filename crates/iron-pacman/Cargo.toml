@@ -5,6 +5,12 @@ edition.workspace = true
 description = "Pacman integration for Iron"
 
 [dependencies]
-anyhow.workspace = true
+iron-core = { path = "../iron-core" }
 serde.workspace = true
 serde_json.workspace = true
+chrono = { version = "0.4", features = ["serde"] }
+ureq = "2.9"
+quick-xml = "0.31"
+
+[dev-dependencies]
+tempfile = "3.10"

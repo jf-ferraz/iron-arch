@@ -8,12 +8,14 @@
 //! - State tracking and persistence
 //! - Comprehensive error handling
 //! - Configuration validation
+//! - Snapshot management
 
 pub mod bundle;
 pub mod error;
 pub mod host;
 pub mod module;
 pub mod profile;
+pub mod snapshot;
 pub mod state;
 pub mod validation;
 
@@ -27,6 +29,11 @@ pub use host::{BootloaderType, ChassisType, HardwareSpec, Host, InstallParams, M
 pub use module::{DotfileMapping, Module, ModuleKind, ModuleState};
 pub use profile::{Profile, ProfileState};
 pub use state::{IronState, MaintenanceState, OperationRecord, OperationStatus};
+pub use snapshot::{
+    create_manager as create_snapshot_manager, detect_backend as detect_snapshot_backend,
+    NoopManager, SnapshotBackend, SnapshotInfo, SnapshotManager, SnapshotType, SnapperManager,
+    TimeshiftManager,
+};
 pub use validation::{
     check_dotfile_conflicts, check_module_conflicts, expand_home, resolve_dependencies,
     validate_config, validate_id, validate_module, validate_path, validate_path_safe,
