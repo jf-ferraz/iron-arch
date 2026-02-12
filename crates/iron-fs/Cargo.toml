@@ -1,0 +1,9 @@
+[package]
+name = "iron-fs"
+version.workspace = true
+edition.workspace = true
+description = "Filesystem operations for Iron"
+
+[dependencies]
+anyhow.workspace = true
+walkdir.workspace = true

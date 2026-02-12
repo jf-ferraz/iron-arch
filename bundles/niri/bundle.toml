@@ -1,0 +1,41 @@
+# Niri Bundle - Scrollable Tiling Wayland Compositor
+# A unique scrolling-based workflow
+
+id = "niri"
+name = "Niri Desktop"
+description = "Scrollable-tiling Wayland compositor - infinite workspace to the right"
+bundle_type = "WaylandCompositor"
+
+# Core packages
+packages = [
+    "niri",
+    "waybar",
+    "fuzzel",
+    "swaybg",
+    "swayidle",
+    "swaylock",
+    "xdg-desktop-portal-gnome",
+    "wl-clipboard",
+    "cliphist",
+    "grim",
+    "slurp",
+    "mako",
+]
+
+# AUR packages
+aur_packages = [
+    "satty",
+]
+
+# Available profiles
+profiles = ["minimal", "developer", "creative"]
+default_profile = "minimal"
+
+# Conflicts
+conflicts = ["hyprland", "sway", "kde"]
+
+# Services
+services = ["pipewire", "pipewire-pulse", "wireplumber"]
+
+# Post-install
+post_install = "scripts/setup-niri.sh"

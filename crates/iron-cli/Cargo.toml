@@ -1,0 +1,16 @@
+[package]
+name = "iron-cli"
+version.workspace = true
+edition.workspace = true
+description = "CLI interface for Iron"
+
+[[bin]]
+name = "iron"
+path = "src/main.rs"
+
+[dependencies]
+iron-core = { path = "../iron-core" }
+clap.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

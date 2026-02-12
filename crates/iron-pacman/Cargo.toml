@@ -1,0 +1,10 @@
+[package]
+name = "iron-pacman"
+version.workspace = true
+edition.workspace = true
+description = "Pacman integration for Iron"
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true

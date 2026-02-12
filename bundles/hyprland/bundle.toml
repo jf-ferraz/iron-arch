@@ -1,0 +1,41 @@
+# Hyprland Bundle - Wayland Compositor
+# A complete desktop environment based on Hyprland
+
+id = "hyprland"
+name = "Hyprland Desktop"
+description = "Dynamic tiling Wayland compositor with stunning animations"
+bundle_type = "WaylandCompositor"
+
+# Core packages for this bundle
+packages = [
+    "hyprland",
+    "waybar",
+    "wofi",
+    "hyprpaper",
+    "hypridle",
+    "hyprlock",
+    "xdg-desktop-portal-hyprland",
+    "wl-clipboard",
+    "cliphist",
+    "grim",
+    "slurp",
+    "mako",
+]
+
+# AUR packages
+aur_packages = [
+    "hyprshot",
+]
+
+# Available profiles for this bundle
+profiles = ["minimal", "developer", "gaming", "streamer"]
+default_profile = "minimal"
+
+# Conflicts with other bundles
+conflicts = ["niri", "sway", "kde"]
+
+# Services to enable
+services = ["pipewire", "pipewire-pulse", "wireplumber"]
+
+# Post-install hook
+post_install = "scripts/setup-hyprland.sh"

@@ -1,0 +1,34 @@
+# Neovim IDE Module
+# Full IDE experience in the terminal
+
+id = "nvim-ide"
+name = "Neovim IDE"
+description = "Neovim configured as a full IDE with LSP, completion, and debugging"
+kind = "AppConfig"
+
+# Packages
+packages = [
+    "neovim",
+    "ripgrep",
+    "fd",
+    "lazygit",
+    "nodejs",
+    "npm",
+]
+
+aur_packages = []
+
+# Dotfiles to link
+[[dotfiles]]
+source = "config/nvim"
+target = "~/.config/nvim"
+link = true
+
+# Conflicts
+conflicts = ["vim-minimal"]
+
+# Dependencies
+depends = []
+
+# Hooks
+post_install = "scripts/setup-nvim.sh"

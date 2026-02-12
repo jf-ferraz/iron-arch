@@ -1,0 +1,38 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# Build artifacts
+*.so
+*.rlib
+*.dll
+*.dylib
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Iron runtime state
+/state/
+/logs/
+*.log
+
+# Secrets (handled by git-crypt)
+# secrets/ is encrypted, not ignored
+
+# Temporary files
+*.tmp
+*.bak
+*.backup
+
+# Local development
+.env.local
+.envrc

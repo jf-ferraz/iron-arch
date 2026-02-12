@@ -1,0 +1,26 @@
+# Developer Profile
+# Optimized for software development workflows
+
+id = "developer"
+name = "Developer"
+description = "Full development environment with IDE-like terminal experience"
+
+# Modules included in this profile
+modules = [
+    "nvim-ide",
+    "kitty-dev",
+    "waybar-dev",
+    "dev-tools",
+    "git-config",
+    "tmux-config",
+    "starship-prompt",
+]
+
+# Theme
+theme = "catppuccin-mocha"
+
+# Shell preference
+shell = "fish"
+
+# Works with any bundle
+for_bundle = ""

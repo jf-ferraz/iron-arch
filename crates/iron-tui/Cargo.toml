@@ -1,0 +1,11 @@
+[package]
+name = "iron-tui"
+version.workspace = true
+edition.workspace = true
+description = "TUI dashboard for Iron"
+
+[dependencies]
+iron-core = { path = "../iron-core" }
+ratatui.workspace = true
+crossterm.workspace = true
+anyhow.workspace = true

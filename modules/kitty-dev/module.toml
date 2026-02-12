@@ -1,0 +1,22 @@
+# Kitty Dev Module
+# Developer-optimized terminal configuration
+
+id = "kitty-dev"
+name = "Kitty Terminal (Dev)"
+description = "Kitty terminal with developer-focused configuration"
+kind = "AppConfig"
+
+# Packages
+packages = ["kitty"]
+aur_packages = []
+
+# Dotfiles
+[[dotfiles]]
+source = "config/kitty"
+target = "~/.config/kitty"
+link = true
+
+# Conflicts with other terminal configs
+conflicts = ["kitty-minimal", "alacritty-config"]
+
+depends = []

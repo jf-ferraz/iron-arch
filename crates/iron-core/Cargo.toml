@@ -1,0 +1,14 @@
+[package]
+name = "iron-core"
+version.workspace = true
+edition.workspace = true
+description = "Core domain logic for Iron"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+walkdir.workspace = true

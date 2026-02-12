@@ -1,0 +1,19 @@
+# Minimal Profile
+# Clean, distraction-free setup
+
+id = "minimal"
+name = "Minimal"
+description = "Clean setup with essential configurations only"
+
+# Modules
+modules = [
+    "kitty-minimal",
+    "waybar-minimal",
+    "fish-basic",
+]
+
+# Theme
+theme = "catppuccin-frappe"
+
+# Shell
+shell = "fish"
