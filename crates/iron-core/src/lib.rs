@@ -14,6 +14,7 @@ pub mod bundle;
 pub mod error;
 pub mod fs_trait;
 pub mod host;
+pub mod logging;
 pub mod module;
 pub mod packages;
 pub mod profile;
