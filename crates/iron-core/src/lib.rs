@@ -10,6 +10,7 @@
 //! - Configuration validation
 //! - Snapshot management
 
+pub mod availability;
 pub mod bundle;
 pub mod error;
 pub mod fs_trait;
