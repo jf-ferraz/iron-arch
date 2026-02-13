@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+#### FR-5.10: Partial Update Recovery (2026-02-13)
+
+Implemented comprehensive partial update recovery for safe system updates:
+
+**Features:**
+- **Progress Tracking**: Real-time tracking of package updates via pacman output parsing
+- **Interrupted Detection**: Automatic detection of interrupted updates on next run
+- **Resume Capability**: Resume from last successful package (no re-downloading)
+- **Atomic State Persistence**: Progress saved atomically after each package
+- **SIGINT Handling**: Graceful interruption sets phase to "Interrupted"
+
+**CLI Flags:**
+- `--resume`: Resume an interrupted update without prompting
+- `--status`: Show current update progress (supports JSON output)
+- `--clear-progress`: Clear stale update progress state
+- `-y/--yes`: Auto-resume for LOW risk interrupted updates
+
+**Data Structures:**
+- `UpdateProgress`: Tracks session ID, started time, completed packages, phase
+- `UpdatePhase`: Preparing, Installing, PostInstall, Completed, Interrupted, Failed
+- `CompletedPackage`: Records name, old version, new version, completion time
+- `InterruptedUpdate`: Contains progress state and elapsed time
+
+**Tests:**
+- 26 unit tests for recovery scenarios (pacman parser, check_interrupted, edge cases)
+- 4 CLI argument parsing tests for new flags
+- 7 acceptance test specifications (AT-5.10.1 through AT-5.10.7)
+- Test count: 1150 → 1180 (+30 tests)
+
+**Documentation:**
+- USER-GUIDE.md: Added "Update Recovery" section
+- TESTING-WORKFLOW.md: Added FR-5.10 acceptance tests
+- PARTIAL-UPDATE-RECOVERY-WORKFLOW.md: Implementation plan document
+
 ### Planned
 - TUI launch via `iron go` command
 - Additional bundle configurations (GNOME, KDE, Sway)

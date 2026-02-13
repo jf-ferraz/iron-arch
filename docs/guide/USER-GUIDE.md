@@ -472,6 +472,66 @@ Before any update, Iron creates a snapshot using:
 - **Timeshift** (if installed)
 - **Snapper** (if installed)
 
+### Update Recovery (FR-5.10)
+
+Iron tracks update progress and can resume interrupted updates:
+
+```bash
+# Check current update progress
+iron update --status
+
+# Resume an interrupted update
+iron update --resume
+
+# Clear stale progress state
+iron update --clear-progress
+```
+
+#### Interrupted Update Detection
+
+If an update is interrupted (power failure, Ctrl+C, system crash), Iron detects it on the next run:
+
+```
+Previous update was interrupted:
+  Started: 2026-02-13T10:30:00Z
+  Progress: 5/10 packages completed (50.0%)
+  Remaining: 5 packages
+
+What would you like to do? [R/c/a]
+  [R]esume - Install remaining packages
+  [C]lear - Clear progress and start fresh
+  [A]bort - Do nothing
+```
+
+#### Progress Tracking
+
+During updates, Iron tracks:
+- **Session ID**: Unique identifier for each update session
+- **Started At**: When the update began
+- **Completed Packages**: List of successfully updated packages
+- **Remaining Packages**: Packages still needing update
+- **Phase**: Current update phase (Preparing, Installing, PostInstall, etc.)
+- **Snapshot ID**: Reference to pre-update snapshot for rollback
+
+#### Resume Workflow
+
+When resuming an interrupted update:
+1. Iron calculates remaining packages from the last successful state
+2. Only remaining packages are installed (no re-downloading)
+3. Progress is cleared after successful completion
+4. The pre-update snapshot remains available for rollback
+
+#### Auto-Resume with --yes
+
+For automated environments:
+
+```bash
+# Auto-resume interrupted updates with --yes flag
+iron update --yes
+```
+
+This will automatically resume if an interrupted update is detected and the risk level is LOW.
+
 ---
 
 ## 11. Git Sync
