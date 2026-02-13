@@ -131,35 +131,7 @@ impl DefaultGitManager {
 impl GitManager for DefaultGitManager {
     fn status(&self) -> IronResult<GitStatus> {
         let output = self.run_git(&["status", "--porcelain", "-b"])?;
-        let mut status = GitStatus::default();
-
-        for line in output.lines() {
-            if line.starts_with("##") {
-                // Parse branch info
-                if let Some(branch) = line.strip_prefix("## ") {
-                    if let Some((branch_name, _)) = branch.split_once("...") {
-                        status.branch = Some(branch_name.to_string());
-                    } else {
-                        status.branch = Some(branch.to_string());
-                    }
-                }
-            } else if line.len() >= 3 {
-                let indicator = &line[0..2];
-                let file = PathBuf::from(line[3..].trim());
-
-                match indicator {
-                    "??" => status.untracked.push(file),
-                    " M" | "MM" => status.modified.push(file),
-                    "M " | "A " => status.staged.push(file),
-                    _ => {}
-                }
-            }
-        }
-
-        status.is_clean =
-            status.modified.is_empty() && status.untracked.is_empty() && status.staged.is_empty();
-
-        Ok(status)
+        Ok(parse_git_status(&output))
     }
 
     fn diff(&self) -> IronResult<String> {
@@ -243,8 +215,8 @@ impl SecretsManager for DefaultSecretsManager {
         if let Ok(entries) = std::fs::read_dir(&secrets_dir) {
             for entry in entries.flatten() {
                 if let Ok(content) = std::fs::read(entry.path()) {
-                    // Encrypted files start with specific git-crypt header
-                    if content.starts_with(b"\x00GITCRYPT") {
+                    // Use the helper function to check for encrypted content
+                    if is_gitcrypt_encrypted(&content) {
                         return false;
                     }
                 }
@@ -315,31 +287,126 @@ impl SecretsManager for DefaultSecretsManager {
             .map_err(iron_core::IronError::Io)?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let files: Vec<PathBuf> = stdout
-            .lines()
-            .filter_map(|line| {
-                // Format: "encrypted: path/to/file"
-                line.strip_prefix("encrypted: ")
-                    .map(|p| PathBuf::from(p.trim()))
-            })
-            .collect();
-
-        Ok(files)
+        Ok(parse_encrypted_files(&stdout))
     }
+}
+
+/// Parse git status --porcelain -b output into GitStatus
+///
+/// This is exposed for testing purposes.
+pub fn parse_git_status(output: &str) -> GitStatus {
+    let mut status = GitStatus::default();
+
+    for line in output.lines() {
+        if line.starts_with("##") {
+            // Parse branch info: "## main...origin/main [ahead 1, behind 2]"
+            if let Some(branch_part) = line.strip_prefix("## ") {
+                // Handle "## No commits yet on main" case
+                if branch_part.starts_with("No commits yet on ") {
+                    status.branch = branch_part
+                        .strip_prefix("No commits yet on ")
+                        .map(|s| s.to_string());
+                    continue;
+                }
+
+                // Parse branch name and ahead/behind
+                let parts: Vec<&str> = branch_part.split("...").collect();
+                if !parts.is_empty() {
+                    status.branch = Some(parts[0].to_string());
+                }
+
+                // Parse ahead/behind if present
+                if let Some(tracking_info) = branch_part.find('[') {
+                    let info = &branch_part[tracking_info..];
+                    if let Some(ahead_pos) = info.find("ahead ") {
+                        let ahead_str = &info[ahead_pos + 6..];
+                        if let Some(end) = ahead_str.find(|c: char| !c.is_ascii_digit()) {
+                            status.ahead = ahead_str[..end].parse().unwrap_or(0);
+                        } else {
+                            status.ahead = ahead_str
+                                .trim_end_matches(']')
+                                .parse()
+                                .unwrap_or(0);
+                        }
+                    }
+                    if let Some(behind_pos) = info.find("behind ") {
+                        let behind_str = &info[behind_pos + 7..];
+                        if let Some(end) = behind_str.find(|c: char| !c.is_ascii_digit()) {
+                            status.behind = behind_str[..end].parse().unwrap_or(0);
+                        } else {
+                            status.behind = behind_str
+                                .trim_end_matches(']')
+                                .parse()
+                                .unwrap_or(0);
+                        }
+                    }
+                }
+            }
+        } else if line.len() >= 3 {
+            let indicator = &line[0..2];
+            let file = PathBuf::from(line[3..].trim());
+
+            match indicator {
+                "??" => status.untracked.push(file),
+                " M" | "MM" => status.modified.push(file),
+                "M " | "A " | "AM" => status.staged.push(file),
+                " D" => status.modified.push(file),
+                "D " => status.staged.push(file),
+                "R " => status.staged.push(file),
+                "UU" | "AA" | "DD" => {
+                    // Conflict markers - treat as modified
+                    status.modified.push(file);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    status.is_clean =
+        status.modified.is_empty() && status.untracked.is_empty() && status.staged.is_empty();
+
+    status
+}
+
+/// Parse git-crypt status output to extract encrypted files
+pub fn parse_encrypted_files(output: &str) -> Vec<PathBuf> {
+    output
+        .lines()
+        .filter_map(|line| {
+            // Format: "encrypted: path/to/file" or "    encrypted: path/to/file"
+            let trimmed = line.trim();
+            if trimmed.starts_with("encrypted:") {
+                Some(PathBuf::from(trimmed[10..].trim()))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Check if content appears to be git-crypt encrypted
+pub fn is_gitcrypt_encrypted(content: &[u8]) -> bool {
+    content.starts_with(b"\x00GITCRYPT")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    // ==========================================================================
+    // GitStatus struct tests
+    // ==========================================================================
+
     #[test]
     fn test_git_status_default() {
         let status = GitStatus::default();
-        // Default is_clean is false (not explicitly set to true)
         assert!(!status.is_clean);
         assert!(status.modified.is_empty());
         assert!(status.untracked.is_empty());
         assert!(status.staged.is_empty());
+        assert!(status.branch.is_none());
+        assert_eq!(status.ahead, 0);
+        assert_eq!(status.behind, 0);
     }
 
     #[test]
@@ -354,16 +421,393 @@ mod tests {
             behind: 0,
         };
         assert!(status.is_clean);
+        assert_eq!(status.branch, Some("main".to_string()));
     }
 
     #[test]
-    fn test_pull_result() {
+    fn test_git_status_with_changes() {
+        let status = GitStatus {
+            is_clean: false,
+            modified: vec![PathBuf::from("src/main.rs")],
+            untracked: vec![PathBuf::from("new_file.txt")],
+            staged: vec![PathBuf::from("staged.rs")],
+            branch: Some("feature".to_string()),
+            ahead: 2,
+            behind: 1,
+        };
+        assert!(!status.is_clean);
+        assert_eq!(status.modified.len(), 1);
+        assert_eq!(status.untracked.len(), 1);
+        assert_eq!(status.staged.len(), 1);
+        assert_eq!(status.ahead, 2);
+        assert_eq!(status.behind, 1);
+    }
+
+    // ==========================================================================
+    // PullResult struct tests
+    // ==========================================================================
+
+    #[test]
+    fn test_pull_result_success() {
         let result = PullResult {
             success: true,
-            updated_files: vec![],
+            updated_files: vec![PathBuf::from("updated.txt")],
             has_conflicts: false,
             conflict_files: vec![],
         };
+        assert!(result.success);
+        assert!(!result.has_conflicts);
+        assert_eq!(result.updated_files.len(), 1);
+    }
+
+    #[test]
+    fn test_pull_result_with_conflicts() {
+        let result = PullResult {
+            success: false,
+            updated_files: vec![],
+            has_conflicts: true,
+            conflict_files: vec![
+                PathBuf::from("conflict1.txt"),
+                PathBuf::from("conflict2.txt"),
+            ],
+        };
+        assert!(!result.success);
+        assert!(result.has_conflicts);
+        assert_eq!(result.conflict_files.len(), 2);
+    }
+
+    // ==========================================================================
+    // Status parsing tests (mock git output)
+    // ==========================================================================
+
+    #[test]
+    fn test_parse_status_clean_repo() {
+        let output = "## main...origin/main\n";
+        let status = parse_git_status(output);
+        assert!(status.is_clean);
+        assert_eq!(status.branch, Some("main".to_string()));
+        assert!(status.modified.is_empty());
+        assert!(status.untracked.is_empty());
+        assert!(status.staged.is_empty());
+    }
+
+    #[test]
+    fn test_parse_status_with_modified_files() {
+        let output = "## main...origin/main\n M src/lib.rs\n M Cargo.toml\n";
+        let status = parse_git_status(output);
+        assert!(!status.is_clean);
+        assert_eq!(status.modified.len(), 2);
+        assert!(status.modified.contains(&PathBuf::from("src/lib.rs")));
+        assert!(status.modified.contains(&PathBuf::from("Cargo.toml")));
+    }
+
+    #[test]
+    fn test_parse_status_with_untracked_files() {
+        let output = "## main\n?? new_file.txt\n?? another_new.rs\n";
+        let status = parse_git_status(output);
+        assert!(!status.is_clean);
+        assert_eq!(status.untracked.len(), 2);
+        assert!(status.untracked.contains(&PathBuf::from("new_file.txt")));
+        assert!(status.untracked.contains(&PathBuf::from("another_new.rs")));
+    }
+
+    #[test]
+    fn test_parse_status_with_staged_files() {
+        let output = "## feature\nM  staged_file.rs\nA  new_staged.txt\n";
+        let status = parse_git_status(output);
+        assert!(!status.is_clean);
+        assert_eq!(status.staged.len(), 2);
+        assert!(status.staged.contains(&PathBuf::from("staged_file.rs")));
+        assert!(status.staged.contains(&PathBuf::from("new_staged.txt")));
+    }
+
+    #[test]
+    fn test_parse_status_mixed_changes() {
+        let output = r#"## develop...origin/develop
+ M modified.rs
+M  staged.rs
+?? untracked.txt
+AM added_modified.rs
+"#;
+        let status = parse_git_status(output);
+        assert!(!status.is_clean);
+        assert_eq!(status.branch, Some("develop".to_string()));
+        assert_eq!(status.modified.len(), 1);
+        assert_eq!(status.staged.len(), 2); // M  and AM
+        assert_eq!(status.untracked.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_status_ahead_behind() {
+        let output = "## main...origin/main [ahead 3, behind 2]\n";
+        let status = parse_git_status(output);
+        assert!(status.is_clean);
+        assert_eq!(status.branch, Some("main".to_string()));
+        assert_eq!(status.ahead, 3);
+        assert_eq!(status.behind, 2);
+    }
+
+    #[test]
+    fn test_parse_status_only_ahead() {
+        let output = "## feature...origin/feature [ahead 5]\n";
+        let status = parse_git_status(output);
+        assert_eq!(status.ahead, 5);
+        assert_eq!(status.behind, 0);
+    }
+
+    #[test]
+    fn test_parse_status_only_behind() {
+        let output = "## main...origin/main [behind 7]\n";
+        let status = parse_git_status(output);
+        assert_eq!(status.ahead, 0);
+        assert_eq!(status.behind, 7);
+    }
+
+    #[test]
+    fn test_parse_status_no_tracking_branch() {
+        let output = "## my-local-branch\n M file.rs\n";
+        let status = parse_git_status(output);
+        assert_eq!(status.branch, Some("my-local-branch".to_string()));
+        assert_eq!(status.ahead, 0);
+        assert_eq!(status.behind, 0);
+    }
+
+    #[test]
+    fn test_parse_status_deleted_files() {
+        let output = "## main\n D deleted_unstaged.rs\nD  deleted_staged.rs\n";
+        let status = parse_git_status(output);
+        assert!(!status.is_clean);
+        assert_eq!(status.modified.len(), 1); // unstaged delete
+        assert_eq!(status.staged.len(), 1); // staged delete
+    }
+
+    #[test]
+    fn test_parse_status_renamed_file() {
+        let output = "## main\nR  old_name.rs -> new_name.rs\n";
+        let status = parse_git_status(output);
+        assert!(!status.is_clean);
+        assert_eq!(status.staged.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_status_conflict_markers() {
+        let output = "## main\nUU conflicted.rs\nAA both_added.rs\n";
+        let status = parse_git_status(output);
+        assert!(!status.is_clean);
+        assert_eq!(status.modified.len(), 2); // Conflicts treated as modified
+    }
+
+    #[test]
+    fn test_parse_status_new_repo() {
+        let output = "## No commits yet on main\n?? README.md\n";
+        let status = parse_git_status(output);
+        assert!(!status.is_clean);
+        assert_eq!(status.branch, Some("main".to_string()));
+        assert_eq!(status.untracked.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_status_empty_output() {
+        let output = "";
+        let status = parse_git_status(output);
+        assert!(status.is_clean);
+        assert!(status.branch.is_none());
+    }
+
+    // ==========================================================================
+    // Encrypted files parsing tests
+    // ==========================================================================
+
+    #[test]
+    fn test_parse_encrypted_files_empty() {
+        let output = "";
+        let files = parse_encrypted_files(output);
+        assert!(files.is_empty());
+    }
+
+    #[test]
+    fn test_parse_encrypted_files_single() {
+        let output = "encrypted: secrets/api_key.txt\n";
+        let files = parse_encrypted_files(output);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0], PathBuf::from("secrets/api_key.txt"));
+    }
+
+    #[test]
+    fn test_parse_encrypted_files_multiple() {
+        let output = r#"encrypted: secrets/api_key.txt
+encrypted: secrets/database.env
+encrypted: config/prod.yaml
+"#;
+        let files = parse_encrypted_files(output);
+        assert_eq!(files.len(), 3);
+        assert!(files.contains(&PathBuf::from("secrets/api_key.txt")));
+        assert!(files.contains(&PathBuf::from("secrets/database.env")));
+        assert!(files.contains(&PathBuf::from("config/prod.yaml")));
+    }
+
+    #[test]
+    fn test_parse_encrypted_files_with_whitespace() {
+        let output = "    encrypted: secrets/key.txt\n";
+        let files = parse_encrypted_files(output);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0], PathBuf::from("secrets/key.txt"));
+    }
+
+    #[test]
+    fn test_parse_encrypted_files_mixed_output() {
+        let output = r#"not encrypted: README.md
+encrypted: secrets/token.txt
+    not encrypted: src/main.rs
+    encrypted: config/secrets.yaml
+"#;
+        let files = parse_encrypted_files(output);
+        assert_eq!(files.len(), 2);
+    }
+
+    // ==========================================================================
+    // Git-crypt encryption detection tests
+    // ==========================================================================
+
+    #[test]
+    fn test_is_gitcrypt_encrypted_true() {
+        let content = b"\x00GITCRYPT\x00\x10\x00\x00";
+        assert!(is_gitcrypt_encrypted(content));
+    }
+
+    #[test]
+    fn test_is_gitcrypt_encrypted_false_plaintext() {
+        let content = b"This is plaintext content";
+        assert!(!is_gitcrypt_encrypted(content));
+    }
+
+    #[test]
+    fn test_is_gitcrypt_encrypted_false_empty() {
+        let content = b"";
+        assert!(!is_gitcrypt_encrypted(content));
+    }
+
+    #[test]
+    fn test_is_gitcrypt_encrypted_false_partial_header() {
+        let content = b"\x00GIT";
+        assert!(!is_gitcrypt_encrypted(content));
+    }
+
+    // ==========================================================================
+    // Mock GitManager for testing dependent code
+    // ==========================================================================
+
+    /// Mock GitManager for testing
+    pub struct MockGitManager {
+        pub status_result: Option<GitStatus>,
+        pub diff_result: Option<String>,
+        pub has_changes_result: bool,
+    }
+
+    impl Default for MockGitManager {
+        fn default() -> Self {
+            Self {
+                status_result: Some(GitStatus {
+                    is_clean: true,
+                    ..Default::default()
+                }),
+                diff_result: Some(String::new()),
+                has_changes_result: false,
+            }
+        }
+    }
+
+    impl GitManager for MockGitManager {
+        fn status(&self) -> IronResult<GitStatus> {
+            self.status_result
+                .clone()
+                .ok_or_else(|| GitError::NotARepository {
+                    path: PathBuf::from("/mock"),
+                }
+                .into())
+        }
+
+        fn diff(&self) -> IronResult<String> {
+            self.diff_result
+                .clone()
+                .ok_or_else(|| GitError::NotARepository {
+                    path: PathBuf::from("/mock"),
+                }
+                .into())
+        }
+
+        fn commit(&self, _message: &str) -> IronResult<()> {
+            Ok(())
+        }
+
+        fn push(&self, _remote: &str, _branch: &str) -> IronResult<()> {
+            Ok(())
+        }
+
+        fn pull(&self, _remote: &str, _branch: &str) -> IronResult<PullResult> {
+            Ok(PullResult {
+                success: true,
+                updated_files: vec![],
+                has_conflicts: false,
+                conflict_files: vec![],
+            })
+        }
+
+        fn has_changes(&self) -> IronResult<bool> {
+            Ok(self.has_changes_result)
+        }
+    }
+
+    #[test]
+    fn test_mock_git_manager_clean() {
+        let mock = MockGitManager::default();
+        let status = mock.status().unwrap();
+        assert!(status.is_clean);
+        assert!(!mock.has_changes().unwrap());
+    }
+
+    #[test]
+    fn test_mock_git_manager_with_changes() {
+        let mock = MockGitManager {
+            status_result: Some(GitStatus {
+                is_clean: false,
+                modified: vec![PathBuf::from("changed.rs")],
+                ..Default::default()
+            }),
+            has_changes_result: true,
+            ..Default::default()
+        };
+        let status = mock.status().unwrap();
+        assert!(!status.is_clean);
+        assert!(mock.has_changes().unwrap());
+    }
+
+    #[test]
+    fn test_mock_git_manager_diff() {
+        let mock = MockGitManager {
+            diff_result: Some("+ added line\n- removed line".to_string()),
+            ..Default::default()
+        };
+        let diff = mock.diff().unwrap();
+        assert!(diff.contains("+ added line"));
+    }
+
+    #[test]
+    fn test_mock_git_manager_commit() {
+        let mock = MockGitManager::default();
+        assert!(mock.commit("test commit").is_ok());
+    }
+
+    #[test]
+    fn test_mock_git_manager_push() {
+        let mock = MockGitManager::default();
+        assert!(mock.push("origin", "main").is_ok());
+    }
+
+    #[test]
+    fn test_mock_git_manager_pull() {
+        let mock = MockGitManager::default();
+        let result = mock.pull("origin", "main").unwrap();
         assert!(result.success);
         assert!(!result.has_conflicts);
     }

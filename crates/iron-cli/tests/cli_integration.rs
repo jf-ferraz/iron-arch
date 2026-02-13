@@ -81,10 +81,14 @@ services = []
     fs::write(bundle_dir.join("bundle.toml"), bundle).unwrap();
 }
 
-/// Create a test module
+/// Create a test module with dotfiles that link within the temp directory
 fn create_test_module(dir: &TempDir, id: &str) {
     let modules_dir = dir.path().join("modules").join(id);
     fs::create_dir_all(&modules_dir).unwrap();
+
+    // Create dotfile target directory within the temp dir
+    let dotfile_target = dir.path().join("home").join(".config").join(id);
+    fs::create_dir_all(dotfile_target.parent().unwrap()).unwrap();
 
     let module = format!(
         r#"id = "{id}"
@@ -98,9 +102,10 @@ depends = []
 
 [[dotfiles]]
 source = "config"
-target = "~/.config/{id}"
+target = "{target}"
 link = true
-"#
+"#,
+        target = dotfile_target.display()
     );
     fs::write(modules_dir.join("module.toml"), module).unwrap();
     fs::write(modules_dir.join("config"), "# config content").unwrap();
