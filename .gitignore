@@ -39,3 +39,7 @@ Thumbs.db
 
 # Serena MCP
 .serena/
+
+# Test artifacts
+iron-export-*.json
+iron-install.sh
