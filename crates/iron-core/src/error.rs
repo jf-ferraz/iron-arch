@@ -220,7 +220,7 @@ pub enum GitError {
 }
 
 /// Filesystem operation errors
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone)]
 pub enum FsError {
     /// Path not found
     #[error("Path not found: {path}")]
@@ -229,6 +229,14 @@ pub enum FsError {
     /// Permission denied
     #[error("Permission denied: {path}")]
     PermissionDenied { path: PathBuf },
+
+    /// Path already exists
+    #[error("Path already exists: {path}")]
+    AlreadyExists { path: PathBuf },
+
+    /// Generic I/O error
+    #[error("I/O error: {message}")]
+    IoError { message: String },
 
     /// Symlink already exists
     #[error("Symlink already exists: {path}")]

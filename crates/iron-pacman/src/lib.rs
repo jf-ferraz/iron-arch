@@ -115,31 +115,6 @@ impl DefaultPackageManager {
         }
     }
 
-    /// Parse pacman -Qu output
-    fn parse_updates_output(&self, output: &str, is_aur: bool) -> Vec<PackageUpdate> {
-        output
-            .lines()
-            .filter_map(|line| {
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.len() >= 4 {
-                    Some(PackageUpdate {
-                        name: parts[0].to_string(),
-                        current_version: parts[1].to_string(),
-                        new_version: parts[3].to_string(),
-                        is_aur,
-                        is_flagged: false,
-                        repository: if is_aur {
-                            "aur".to_string()
-                        } else {
-                            "".to_string()
-                        },
-                    })
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
 }
 
 impl Default for DefaultPackageManager {
@@ -157,7 +132,7 @@ impl PackageManager for DefaultPackageManager {
             && output.status.success()
         {
             let stdout = String::from_utf8_lossy(&output.stdout);
-            updates.extend(self.parse_updates_output(&stdout, false));
+            updates.extend(parse_updates_output(&stdout, false));
         }
 
         // Check AUR updates if helper available
@@ -171,7 +146,7 @@ impl PackageManager for DefaultPackageManager {
             if !aur_args.is_empty()
                 && let Ok(output) = self.run_aur_helper(&aur_args)
             {
-                updates.extend(self.parse_updates_output(&output, true));
+                updates.extend(parse_updates_output(&output, true));
             }
         }
 
@@ -450,7 +425,7 @@ pub fn fetch_arch_news() -> IronResult<Vec<ArchNewsItem>> {
 }
 
 /// Parse Arch News RSS feed
-fn parse_arch_news_rss(xml: &str) -> IronResult<Vec<ArchNewsItem>> {
+pub fn parse_arch_news_rss(xml: &str) -> IronResult<Vec<ArchNewsItem>> {
     let mut items = Vec::new();
     let mut reader = quick_xml::Reader::from_str(xml);
     reader.trim_text(true);
@@ -520,6 +495,209 @@ fn parse_arch_news_rss(xml: &str) -> IronResult<Vec<ArchNewsItem>> {
     Ok(items)
 }
 
+// =============================================================================
+// Public Parsing Functions (for testing)
+// =============================================================================
+
+/// Parse pacman -Qu or checkupdates output
+///
+/// Format: `package_name current_version -> new_version`
+///
+/// # Example
+/// ```
+/// use iron_pacman::parse_updates_output;
+///
+/// let output = "hyprland 0.40.0-1 -> 0.41.0-1\nwaybar 0.10.0-1 -> 0.10.1-1";
+/// let updates = parse_updates_output(output, false);
+/// assert_eq!(updates.len(), 2);
+/// assert_eq!(updates[0].name, "hyprland");
+/// ```
+pub fn parse_updates_output(output: &str, is_aur: bool) -> Vec<PackageUpdate> {
+    output
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 4 {
+                Some(PackageUpdate {
+                    name: parts[0].to_string(),
+                    current_version: parts[1].to_string(),
+                    new_version: parts[3].to_string(),
+                    is_aur,
+                    is_flagged: false,
+                    repository: if is_aur {
+                        "aur".to_string()
+                    } else {
+                        String::new()
+                    },
+                })
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Parse pacman -Q output (package list)
+///
+/// Format: `package_name version`
+///
+/// # Example
+/// ```
+/// use iron_pacman::parse_package_list;
+///
+/// let output = "hyprland 0.40.0-1\nwaybar 0.10.0-1";
+/// let packages = parse_package_list(output);
+/// assert_eq!(packages.len(), 2);
+/// assert_eq!(packages[0].0, "hyprland");
+/// assert_eq!(packages[0].1, "0.40.0-1");
+/// ```
+pub fn parse_package_list(output: &str) -> Vec<(String, String)> {
+    output
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 2 {
+                Some((parts[0].to_string(), parts[1].to_string()))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Parse pacman -Ss search output
+///
+/// Format lines alternate between:
+/// - `repository/package_name version [installed]`
+/// - `    Description text`
+///
+/// # Example
+/// ```
+/// use iron_pacman::parse_search_output;
+///
+/// let output = "extra/hyprland 0.40.0-1
+///     A highly customizable dynamic tiling Wayland compositor";
+/// let packages = parse_search_output(output);
+/// assert_eq!(packages.len(), 1);
+/// assert_eq!(packages[0].name, "hyprland");
+/// ```
+pub fn parse_search_output(output: &str) -> Vec<SearchResult> {
+    let mut results = Vec::new();
+    let mut lines = output.lines().peekable();
+
+    while let Some(header_line) = lines.next() {
+        // Skip empty lines and indented lines (descriptions from previous entry)
+        if header_line.trim().is_empty() || header_line.starts_with(' ') {
+            continue;
+        }
+
+        // Parse header: repository/name version [flags]
+        if let Some((repo_pkg, rest)) = header_line.split_once('/') {
+            let parts: Vec<&str> = rest.split_whitespace().collect();
+            if !parts.is_empty() {
+                let name = parts[0].to_string();
+                let version = parts.get(1).unwrap_or(&"").to_string();
+                let installed = rest.contains("[installed]");
+                let repository = repo_pkg.to_string();
+
+                // Try to get description from next line
+                let description = if let Some(&desc_line) = lines.peek() {
+                    if desc_line.starts_with(' ') {
+                        lines.next();
+                        desc_line.trim().to_string()
+                    } else {
+                        String::new()
+                    }
+                } else {
+                    String::new()
+                };
+
+                results.push(SearchResult {
+                    name,
+                    version,
+                    description,
+                    repository,
+                    installed,
+                });
+            }
+        }
+    }
+
+    results
+}
+
+/// Parse pacman -Qi info output
+///
+/// Format: `Key : Value` pairs
+///
+/// # Example
+/// ```
+/// use iron_pacman::parse_package_info;
+///
+/// let output = "Name            : hyprland
+/// Version         : 0.40.0-1
+/// Description     : A tiling Wayland compositor
+/// Installed Size  : 12.5 MiB";
+/// let info = parse_package_info(output);
+/// assert_eq!(info.get("Name"), Some(&"hyprland".to_string()));
+/// assert_eq!(info.get("Version"), Some(&"0.40.0-1".to_string()));
+/// ```
+pub fn parse_package_info(output: &str) -> std::collections::HashMap<String, String> {
+    let mut info = std::collections::HashMap::new();
+
+    for line in output.lines() {
+        if let Some((key, value)) = line.split_once(':') {
+            let key = key.trim().to_string();
+            let value = value.trim().to_string();
+            if !key.is_empty() {
+                info.insert(key, value);
+            }
+        }
+    }
+
+    info
+}
+
+/// Parse installed size from pacman info output
+///
+/// Handles units: B, KiB, MiB, GiB
+///
+/// # Example
+/// ```
+/// use iron_pacman::parse_size;
+///
+/// assert_eq!(parse_size("12.5 MiB"), 13107200);
+/// assert_eq!(parse_size("1024 KiB"), 1048576);
+/// assert_eq!(parse_size("1 GiB"), 1073741824);
+/// ```
+pub fn parse_size(size_str: &str) -> u64 {
+    let parts: Vec<&str> = size_str.split_whitespace().collect();
+    if parts.len() >= 2 {
+        if let Ok(size) = parts[0].parse::<f64>() {
+            return match parts[1] {
+                "B" => size as u64,
+                "KiB" => (size * 1024.0) as u64,
+                "MiB" => (size * 1024.0 * 1024.0) as u64,
+                "GiB" => (size * 1024.0 * 1024.0 * 1024.0) as u64,
+                _ => size as u64,
+            };
+        }
+    }
+    0
+}
+
+/// Search result from pacman -Ss
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchResult {
+    pub name: String,
+    pub version: String,
+    pub description: String,
+    pub repository: String,
+    pub installed: bool,
+}
+
 /// Check if a package file exists in the pacman cache
 pub fn is_cached(package: &str, version: &str) -> bool {
     let cache_dir = Path::new("/var/cache/pacman/pkg");
@@ -577,6 +755,10 @@ pub fn get_orphans() -> IronResult<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // =========================================================================
+    // Risk Assessment Tests (existing)
+    // =========================================================================
 
     #[test]
     fn test_risk_level_description() {
@@ -667,7 +849,314 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_arch_news_rss() {
+    fn test_aur_helper_command() {
+        assert_eq!(AurHelper::Paru.command(), "paru");
+        assert_eq!(AurHelper::Yay.command(), "yay");
+        assert_eq!(AurHelper::None.command(), "pacman");
+    }
+
+    #[test]
+    fn test_default_package_manager() {
+        let pm = DefaultPackageManager::new();
+        // Just test that it creates without panicking
+        let _ = pm.aur_helper();
+    }
+
+    // =========================================================================
+    // Parse Updates Output Tests
+    // =========================================================================
+
+    #[test]
+    fn test_parse_updates_single_package() {
+        let output = "hyprland 0.40.0-1 -> 0.41.0-1";
+        let updates = parse_updates_output(output, false);
+
+        assert_eq!(updates.len(), 1);
+        assert_eq!(updates[0].name, "hyprland");
+        assert_eq!(updates[0].current_version, "0.40.0-1");
+        assert_eq!(updates[0].new_version, "0.41.0-1");
+        assert!(!updates[0].is_aur);
+    }
+
+    #[test]
+    fn test_parse_updates_multiple_packages() {
+        let output = "hyprland 0.40.0-1 -> 0.41.0-1
+waybar 0.10.0-1 -> 0.10.1-1
+wofi 1.4-1 -> 1.4.1-1";
+
+        let updates = parse_updates_output(output, false);
+
+        assert_eq!(updates.len(), 3);
+        assert_eq!(updates[0].name, "hyprland");
+        assert_eq!(updates[1].name, "waybar");
+        assert_eq!(updates[2].name, "wofi");
+    }
+
+    #[test]
+    fn test_parse_updates_aur_packages() {
+        let output = "paru-bin 2.0.0-1 -> 2.0.1-1";
+        let updates = parse_updates_output(output, true);
+
+        assert_eq!(updates.len(), 1);
+        assert!(updates[0].is_aur);
+        assert_eq!(updates[0].repository, "aur");
+    }
+
+    #[test]
+    fn test_parse_updates_empty_output() {
+        let updates = parse_updates_output("", false);
+        assert!(updates.is_empty());
+    }
+
+    #[test]
+    fn test_parse_updates_whitespace_only() {
+        let updates = parse_updates_output("   \n\n   \n", false);
+        assert!(updates.is_empty());
+    }
+
+    #[test]
+    fn test_parse_updates_malformed_line() {
+        // Line needs < 4 parts to be considered malformed
+        let output = "pkg 1.0 2.0";  // Only 3 parts, missing arrow
+        let updates = parse_updates_output(output, false);
+        assert!(updates.is_empty());
+    }
+
+    #[test]
+    fn test_parse_updates_mixed_valid_invalid() {
+        let output = "invalid line
+hyprland 0.40.0-1 -> 0.41.0-1
+another invalid
+waybar 0.10.0-1 -> 0.10.1-1";
+
+        let updates = parse_updates_output(output, false);
+        assert_eq!(updates.len(), 2);
+        assert_eq!(updates[0].name, "hyprland");
+        assert_eq!(updates[1].name, "waybar");
+    }
+
+    #[test]
+    fn test_parse_updates_complex_versions() {
+        let output = "linux 6.7.0.arch1-1 -> 6.7.1.arch1-1
+gcc-libs 13.2.1-3 -> 14.0.0-1";
+
+        let updates = parse_updates_output(output, false);
+        assert_eq!(updates.len(), 2);
+        assert_eq!(updates[0].current_version, "6.7.0.arch1-1");
+        assert_eq!(updates[0].new_version, "6.7.1.arch1-1");
+    }
+
+    // =========================================================================
+    // Parse Package List Tests
+    // =========================================================================
+
+    #[test]
+    fn test_parse_package_list_single() {
+        let output = "hyprland 0.40.0-1";
+        let packages = parse_package_list(output);
+
+        assert_eq!(packages.len(), 1);
+        assert_eq!(packages[0].0, "hyprland");
+        assert_eq!(packages[0].1, "0.40.0-1");
+    }
+
+    #[test]
+    fn test_parse_package_list_multiple() {
+        let output = "base 3-2
+linux 6.7.1-1
+systemd 255-1";
+
+        let packages = parse_package_list(output);
+        assert_eq!(packages.len(), 3);
+        assert_eq!(packages[0], ("base".to_string(), "3-2".to_string()));
+        assert_eq!(packages[1], ("linux".to_string(), "6.7.1-1".to_string()));
+        assert_eq!(packages[2], ("systemd".to_string(), "255-1".to_string()));
+    }
+
+    #[test]
+    fn test_parse_package_list_empty() {
+        let packages = parse_package_list("");
+        assert!(packages.is_empty());
+    }
+
+    #[test]
+    fn test_parse_package_list_with_blank_lines() {
+        let output = "hyprland 0.40.0-1
+
+waybar 0.10.0-1
+
+wofi 1.4-1";
+
+        let packages = parse_package_list(output);
+        assert_eq!(packages.len(), 3);
+    }
+
+    #[test]
+    fn test_parse_package_list_extra_whitespace() {
+        let output = "  hyprland   0.40.0-1  ";
+        let packages = parse_package_list(output);
+
+        assert_eq!(packages.len(), 1);
+        assert_eq!(packages[0].0, "hyprland");
+    }
+
+    // =========================================================================
+    // Parse Search Output Tests
+    // =========================================================================
+
+    #[test]
+    fn test_parse_search_single_result() {
+        let output = "extra/hyprland 0.40.0-1
+    A highly customizable dynamic tiling Wayland compositor";
+
+        let results = parse_search_output(output);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "hyprland");
+        assert_eq!(results[0].version, "0.40.0-1");
+        assert_eq!(results[0].repository, "extra");
+        assert!(!results[0].installed);
+    }
+
+    #[test]
+    fn test_parse_search_multiple_results() {
+        let output = "extra/hyprland 0.40.0-1
+    A highly customizable dynamic tiling Wayland compositor
+extra/waybar 0.10.0-1
+    Highly customizable Wayland bar
+aur/hyprshot 1.0.0-1
+    Screenshot utility for Hyprland";
+
+        let results = parse_search_output(output);
+        assert_eq!(results.len(), 3);
+        assert_eq!(results[0].name, "hyprland");
+        assert_eq!(results[1].name, "waybar");
+        assert_eq!(results[2].name, "hyprshot");
+        assert_eq!(results[2].repository, "aur");
+    }
+
+    #[test]
+    fn test_parse_search_installed_marker() {
+        let output = "extra/hyprland 0.40.0-1 [installed]
+    A highly customizable dynamic tiling Wayland compositor";
+
+        let results = parse_search_output(output);
+        assert_eq!(results.len(), 1);
+        assert!(results[0].installed);
+    }
+
+    #[test]
+    fn test_parse_search_empty() {
+        let results = parse_search_output("");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_parse_search_no_description() {
+        let output = "extra/hyprland 0.40.0-1";
+
+        let results = parse_search_output(output);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "hyprland");
+        assert!(results[0].description.is_empty());
+    }
+
+    // =========================================================================
+    // Parse Package Info Tests
+    // =========================================================================
+
+    #[test]
+    fn test_parse_package_info_basic() {
+        let output = "Name            : hyprland
+Version         : 0.40.0-1
+Description     : A tiling Wayland compositor";
+
+        let info = parse_package_info(output);
+        assert_eq!(info.get("Name"), Some(&"hyprland".to_string()));
+        assert_eq!(info.get("Version"), Some(&"0.40.0-1".to_string()));
+        assert_eq!(
+            info.get("Description"),
+            Some(&"A tiling Wayland compositor".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_package_info_with_colon_in_value() {
+        let output = "URL             : https://hyprland.org
+Description     : A compositor: modern and fast";
+
+        let info = parse_package_info(output);
+        assert_eq!(info.get("URL"), Some(&"https://hyprland.org".to_string()));
+        assert_eq!(
+            info.get("Description"),
+            Some(&"A compositor: modern and fast".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_package_info_empty() {
+        let info = parse_package_info("");
+        assert!(info.is_empty());
+    }
+
+    #[test]
+    fn test_parse_package_info_install_reason() {
+        let output = "Name            : hyprland
+Install Reason  : Explicitly installed";
+
+        let info = parse_package_info(output);
+        assert_eq!(
+            info.get("Install Reason"),
+            Some(&"Explicitly installed".to_string())
+        );
+    }
+
+    // =========================================================================
+    // Parse Size Tests
+    // =========================================================================
+
+    #[test]
+    fn test_parse_size_bytes() {
+        assert_eq!(parse_size("1024 B"), 1024);
+    }
+
+    #[test]
+    fn test_parse_size_kib() {
+        assert_eq!(parse_size("1 KiB"), 1024);
+        assert_eq!(parse_size("2.5 KiB"), 2560);
+    }
+
+    #[test]
+    fn test_parse_size_mib() {
+        assert_eq!(parse_size("1 MiB"), 1048576);
+        assert_eq!(parse_size("12.5 MiB"), 13107200);
+    }
+
+    #[test]
+    fn test_parse_size_gib() {
+        assert_eq!(parse_size("1 GiB"), 1073741824);
+    }
+
+    #[test]
+    fn test_parse_size_invalid() {
+        assert_eq!(parse_size(""), 0);
+        assert_eq!(parse_size("invalid"), 0);
+        assert_eq!(parse_size("abc MiB"), 0);
+    }
+
+    #[test]
+    fn test_parse_size_float_precision() {
+        // 100.5 MiB
+        let size = parse_size("100.5 MiB");
+        assert!(size > 100 * 1024 * 1024);
+        assert!(size < 101 * 1024 * 1024);
+    }
+
+    // =========================================================================
+    // Parse Arch News RSS Tests
+    // =========================================================================
+
+    #[test]
+    fn test_parse_arch_news_rss_single_item() {
         let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
         <rss version="2.0">
             <channel>
@@ -687,16 +1176,215 @@ mod tests {
     }
 
     #[test]
-    fn test_aur_helper_command() {
-        assert_eq!(AurHelper::Paru.command(), "paru");
-        assert_eq!(AurHelper::Yay.command(), "yay");
-        assert_eq!(AurHelper::None.command(), "pacman");
+    fn test_parse_arch_news_rss_multiple_items() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <title>First News</title>
+                    <pubDate>Mon, 01 Jan 2024</pubDate>
+                    <link>https://archlinux.org/news/1/</link>
+                    <description>Regular update</description>
+                </item>
+                <item>
+                    <title>Second News</title>
+                    <pubDate>Tue, 02 Jan 2024</pubDate>
+                    <link>https://archlinux.org/news/2/</link>
+                    <description>Action required by user</description>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let items = parse_arch_news_rss(xml).unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].title, "First News");
+        assert_eq!(items[1].title, "Second News");
+        assert!(!items[0].requires_manual);
+        assert!(items[1].requires_manual);
     }
 
     #[test]
-    fn test_default_package_manager() {
-        let pm = DefaultPackageManager::new();
-        // Just test that it creates without panicking
+    fn test_parse_arch_news_rss_manual_intervention_keywords() {
+        let test_cases = [
+            ("Manual intervention required", true),
+            ("Action required for upgrade", true),
+            ("This must be done manually", true),
+            ("Read this before upgrading", true),
+            ("Regular package update", false),
+            ("Bug fixes and improvements", false),
+        ];
+
+        for (description, should_require_manual) in test_cases {
+            let xml = format!(
+                r#"<?xml version="1.0"?>
+                <rss><channel>
+                    <item>
+                        <title>Test</title>
+                        <description>{}</description>
+                    </item>
+                </channel></rss>"#,
+                description
+            );
+
+            let items = parse_arch_news_rss(&xml).unwrap();
+            assert_eq!(
+                items[0].requires_manual, should_require_manual,
+                "Failed for description: {}",
+                description
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_arch_news_rss_empty() {
+        let xml = r#"<?xml version="1.0"?>
+        <rss><channel></channel></rss>"#;
+
+        let items = parse_arch_news_rss(xml).unwrap();
+        assert!(items.is_empty());
+    }
+
+    #[test]
+    fn test_parse_arch_news_rss_limit_to_10() {
+        // Create XML with 15 items
+        let mut items_xml = String::new();
+        for i in 0..15 {
+            items_xml.push_str(&format!(
+                "<item><title>Item {}</title><description>Desc</description></item>",
+                i
+            ));
+        }
+        let xml = format!(
+            r#"<?xml version="1.0"?><rss><channel>{}</channel></rss>"#,
+            items_xml
+        );
+
+        let items = parse_arch_news_rss(&xml).unwrap();
+        assert_eq!(items.len(), 10, "Should limit to 10 items");
+    }
+
+    #[test]
+    fn test_parse_arch_news_rss_malformed() {
+        let xml = "not valid xml at all";
+        let items = parse_arch_news_rss(xml).unwrap();
+        // Should not panic, just return empty
+        assert!(items.is_empty());
+    }
+
+    // =========================================================================
+    // AUR Helper Tests
+    // =========================================================================
+
+    #[test]
+    fn test_aur_helper_pikaur() {
+        assert_eq!(AurHelper::Pikaur.command(), "pikaur");
+    }
+
+    #[test]
+    fn test_aur_helper_trizen() {
+        assert_eq!(AurHelper::Trizen.command(), "trizen");
+    }
+
+    #[test]
+    fn test_aur_helper_equality() {
+        assert_eq!(AurHelper::Paru, AurHelper::Paru);
+        assert_ne!(AurHelper::Paru, AurHelper::Yay);
+    }
+
+    // =========================================================================
+    // Package Manager Configuration Tests
+    // =========================================================================
+
+    #[test]
+    fn test_package_manager_with_options() {
+        let pm = DefaultPackageManager::with_options(AurHelper::Paru, true);
+        assert_eq!(pm.aur_helper(), AurHelper::Paru);
+    }
+
+    #[test]
+    fn test_package_manager_default() {
+        let pm: DefaultPackageManager = Default::default();
+        // Just verify it doesn't panic
         let _ = pm.aur_helper();
+    }
+
+    // =========================================================================
+    // Search Result Tests
+    // =========================================================================
+
+    #[test]
+    fn test_search_result_clone() {
+        let result = SearchResult {
+            name: "hyprland".to_string(),
+            version: "0.40.0".to_string(),
+            description: "A compositor".to_string(),
+            repository: "extra".to_string(),
+            installed: true,
+        };
+
+        let cloned = result.clone();
+        assert_eq!(result, cloned);
+    }
+
+    #[test]
+    fn test_search_result_debug() {
+        let result = SearchResult {
+            name: "test".to_string(),
+            version: "1.0".to_string(),
+            description: "desc".to_string(),
+            repository: "extra".to_string(),
+            installed: false,
+        };
+
+        // Should implement Debug
+        let debug_str = format!("{:?}", result);
+        assert!(debug_str.contains("test"));
+    }
+
+    // =========================================================================
+    // Edge Cases and Error Conditions
+    // =========================================================================
+
+    #[test]
+    fn test_parse_updates_unicode_package_names() {
+        // Some AUR packages might have unicode in descriptions, but names should be ASCII
+        let output = "some-pkg 1.0 -> 2.0";
+        let updates = parse_updates_output(output, false);
+        assert_eq!(updates.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_updates_very_long_version() {
+        let output = "pkg 1.0.0.0.0.0.0.0.0.0.0.0.0.0-1 -> 2.0.0.0.0.0.0.0.0.0.0.0.0.0-1";
+        let updates = parse_updates_output(output, false);
+
+        assert_eq!(updates.len(), 1);
+        assert!(updates[0].current_version.starts_with("1.0"));
+        assert!(updates[0].new_version.starts_with("2.0"));
+    }
+
+    #[test]
+    fn test_parse_package_list_thousands_of_packages() {
+        // Generate large output
+        let mut output = String::new();
+        for i in 0..1000 {
+            output.push_str(&format!("pkg-{} 1.0.0-1\n", i));
+        }
+
+        let packages = parse_package_list(&output);
+        assert_eq!(packages.len(), 1000);
+        assert_eq!(packages[0].0, "pkg-0");
+        assert_eq!(packages[999].0, "pkg-999");
+    }
+
+    #[test]
+    fn test_parse_search_multiline_description() {
+        // Real pacman search output only has single-line descriptions
+        let output = "extra/pkg 1.0
+    First line of description";
+
+        let results = parse_search_output(output);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].description, "First line of description");
     }
 }

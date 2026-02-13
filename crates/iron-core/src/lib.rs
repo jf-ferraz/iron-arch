@@ -12,6 +12,7 @@
 
 pub mod bundle;
 pub mod error;
+pub mod fs_trait;
 pub mod host;
 pub mod module;
 pub mod packages;
@@ -20,6 +21,9 @@ pub mod services;
 pub mod snapshot;
 pub mod state;
 pub mod validation;
+
+#[cfg(test)]
+pub mod test_helpers;
 
 // Re-exports for convenience
 pub use bundle::{Bundle, BundleState, BundleType};
@@ -45,3 +49,6 @@ pub use validation::{
     check_module_conflicts, expand_home, resolve_dependencies, validate_config, validate_id,
     validate_module, validate_path, validate_path_safe,
 };
+
+// Filesystem abstraction for testing
+pub use fs_trait::{FileSystem, FsResult, MockFileSystem, RealFileSystem};

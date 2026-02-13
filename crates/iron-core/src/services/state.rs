@@ -714,4 +714,570 @@ mod tests {
         assert_eq!(result, 42);
         assert!(manager.is_module_active("test-mod"));
     }
+
+    // ==========================================
+    // Phase 8.4: Comprehensive Concurrent Access Tests
+    // ==========================================
+
+    #[test]
+    fn test_concurrent_reads_no_blocking() {
+        use std::sync::Arc;
+        use std::thread;
+        use std::time::Instant;
+
+        let (manager, _temp) = create_test_manager();
+
+        // Set up some initial state
+        manager.set_current_host("test-host").unwrap();
+        manager.enable_module("mod-1").unwrap();
+        manager.enable_module("mod-2").unwrap();
+
+        let manager = Arc::new(manager);
+        let mut handles = vec![];
+
+        // Spawn 10 concurrent readers
+        let start = Instant::now();
+        for _ in 0..10 {
+            let m = Arc::clone(&manager);
+            handles.push(thread::spawn(move || {
+                for _ in 0..100 {
+                    let _ = m.current_host();
+                    let _ = m.active_modules();
+                    let _ = m.is_module_active("mod-1");
+                }
+            }));
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        let elapsed = start.elapsed();
+        // Concurrent reads should complete quickly (< 1 second for 1000 total reads)
+        assert!(
+            elapsed.as_secs() < 2,
+            "Concurrent reads took too long: {:?}",
+            elapsed
+        );
+    }
+
+    #[test]
+    fn test_concurrent_writes_no_data_loss() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().to_path_buf();
+
+        let manager = Arc::new(StateManager::new(path.clone()).unwrap());
+        let mut handles = vec![];
+
+        // Spawn 5 threads each enabling 20 different modules
+        for thread_id in 0..5 {
+            let m = Arc::clone(&manager);
+            handles.push(thread::spawn(move || {
+                for i in 0..20 {
+                    m.enable_module(&format!("thread{}-mod{}", thread_id, i))
+                        .unwrap();
+                }
+            }));
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        // Verify all 100 modules are present
+        let final_manager = StateManager::new(path).unwrap();
+        let modules = final_manager.active_modules();
+
+        for thread_id in 0..5 {
+            for i in 0..20 {
+                let mod_name = format!("thread{}-mod{}", thread_id, i);
+                assert!(
+                    modules.contains(&mod_name),
+                    "Module {} not found in final state",
+                    mod_name
+                );
+            }
+        }
+
+        assert_eq!(modules.len(), 100, "Expected 100 modules, found {}", modules.len());
+    }
+
+    #[test]
+    fn test_concurrent_enable_disable_same_module() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().to_path_buf();
+
+        let manager = Arc::new(StateManager::new(path.clone()).unwrap());
+
+        // Spawn threads that enable and disable the same module
+        let m1 = Arc::clone(&manager);
+        let handle1 = thread::spawn(move || {
+            for _ in 0..50 {
+                m1.enable_module("contested-mod").unwrap();
+            }
+        });
+
+        let m2 = Arc::clone(&manager);
+        let handle2 = thread::spawn(move || {
+            for _ in 0..50 {
+                m2.disable_module("contested-mod").unwrap();
+            }
+        });
+
+        handle1.join().unwrap();
+        handle2.join().unwrap();
+
+        // State should be consistent (either enabled or disabled, not corrupted)
+        let final_manager = StateManager::new(path).unwrap();
+        let modules = final_manager.active_modules();
+
+        // The module should appear at most once
+        let count = modules.iter().filter(|m| *m == "contested-mod").count();
+        assert!(count <= 1, "Module appears {} times (should be 0 or 1)", count);
+    }
+
+    #[test]
+    fn test_stress_test_many_threads() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().to_path_buf();
+
+        let manager = Arc::new(StateManager::new(path.clone()).unwrap());
+        let mut handles = vec![];
+
+        // Spawn 20 threads with mixed operations
+        for thread_id in 0..20 {
+            let m = Arc::clone(&manager);
+            handles.push(thread::spawn(move || {
+                for i in 0..10 {
+                    // Alternate between enable and disable operations
+                    if i % 2 == 0 {
+                        m.enable_module(&format!("stress-{}-{}", thread_id, i)).unwrap();
+                    } else {
+                        // Read operation
+                        let _ = m.active_modules();
+                    }
+                }
+            }));
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        // Verify state is not corrupted
+        let final_manager = StateManager::new(path).unwrap();
+        let modules = final_manager.active_modules();
+
+        // Should have some modules enabled (at least half of even iterations)
+        assert!(
+            !modules.is_empty(),
+            "Expected some modules to be enabled after stress test"
+        );
+
+        // Verify all module names are valid format
+        for module in &modules {
+            assert!(
+                module.starts_with("stress-"),
+                "Unexpected module format: {}",
+                module
+            );
+        }
+    }
+
+    #[test]
+    fn test_file_locking_prevents_corruption() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        use std::thread;
+
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().to_path_buf();
+
+        let manager = Arc::new(StateManager::new(path.clone()).unwrap());
+        let success_count = Arc::new(AtomicUsize::new(0));
+        let mut handles = vec![];
+
+        // Spawn threads that perform locked operations
+        for i in 0..10 {
+            let m = Arc::clone(&manager);
+            let count = Arc::clone(&success_count);
+            handles.push(thread::spawn(move || {
+                let result = m.with_locked_state(|state| {
+                    // Simulate some work
+                    thread::sleep(std::time::Duration::from_millis(1));
+                    state.active_modules.push(format!("locked-mod-{}", i));
+                    true
+                });
+                if result.is_ok() {
+                    count.fetch_add(1, Ordering::SeqCst);
+                }
+            }));
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        // All operations should succeed
+        assert_eq!(
+            success_count.load(Ordering::SeqCst),
+            10,
+            "All locked operations should succeed"
+        );
+
+        // Verify final state
+        let final_manager = StateManager::new(path).unwrap();
+        let modules = final_manager.active_modules();
+        assert_eq!(modules.len(), 10, "All 10 modules should be present");
+    }
+
+    #[test]
+    fn test_sequential_transaction_commit_and_rollback() {
+        // Note: Transaction rollback restores the full state snapshot from when
+        // the transaction began. This means concurrent transactions with rollback
+        // can interfere with each other. This test verifies sequential behavior.
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().to_path_buf();
+
+        // Set up initial state
+        let manager = StateManager::new(path.clone()).unwrap();
+        manager.enable_module("initial-mod").unwrap();
+
+        // Transaction 1: Commit changes
+        {
+            let mut txn = manager.begin_transaction("txn1").unwrap();
+            txn.record("enabling txn1-mod");
+            manager.enable_module("txn1-mod").unwrap();
+            txn.commit().unwrap();
+        }
+
+        // Verify txn1 changes persisted
+        assert!(manager.is_module_active("txn1-mod"));
+        assert!(manager.is_module_active("initial-mod"));
+
+        // Transaction 2: Rollback changes
+        {
+            let mut txn = manager.begin_transaction("txn2").unwrap();
+            txn.record("enabling txn2-mod");
+            manager.enable_module("txn2-mod").unwrap();
+            txn.rollback().unwrap();
+        }
+
+        // Verify state after rollback: txn2-mod should be gone
+        let final_manager = StateManager::new(path).unwrap();
+        assert!(
+            final_manager.is_module_active("txn1-mod"),
+            "txn1-mod should still be present after txn2 rollback"
+        );
+        assert!(
+            final_manager.is_module_active("initial-mod"),
+            "initial-mod should be present"
+        );
+        assert!(
+            !final_manager.is_module_active("txn2-mod"),
+            "txn2-mod should be rolled back"
+        );
+    }
+
+    #[test]
+    fn test_mixed_read_write_operations() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        use std::thread;
+
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().to_path_buf();
+
+        let manager = Arc::new(StateManager::new(path.clone()).unwrap());
+        let read_count = Arc::new(AtomicUsize::new(0));
+        let write_count = Arc::new(AtomicUsize::new(0));
+        let mut handles = vec![];
+
+        // Spawn reader threads
+        for _ in 0..5 {
+            let m = Arc::clone(&manager);
+            let count = Arc::clone(&read_count);
+            handles.push(thread::spawn(move || {
+                for _ in 0..100 {
+                    let _ = m.active_modules();
+                    count.fetch_add(1, Ordering::SeqCst);
+                }
+            }));
+        }
+
+        // Spawn writer threads
+        for i in 0..5 {
+            let m = Arc::clone(&manager);
+            let count = Arc::clone(&write_count);
+            handles.push(thread::spawn(move || {
+                for j in 0..10 {
+                    m.enable_module(&format!("rw-{}-{}", i, j)).unwrap();
+                    count.fetch_add(1, Ordering::SeqCst);
+                }
+            }));
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        // All operations should complete
+        assert_eq!(read_count.load(Ordering::SeqCst), 500);
+        assert_eq!(write_count.load(Ordering::SeqCst), 50);
+
+        // Verify state integrity
+        let final_manager = StateManager::new(path).unwrap();
+        let modules = final_manager.active_modules();
+        assert_eq!(modules.len(), 50, "All 50 modules should be present");
+    }
+
+    #[test]
+    fn test_concurrent_host_and_bundle_operations() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().to_path_buf();
+
+        let manager = Arc::new(StateManager::new(path.clone()).unwrap());
+        let mut handles = vec![];
+
+        // Thread 1: Set hosts
+        let m1 = Arc::clone(&manager);
+        handles.push(thread::spawn(move || {
+            for i in 0..10 {
+                m1.set_current_host(&format!("host-{}", i)).unwrap();
+            }
+        }));
+
+        // Thread 2: Set bundles
+        let m2 = Arc::clone(&manager);
+        handles.push(thread::spawn(move || {
+            for i in 0..10 {
+                m2.set_active_bundle(&format!("host-{}", i), &format!("bundle-{}", i))
+                    .unwrap();
+            }
+        }));
+
+        // Thread 3: Set profiles
+        let m3 = Arc::clone(&manager);
+        handles.push(thread::spawn(move || {
+            for i in 0..10 {
+                m3.set_active_profile(&format!("host-{}", i), &format!("profile-{}", i))
+                    .unwrap();
+            }
+        }));
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        // Verify state is consistent
+        let final_manager = StateManager::new(path).unwrap();
+
+        // Current host should be one of the valid hosts
+        let host = final_manager.current_host();
+        assert!(host.is_some(), "Current host should be set");
+        assert!(
+            host.as_ref().unwrap().starts_with("host-"),
+            "Host should have valid format"
+        );
+
+        // Bundles and profiles should be set for some hosts
+        let state = final_manager.state();
+        assert!(
+            !state.active_bundles.is_empty(),
+            "Some bundles should be set"
+        );
+        assert!(
+            !state.active_profiles.is_empty(),
+            "Some profiles should be set"
+        );
+    }
+
+    #[test]
+    fn test_audit_log_concurrent_access() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().to_path_buf();
+
+        let manager = Arc::new(StateManager::new(path.clone()).unwrap());
+        let mut handles = vec![];
+
+        // Spawn threads that generate audit entries
+        for i in 0..10 {
+            let m = Arc::clone(&manager);
+            handles.push(thread::spawn(move || {
+                for j in 0..10 {
+                    m.enable_module(&format!("audit-{}-{}", i, j)).unwrap();
+                }
+            }));
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        // Verify audit log has entries
+        let final_manager = StateManager::new(path).unwrap();
+        let audit = final_manager.recent_audit(200);
+
+        // Should have at least 100 enable_module entries
+        let enable_entries = audit
+            .iter()
+            .filter(|e| e.operation == "enable_module")
+            .count();
+        assert!(
+            enable_entries >= 100,
+            "Expected at least 100 enable_module audit entries, found {}",
+            enable_entries
+        );
+    }
+
+    #[test]
+    fn test_state_reload_consistency() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().to_path_buf();
+
+        // Create two managers pointing to the same state
+        let manager1 = Arc::new(StateManager::new(path.clone()).unwrap());
+        let manager2 = Arc::new(StateManager::new(path.clone()).unwrap());
+
+        // Manager 1 makes changes
+        let m1 = Arc::clone(&manager1);
+        let handle1 = thread::spawn(move || {
+            for i in 0..5 {
+                m1.enable_module(&format!("m1-mod-{}", i)).unwrap();
+                thread::sleep(std::time::Duration::from_millis(5));
+            }
+        });
+
+        // Manager 2 makes changes (interleaved)
+        let m2 = Arc::clone(&manager2);
+        let handle2 = thread::spawn(move || {
+            for i in 0..5 {
+                thread::sleep(std::time::Duration::from_millis(2));
+                m2.enable_module(&format!("m2-mod-{}", i)).unwrap();
+            }
+        });
+
+        handle1.join().unwrap();
+        handle2.join().unwrap();
+
+        // Both managers should see all changes when reloaded
+        let final_manager = StateManager::new(path).unwrap();
+        let modules = final_manager.active_modules();
+
+        let m1_count = modules.iter().filter(|m| m.starts_with("m1-")).count();
+        let m2_count = modules.iter().filter(|m| m.starts_with("m2-")).count();
+
+        assert_eq!(m1_count, 5, "All m1 modules should be present");
+        assert_eq!(m2_count, 5, "All m2 modules should be present");
+    }
+
+    #[test]
+    fn test_transaction_auto_rollback_on_drop() {
+        // Note: Transaction auto-rollback restores the full state snapshot.
+        // This test verifies the RAII pattern works correctly for sequential operations.
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().to_path_buf();
+
+        let manager = StateManager::new(path.clone()).unwrap();
+        manager.enable_module("original").unwrap();
+
+        // Transaction 1: Commit normally
+        {
+            let mut txn = manager.begin_transaction("will-commit").unwrap();
+            txn.record("adding committed-mod");
+            manager.enable_module("committed-mod").unwrap();
+            txn.commit().unwrap();
+        }
+
+        // Transaction 2: Drop without commit (should auto-rollback)
+        {
+            let mut txn = manager.begin_transaction("will-drop").unwrap();
+            txn.record("adding dropped-mod");
+            manager.enable_module("dropped-mod").unwrap();
+            // Transaction is dropped here without commit - auto-rollback
+        }
+
+        // Verify state
+        let final_manager = StateManager::new(path).unwrap();
+
+        // Original should be there
+        assert!(
+            final_manager.is_module_active("original"),
+            "Original module should be present"
+        );
+
+        // committed-mod should be there (committed before the dropped transaction)
+        assert!(
+            final_manager.is_module_active("committed-mod"),
+            "Committed module should be present"
+        );
+
+        // dropped-mod should NOT be there (auto-rollback)
+        assert!(
+            !final_manager.is_module_active("dropped-mod"),
+            "Dropped transaction should have been rolled back"
+        );
+    }
+
+    #[test]
+    fn test_concurrent_transactions_both_commit() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        use std::thread;
+
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().to_path_buf();
+
+        let manager = Arc::new(StateManager::new(path.clone()).unwrap());
+        let commit_count = Arc::new(AtomicUsize::new(0));
+        let mut handles = vec![];
+
+        // Spawn multiple threads that all commit (no rollback interference)
+        for i in 0..5 {
+            let m = Arc::clone(&manager);
+            let count = Arc::clone(&commit_count);
+            handles.push(thread::spawn(move || {
+                let mut txn = m.begin_transaction(&format!("txn-{}", i)).unwrap();
+                txn.record(&format!("enabling mod-{}", i));
+                m.enable_module(&format!("concurrent-txn-mod-{}", i)).unwrap();
+                txn.commit().unwrap();
+                count.fetch_add(1, Ordering::SeqCst);
+            }));
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        // All commits should succeed
+        assert_eq!(commit_count.load(Ordering::SeqCst), 5);
+
+        // Verify all modules are present
+        let final_manager = StateManager::new(path).unwrap();
+        for i in 0..5 {
+            assert!(
+                final_manager.is_module_active(&format!("concurrent-txn-mod-{}", i)),
+                "Module {} should be present",
+                i
+            );
+        }
+    }
 }
