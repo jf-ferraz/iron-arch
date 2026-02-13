@@ -7,6 +7,7 @@ use crate::context::{AppContext, require_init};
 use crate::output::StatusBadge;
 use anyhow::Result;
 use chrono::Utc;
+use iron_core::availability::ServiceAvailability;
 use iron_core::services::bundle::BundleService;
 use iron_core::services::host::HostService;
 use iron_core::services::module::ModuleService;
@@ -491,6 +492,33 @@ pub fn execute(ctx: &AppContext) -> Result<()> {
             name: "symlinks".to_string(),
             status: CheckStatus::Warn.as_str().to_string(),
             message: format!("{} broken symlinks found", broken_links),
+        });
+    }
+
+    // Check 10: Service availability check (NFR-11)
+    output.subheader("Service Availability");
+    let availability = ServiceAvailability::check();
+    let service_warnings = availability.warnings();
+    if service_warnings.is_empty() {
+        output.list_item_status("All optional services available", StatusBadge::Ok);
+        checks.push(HealthCheck {
+            name: "services".to_string(),
+            status: CheckStatus::Pass.as_str().to_string(),
+            message: "all optional services available".to_string(),
+        });
+    } else {
+        for warning in &service_warnings {
+            output.list_item_status(warning, StatusBadge::Warning);
+        }
+        warnings += service_warnings.len();
+        checks.push(HealthCheck {
+            name: "services".to_string(),
+            status: CheckStatus::Warn.as_str().to_string(),
+            message: format!(
+                "{} service(s) degraded or unavailable: {}",
+                service_warnings.len(),
+                service_warnings.join(", ")
+            ),
         });
     }
 
