@@ -15,6 +15,12 @@ walkdir.workspace = true
 dirs = "5.0"
 tempfile = "3.10"
 fs2 = "0.4"  # File locking for concurrent access safety
+uuid = { version = "1.8", features = ["v4"] }  # For update session IDs
+regex = "1.10"  # For parsing pacman output in progress tracking
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["json", "env-filter"] }
+tracing-appender.workspace = true
 
 [dev-dependencies]
 tempfile = "3.10"
+proptest = "1.4"
