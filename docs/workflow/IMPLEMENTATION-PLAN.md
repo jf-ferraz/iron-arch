@@ -1,11 +1,11 @@
 # Iron Implementation Plan
 
-> **Document Status**: COMPLETE
-> **Version**: 1.2.0
+> **Document Status**: IN PROGRESS
+> **Version**: 2.0.0
 > **Created**: 2025-02-12
-> **Last Updated**: 2025-02-12
-> **Estimated Duration**: 12-16 weeks
-> **Current Status**: Phase 7 Complete - Release Ready (165 tests passing)
+> **Last Updated**: 2026-02-13
+> **Estimated Duration**: 16-20 weeks
+> **Current Status**: Phase 8 In Progress - Production Hardening (1342 tests, 56.75% coverage)
 
 ---
 
@@ -25,13 +25,15 @@ This implementation plan provides a structured approach to building the Iron con
 ## Implementation Timeline
 
 ```
-Week  1-2   │████████│ Phase 1: Foundation
-Week  3-4   │████████│ Phase 2: Infrastructure
-Week  5-6   │████████│ Phase 3: Core Services
-Week  7-8   │████████│ Phase 4: CLI Implementation
-Week  9-11  │████████████│ Phase 5: TUI Implementation
-Week 12-13  │████████│ Phase 6: Integration & Flows
-Week 14-16  │████████████│ Phase 7: Polish & Release
+Week  1-2   │████████│ Phase 1: Foundation ✅
+Week  3-4   │████████│ Phase 2: Infrastructure ✅
+Week  5-6   │████████│ Phase 3: Core Services ✅
+Week  7-8   │████████│ Phase 4: CLI Implementation ✅
+Week  9-11  │████████████│ Phase 5: TUI Implementation ✅
+Week 12-13  │████████│ Phase 6: Integration & Flows ✅
+Week 14-16  │████████████│ Phase 7: Polish & Release ✅
+Week 17-20  │████████████████│ Phase 8: Production Hardening 🚧 ← CURRENT
+Week 21-22  │████████│ Phase 9: v1.0.0 Release
 ```
 
 ---
@@ -730,7 +732,7 @@ Documentation, packaging, and release preparation.
 ```
 ✓ Documentation is complete and accurate
 ✓ PKGBUILD installs correctly
-✓ All tests pass (165 tests)
+✓ All tests pass (165 tests → 1072 tests)
 ✓ Security review complete
 ✓ v0.1.0 release prepared
 □ AUR package published (manual step)
@@ -738,23 +740,239 @@ Documentation, packaging, and release preparation.
 
 ---
 
+## Phase 8: Production Hardening (Week 17-20) 🚧 IN PROGRESS
+
+### Objective
+Implement resilience patterns, health diagnostics, and achieve 80% test coverage for production readiness.
+
+### Tasks
+
+#### 8.1 Circuit Breaker Pattern (FR-5.9, NFR-8)
+| Task | Description | Estimated | Priority |
+|------|-------------|-----------|----------|
+| 8.1.1 | Create `CommandCircuitBreaker` struct in iron-core | 3h | P0 |
+| 8.1.2 | Implement state machine (Closed/Open/HalfOpen) | 2h | P0 |
+| 8.1.3 | Add 120s timeout for external commands | 2h | P0 |
+| 8.1.4 | Integrate circuit breaker with iron-pacman | 3h | P0 |
+| 8.1.5 | Integrate circuit breaker with iron-git | 2h | P0 |
+| 8.1.6 | Integrate circuit breaker with iron-systemd | 2h | P0 |
+| 8.1.7 | Write circuit breaker unit tests | 3h | P0 |
+| 8.1.8 | Write resilience integration tests | 2h | P1 |
+
+**Dependencies**: Phase 7
+**Deliverable**: Fault-tolerant external command execution
+**Requirement Coverage**: FR-5.9, NFR-8
+
+**Implementation Reference** (from ARCHITECTURE.md v1.1.0):
+```rust
+pub struct CommandCircuitBreaker {
+    state: CircuitState,
+    failure_count: u32,
+    last_failure: Option<Instant>,
+    timeout: Duration,           // 120s default
+    reset_timeout: Duration,     // Time in Open before HalfOpen
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum CircuitState {
+    Closed,    // Normal operation
+    Open,      // Failing fast, not executing commands
+    HalfOpen,  // Testing if service recovered
+}
+```
+
+#### 8.2 Partial Update Recovery (FR-5.10)
+| Task | Description | Estimated | Priority |
+|------|-------------|-----------|----------|
+| 8.2.1 | Add `UpdateProgress` struct to track package-level progress | 2h | P0 |
+| 8.2.2 | Implement checkpoint file persistence during updates | 2h | P0 |
+| 8.2.3 | Implement resume logic in UpdateService | 3h | P0 |
+| 8.2.4 | Add `--resume` flag to `iron update` CLI | 1h | P0 |
+| 8.2.5 | Write partial update recovery tests | 3h | P1 |
+
+**Dependencies**: 8.1
+**Deliverable**: Resilient update workflow that survives interruption
+**Requirement Coverage**: FR-5.10
+
+#### 8.3 Enhanced Health Diagnostics (FR-10.1-10.8)
+| Task | Description | Estimated | Priority |
+|------|-------------|-----------|----------|
+| 8.3.1 | Implement state file validation (FR-10.1) | 2h | P0 |
+| 8.3.2 | Implement symlink integrity check (FR-10.2) | 2h | P0 |
+| 8.3.3 | Implement package installation check (FR-10.3) | 2h | P0 |
+| 8.3.4 | Implement snapshot backend check (FR-10.4) | 2h | P0 |
+| 8.3.5 | Implement config directory check (FR-10.5) | 1h | P0 |
+| 8.3.6 | Implement git repository check (FR-10.6) | 1h | P1 |
+| 8.3.7 | Implement secrets status check (FR-10.7) | 1h | P1 |
+| 8.3.8 | Implement structured JSON health report (FR-10.8) | 2h | P0 |
+| 8.3.9 | Update `iron doctor` CLI with new checks | 2h | P0 |
+| 8.3.10 | Write health check unit tests | 3h | P1 |
+
+**Dependencies**: Phase 7
+**Deliverable**: Comprehensive `iron doctor` with pass/warn/fail status per check
+**Requirement Coverage**: FR-10.1-10.8
+
+**Expected Output Format**:
+```json
+{
+  "checks": [
+    {"name": "state_file", "status": "pass", "message": "state.json valid"},
+    {"name": "symlinks", "status": "warn", "message": "2 broken symlinks found"},
+    {"name": "packages", "status": "pass", "message": "127 packages verified"},
+    {"name": "snapshot", "status": "pass", "message": "timeshift available"},
+    {"name": "directories", "status": "pass", "message": "all directories exist"},
+    {"name": "git", "status": "warn", "message": "uncommitted changes"},
+    {"name": "secrets", "status": "pass", "message": "git-crypt unlocked"}
+  ],
+  "overall": "warn",
+  "timestamp": "2026-02-13T14:30:00Z"
+}
+```
+
+#### 8.4 Structured Logging (NFR-9, NFR-10)
+| Task | Description | Estimated | Priority |
+|------|-------------|-----------|----------|
+| 8.4.1 | Implement JSON structured logging format | 2h | P1 |
+| 8.4.2 | Add log rotation (10MB/5 files) | 2h | P1 |
+| 8.4.3 | Integrate with tracing crate | 2h | P1 |
+| 8.4.4 | Add component-level logging | 2h | P1 |
+| 8.4.5 | Write logging tests | 1h | P2 |
+
+**Dependencies**: Phase 7
+**Deliverable**: Production-grade logging infrastructure
+**Requirement Coverage**: NFR-9, NFR-10
+
+#### 8.5 Graceful Degradation (NFR-11)
+| Task | Description | Estimated | Priority |
+|------|-------------|-----------|----------|
+| 8.5.1 | Implement fallback for unavailable secrets backend | 2h | P1 |
+| 8.5.2 | Implement fallback for unavailable git remote | 2h | P1 |
+| 8.5.3 | Implement fallback for unavailable snapshot backend | 2h | P1 |
+| 8.5.4 | Add graceful degradation status to `iron status` | 2h | P1 |
+| 8.5.5 | Write degradation scenario tests | 3h | P1 |
+
+**Dependencies**: 8.1
+**Deliverable**: System remains usable when optional components fail
+**Requirement Coverage**: NFR-11
+
+**Graceful Degradation Matrix**:
+| Service | Degraded Behavior |
+|---------|-------------------|
+| Secrets (git-crypt/age) | Warn user, skip secret operations |
+| Sync (git remote) | Work offline, queue sync operations |
+| Snapshots (timeshift/snapper) | Warn user, proceed with confirmation |
+| AUR Helper (paru/yay) | Fall back to official repos only |
+
+#### 8.6 Acceptance Test Suite (AT-1 through AT-6)
+| Task | Description | Estimated | Priority |
+|------|-------------|-----------|----------|
+| 8.6.1 | Create `tests/acceptance/` directory structure | 1h | P0 |
+| 8.6.2 | Implement AT-1: First-Time Setup (6 scenarios) | 4h | P0 |
+| 8.6.3 | Implement AT-2: Bundle Management (5 scenarios) | 3h | P0 |
+| 8.6.4 | Implement AT-3: Profile Management (4 scenarios) | 3h | P0 |
+| 8.6.5 | Implement AT-4: Module Operations (4 scenarios) | 3h | P1 |
+| 8.6.6 | Implement AT-5: Update Workflow (4 scenarios) | 3h | P0 |
+| 8.6.7 | Implement AT-5.5: E2E Bundle Switch (BLOCKING) | 4h | P0 |
+| 8.6.8 | Implement AT-6: Recovery Workflow (3 scenarios) | 3h | P1 |
+
+**Dependencies**: 8.1-8.5
+**Deliverable**: Gherkin-style acceptance test coverage
+**Requirement Coverage**: US-1 through US-6
+
+#### 8.7 Coverage Push to 80% Target
+| Task | Description | Estimated | Priority |
+|------|-------------|-----------|----------|
+| 8.7.1 | Add doctests for public APIs (+20 tests) | 2h | P1 |
+| 8.7.2 | CLI output format validation (+29 tests) ✅ | - | DONE |
+| 8.7.7 | Snapshot tool mocks (Phase 1.5) ✅ | - | DONE |
+| 8.7.8 | Integrate snapshot mocks into tests (Phase 1.6) ✅ | - | DONE |
+| 8.7.3 | Coverage gap hunting (+30 tests) | 6h | P1 |
+| 8.7.4 | Integration test expansion (+15 tests) | 3h | P2 |
+| 8.7.5 | Error path testing (+15 tests) | 3h | P1 |
+| 8.7.6 | Edge case testing (+10 tests) | 2h | P2 |
+
+**Dependencies**: 8.1-8.6
+**Deliverable**: 80% test coverage (currently 56.75%)
+**Current Progress**: 1072 tests, 56.75% → target 1172+ tests, 80%
+
+### Phase 8 Checkpoint
+
+```
+✓ Circuit breaker pattern implemented and tested (8.1) ✅
+✓ Partial update recovery working (8.2) ✅
+✓ `iron doctor` returns structured JSON with all FR-10.x checks (8.3) ✅
+□ Structured JSON logging with rotation (8.4)
+□ Graceful degradation for optional services (8.5)
+□ Acceptance tests AT-1 through AT-6 passing (8.6)
+□ E2E bundle switch verified on real system (BLOCKING)
+□ Test coverage ≥ 80% (currently 56.75%) (8.7)
+✓ 1337 tests passing
+```
+
+---
+
+## Phase 9: v1.0.0 Release (Week 21-22)
+
+### Objective
+Final validation, documentation polish, and production release.
+
+### Tasks
+
+#### 9.1 Final Validation
+| Task | Description | Estimated | Priority |
+|------|-------------|-----------|----------|
+| 9.1.1 | Full test suite regression | 2h | P0 |
+| 9.1.2 | Manual E2E testing on fresh Arch install | 4h | P0 |
+| 9.1.3 | Security audit with cargo-audit | 2h | P0 |
+| 9.1.4 | Performance profiling (< 100ms TUI response) | 2h | P1 |
+| 9.1.5 | Memory leak detection | 2h | P1 |
+
+#### 9.2 Documentation Final Pass
+| Task | Description | Estimated | Priority |
+|------|-------------|-----------|----------|
+| 9.2.1 | Update USER-GUIDE with new features | 3h | P0 |
+| 9.2.2 | Update API documentation | 2h | P0 |
+| 9.2.3 | Create troubleshooting guide | 2h | P1 |
+| 9.2.4 | Update CHANGELOG for v1.0.0 | 1h | P0 |
+
+#### 9.3 Release
+| Task | Description | Estimated | Priority |
+|------|-------------|-----------|----------|
+| 9.3.1 | Tag v1.0.0 release | 1h | P0 |
+| 9.3.2 | Build release binaries | 2h | P0 |
+| 9.3.3 | Update AUR PKGBUILD | 1h | P0 |
+| 9.3.4 | Publish to AUR | 1h | P0 |
+| 9.3.5 | Create GitHub release with notes | 1h | P0 |
+
+### Phase 9 Checkpoint
+
+```
+□ All Phase 8 checkpoints complete
+□ Zero critical/high severity issues
+□ Documentation reviewed and accurate
+□ v1.0.0 tagged and released
+□ AUR package published
+```
+
+---
+
 ## Dependency Graph
 
 ```
-Phase 1: Foundation
+Phase 1: Foundation ✅
     ├── 1.1 Workspace Setup
     │   └── 1.2 Domain Models
     │       └── 1.3 Error System
     │           └── 1.4 Validation Layer
     │
-Phase 2: Infrastructure
+Phase 2: Infrastructure ✅
     ├── 2.1 Filesystem (depends: 1.2)
     ├── 2.2 Package Mgmt (depends: 1.3)
     ├── 2.3 Git (depends: 1.3)
     ├── 2.4 Systemd (depends: 1.3)
     └── 2.5 Snapshots (depends: 1.3)
     │
-Phase 3: Core Services
+Phase 3: Core Services ✅
     ├── 3.1 State Management (depends: 2.1)
     │   ├── 3.2 Host Service (depends: 3.1, 2.1)
     │   ├── 3.3 Bundle Service (depends: 3.1, 2.1, 2.2)
@@ -765,17 +983,29 @@ Phase 3: Core Services
     │   └── 3.8 Secrets Service (depends: 3.1, 2.3)
     │       └── 3.9 Recovery Service (depends: 3.2, 3.3, 3.4)
     │
-Phase 4: CLI
+Phase 4: CLI ✅
     └── 4.1-4.8 All commands (depends: Phase 3)
     │
-Phase 5: TUI
+Phase 5: TUI ✅
     └── 5.1-5.9 All views (depends: Phase 4)
     │
-Phase 6: Integration
+Phase 6: Integration ✅
     └── 6.1-6.4 Workflows & tests (depends: Phase 5)
     │
-Phase 7: Release
+Phase 7: Release ✅
     └── 7.1-7.4 Docs & packaging (depends: Phase 6)
+    │
+Phase 8: Production Hardening 🚧 (Current)
+    ├── 8.1 Circuit Breaker (depends: Phase 7)
+    │   └── 8.2 Partial Update Recovery (depends: 8.1)
+    ├── 8.3 Health Diagnostics (depends: Phase 7)
+    ├── 8.4 Structured Logging (depends: Phase 7)
+    ├── 8.5 Graceful Degradation (depends: 8.1)
+    ├── 8.6 Acceptance Tests (depends: 8.1-8.5)
+    └── 8.7 Coverage Target (depends: 8.1-8.6)
+    │
+Phase 9: v1.0.0 Release
+    └── 9.1-9.3 Final validation & release (depends: Phase 8)
 ```
 
 ---
@@ -832,12 +1062,32 @@ Phase 7: Release
 
 ## Next Steps
 
-After this plan is approved:
+**Immediate Actions (Phase 8.1 - Circuit Breaker):**
 
-1. **Execute Phase 1**: Run `/sc:implement --phase 1` for foundation
-2. **Track Progress**: Use GitHub Projects or issues for task tracking
-3. **Review Regularly**: Weekly checkpoint review
-4. **Adjust Timeline**: Flex buffer in Phase 7 for overruns
+1. **Implement Circuit Breaker**: Run `/sc:implement "Circuit breaker pattern for external commands"`
+   - Create `CommandCircuitBreaker` struct in `iron-core/src/resilience.rs`
+   - Implement state machine with 120s timeout
+   - Integrate with iron-pacman, iron-git, iron-systemd
+
+2. **Implement Health Diagnostics**: Run `/sc:implement "Enhanced iron doctor health checks"`
+   - Add FR-10.1-10.8 checks
+   - Return structured JSON with pass/warn/fail status
+
+3. **Acceptance Tests**: Run `/sc:test --acceptance`
+   - Create `tests/acceptance/` directory
+   - Implement AT-1 through AT-6 scenarios
+
+4. **Coverage Push**: Continue from NEXT-ACTIONS.md
+   - Doctests for public APIs
+   - Coverage gap hunting
+   - Target: 80% (currently 56.75%)
+
+**Execution Order (Priority P0 first):**
+```
+8.1.1-8.1.7 → 8.2.1-8.2.4 → 8.3.1-8.3.9 → 8.6.1-8.6.7 → 8.7.1-8.7.6
+```
+
+**Track Progress**: Use TodoWrite for multi-step task tracking
 
 ---
 
@@ -847,3 +1097,5 @@ After this plan is approved:
 |---------|------|--------|---------|
 | 1.0.0 | 2025-02-12 | Workflow Session | Initial implementation plan |
 | 1.1.0 | 2025-02-12 | Documentation Update | Updated Phase 1-6 as complete (165 tests) |
+| 1.2.0 | 2025-02-12 | Documentation Update | Updated Phase 7 as complete |
+| 2.0.0 | 2026-02-13 | /sc:workflow | Added Phase 8 (Production Hardening) and Phase 9 (v1.0.0 Release) based on expert panel recommendations. Added circuit breaker, health diagnostics, graceful degradation, and acceptance tests. Current: 1072 tests, 56.75% coverage |
