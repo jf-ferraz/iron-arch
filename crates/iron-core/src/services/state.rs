@@ -345,9 +345,9 @@ impl StateManager {
             })?;
 
         // Acquire exclusive lock (blocks until available)
-        lock_file.lock_exclusive().map_err(|_| StateError::Corrupted {
-            path: lock_path,
-        })?;
+        lock_file
+            .lock_exclusive()
+            .map_err(|_| StateError::Corrupted { path: lock_path })?;
 
         Ok(lock_file)
     }

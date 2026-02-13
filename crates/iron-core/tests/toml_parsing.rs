@@ -341,10 +341,7 @@ mod profile_parsing {
 
         assert_eq!(profile.id, "test-profile");
         assert_eq!(profile.name, "Test Profile");
-        assert_eq!(
-            profile.modules,
-            vec!["module-a", "module-b", "module-c"]
-        );
+        assert_eq!(profile.modules, vec!["module-a", "module-b", "module-c"]);
         assert_eq!(profile.theme, Some("test-theme".to_string()));
         assert_eq!(profile.shell, Some("zsh".to_string()));
         assert_eq!(profile.for_bundle, Some("test-bundle".to_string()));

@@ -352,6 +352,20 @@ mod status {
                 predicate::str::contains("No bundle active").or(predicate::str::contains("OFF")),
             );
     }
+
+    #[test]
+    fn status_verbose_flag() {
+        let dir = create_initialized_iron_dir();
+
+        iron()
+            .arg("--root")
+            .arg(dir.path())
+            .arg("status")
+            .arg("--verbose")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("test-host"));
+    }
 }
 
 // =============================================================================
@@ -698,6 +712,54 @@ mod module {
             .failure()
             .stderr(predicate::str::contains("not found").or(predicate::str::contains("Error")));
     }
+
+    #[test]
+    fn module_disable_works() {
+        let dir = create_initialized_iron_dir();
+        create_test_module(&dir, "nvim");
+
+        // First enable the module
+        iron()
+            .arg("--root")
+            .arg(dir.path())
+            .arg("module")
+            .arg("enable")
+            .arg("nvim")
+            .assert()
+            .success();
+
+        // Then disable it
+        iron()
+            .arg("--root")
+            .arg(dir.path())
+            .arg("module")
+            .arg("disable")
+            .arg("nvim")
+            .arg("--yes")
+            .assert()
+            .success()
+            .stdout(
+                predicate::str::contains("disabled")
+                    .or(predicate::str::contains("Disabled"))
+                    .or(predicate::str::contains("nvim")),
+            );
+    }
+
+    #[test]
+    fn module_disable_nonexistent() {
+        let dir = create_initialized_iron_dir();
+
+        iron()
+            .arg("--root")
+            .arg(dir.path())
+            .arg("module")
+            .arg("disable")
+            .arg("nonexistent")
+            .arg("--yes")
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("not found").or(predicate::str::contains("Error")));
+    }
 }
 
 // =============================================================================
@@ -748,6 +810,25 @@ mod host {
             .assert()
             .success()
             .stdout(predicate::str::contains("test-host"));
+    }
+
+    #[test]
+    fn host_catalog_shows_hardware() {
+        let dir = create_initialized_iron_dir();
+
+        iron()
+            .arg("--root")
+            .arg(dir.path())
+            .arg("host")
+            .arg("catalog")
+            .assert()
+            .success()
+            // Should show hardware detection info
+            .stdout(
+                predicate::str::contains("CPU")
+                    .or(predicate::str::contains("Hardware"))
+                    .or(predicate::str::contains("catalog")),
+            );
     }
 }
 
@@ -912,6 +993,57 @@ mod clean {
             .assert()
             .success()
             .stdout(predicate::str::contains("symlink").or(predicate::str::contains("Symlink")));
+    }
+
+    #[test]
+    fn clean_orphans_flag() {
+        let dir = create_initialized_iron_dir();
+
+        iron()
+            .arg("--root")
+            .arg(dir.path())
+            .arg("clean")
+            .arg("--orphans")
+            .assert()
+            .success()
+            .stdout(
+                predicate::str::contains("orphan")
+                    .or(predicate::str::contains("Orphan"))
+                    .or(predicate::str::contains("package"))
+                    .or(predicate::str::contains("Clean")),
+            );
+    }
+
+    #[test]
+    fn clean_cache_flag() {
+        let dir = create_initialized_iron_dir();
+
+        iron()
+            .arg("--root")
+            .arg(dir.path())
+            .arg("clean")
+            .arg("--cache")
+            .assert()
+            .success()
+            .stdout(
+                predicate::str::contains("cache")
+                    .or(predicate::str::contains("Cache"))
+                    .or(predicate::str::contains("Clean")),
+            );
+    }
+
+    #[test]
+    fn clean_all_flag() {
+        let dir = create_initialized_iron_dir();
+
+        iron()
+            .arg("--root")
+            .arg(dir.path())
+            .arg("clean")
+            .arg("--all")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("Clean").or(predicate::str::contains("clean")));
     }
 }
 
