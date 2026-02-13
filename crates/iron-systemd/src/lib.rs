@@ -5,6 +5,25 @@
 //! - Service start/stop
 //! - Service status queries
 //! - User vs system service handling
+//!
+//! # Testing Support
+//!
+//! The `test_fixtures` module provides mock responses for systemctl commands,
+//! enabling comprehensive testing without actual systemd operations:
+//!
+//! ```rust,ignore
+//! use iron_systemd::test_fixtures::SystemdMockBuilder;
+//! use iron_systemd::{ServiceState, EnabledState};
+//! use std::sync::Arc;
+//!
+//! let executor = SystemdMockBuilder::new()
+//!     .with_service("sshd", ServiceState::Active, EnabledState::Enabled)
+//!     .build();
+//!
+//! // Use with DefaultServiceManager::with_executor()
+//! ```
+
+pub mod test_fixtures;
 
 use iron_core::resilience::{CommandExecutor, RealCommandExecutor};
 use iron_core::{IronResult, ServiceError};
@@ -155,7 +174,7 @@ impl DefaultServiceManager {
         cmd_args.extend(args);
 
         if let Some(ref executor) = self.executor {
-            let args_refs: Vec<&str> = cmd_args.iter().map(|s| *s).collect();
+            let args_refs: Vec<&str> = cmd_args.to_vec();
             let output = executor
                 .execute_full("systemctl", &args_refs)
                 .map_err(|_| ServiceError::SystemctlNotFound)?;
@@ -539,7 +558,8 @@ mod tests {
 
     #[test]
     fn test_parse_state_active_running() {
-        let output = "● ssh.service - OpenSSH Daemon\n   Loaded: loaded\n   Active: active (running)";
+        let output =
+            "● ssh.service - OpenSSH Daemon\n   Loaded: loaded\n   Active: active (running)";
         assert_eq!(parse_service_state(output), ServiceState::Active);
     }
 
@@ -765,10 +785,7 @@ sshd.service               loaded active running OpenSSH Daemon"#;
 
     impl MockServiceManager {
         pub fn with_services(services: Vec<ServiceInfo>) -> Self {
-            let map = services
-                .into_iter()
-                .map(|s| (s.name.clone(), s))
-                .collect();
+            let map = services.into_iter().map(|s| (s.name.clone(), s)).collect();
             Self {
                 services: map,
                 fail_operations: false,
@@ -950,5 +967,54 @@ sshd.service               loaded active running OpenSSH Daemon"#;
         assert!(mock.start("test").is_err());
         assert!(mock.stop("test").is_err());
         assert!(mock.restart("test").is_err());
+    }
+
+    // ==========================================================================
+    // Circuit Breaker Integration Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_service_manager_with_resilience_user() {
+        let manager = DefaultServiceManager::with_resilience(ServiceScope::User);
+        assert!(manager.executor.is_some());
+        assert_eq!(manager.scope, ServiceScope::User);
+    }
+
+    #[test]
+    fn test_service_manager_with_resilience_system() {
+        let manager = DefaultServiceManager::with_resilience(ServiceScope::System);
+        assert!(manager.executor.is_some());
+        assert_eq!(manager.scope, ServiceScope::System);
+    }
+
+    #[test]
+    fn test_service_manager_with_executor() {
+        use iron_core::resilience::RealCommandExecutor;
+        use std::sync::Arc;
+
+        let executor = Arc::new(RealCommandExecutor::with_defaults());
+        let manager = DefaultServiceManager::with_executor(ServiceScope::User, executor);
+        assert!(manager.executor.is_some());
+    }
+
+    #[test]
+    fn test_service_manager_without_executor() {
+        // Test backward compatibility - new() should work without executor
+        let manager = DefaultServiceManager::new(ServiceScope::User);
+        assert!(manager.executor.is_none());
+    }
+
+    #[test]
+    fn test_service_manager_user_without_executor() {
+        let manager = DefaultServiceManager::user();
+        assert!(manager.executor.is_none());
+        assert_eq!(manager.scope, ServiceScope::User);
+    }
+
+    #[test]
+    fn test_service_manager_system_without_executor() {
+        let manager = DefaultServiceManager::system();
+        assert!(manager.executor.is_none());
+        assert_eq!(manager.scope, ServiceScope::System);
     }
 }

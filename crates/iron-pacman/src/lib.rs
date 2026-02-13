@@ -7,6 +7,25 @@
 //! - Arch News RSS parsing
 //!
 //! The `PackageManager` trait and related types are defined in `iron_core::packages`.
+//!
+//! # Testing Support
+//!
+//! The `test_fixtures` module provides mock responses for pacman commands,
+//! enabling comprehensive testing without actual pacman execution:
+//!
+//! ```rust,ignore
+//! use iron_pacman::test_fixtures::PacmanMockBuilder;
+//! use std::sync::Arc;
+//!
+//! let executor = PacmanMockBuilder::new()
+//!     .with_installed_packages(&[("hyprland", "0.40.0-1")])
+//!     .with_updates(&[("hyprland", "0.40.0-1", "0.41.0-1")])
+//!     .build();
+//!
+//! let pm = DefaultPackageManager::with_executor(Arc::new(executor));
+//! ```
+
+pub mod test_fixtures;
 
 use iron_core::resilience::{CommandExecutor, RealCommandExecutor};
 use iron_core::{IronResult, PackageError};
@@ -101,11 +120,12 @@ impl DefaultPackageManager {
     /// Run pacman command using executor if available, otherwise direct execution
     fn run_pacman(&self, args: &[&str]) -> IronResult<String> {
         if let Some(ref executor) = self.executor {
-            let output = executor.execute_full("pacman", args).map_err(|e| {
-                PackageError::PacmanError {
-                    message: format!("Failed to run pacman: {}", e),
-                }
-            })?;
+            let output =
+                executor
+                    .execute_full("pacman", args)
+                    .map_err(|e| PackageError::PacmanError {
+                        message: format!("Failed to run pacman: {}", e),
+                    })?;
 
             if output.success() {
                 Ok(output.stdout)
@@ -116,13 +136,11 @@ impl DefaultPackageManager {
                 .into())
             }
         } else {
-            let output =
-                Command::new("pacman")
-                    .args(args)
-                    .output()
-                    .map_err(|e| PackageError::PacmanError {
-                        message: format!("Failed to run pacman: {}", e),
-                    })?;
+            let output = Command::new("pacman").args(args).output().map_err(|e| {
+                PackageError::PacmanError {
+                    message: format!("Failed to run pacman: {}", e),
+                }
+            })?;
 
             if output.status.success() {
                 Ok(String::from_utf8_lossy(&output.stdout).to_string())
@@ -141,11 +159,12 @@ impl DefaultPackageManager {
         let cmd = self.aur_helper.command();
 
         if let Some(ref executor) = self.executor {
-            let output = executor.execute_full(cmd, args).map_err(|e| {
-                PackageError::PacmanError {
-                    message: format!("Failed to run {}: {}", cmd, e),
-                }
-            })?;
+            let output =
+                executor
+                    .execute_full(cmd, args)
+                    .map_err(|e| PackageError::PacmanError {
+                        message: format!("Failed to run {}: {}", cmd, e),
+                    })?;
 
             if output.success() {
                 Ok(output.stdout)
@@ -734,8 +753,8 @@ pub fn parse_package_info(output: &str) -> std::collections::HashMap<String, Str
 /// ```
 pub fn parse_size(size_str: &str) -> u64 {
     let parts: Vec<&str> = size_str.split_whitespace().collect();
-    if parts.len() >= 2 {
-        if let Ok(size) = parts[0].parse::<f64>() {
+    if parts.len() >= 2
+        && let Ok(size) = parts[0].parse::<f64>() {
             return match parts[1] {
                 "B" => size as u64,
                 "KiB" => (size * 1024.0) as u64,
@@ -744,7 +763,6 @@ pub fn parse_size(size_str: &str) -> u64 {
                 _ => size as u64,
             };
         }
-    }
     0
 }
 
@@ -977,7 +995,7 @@ wofi 1.4-1 -> 1.4.1-1";
     #[test]
     fn test_parse_updates_malformed_line() {
         // Line needs < 4 parts to be considered malformed
-        let output = "pkg 1.0 2.0";  // Only 3 parts, missing arrow
+        let output = "pkg 1.0 2.0"; // Only 3 parts, missing arrow
         let updates = parse_updates_output(output, false);
         assert!(updates.is_empty());
     }
@@ -1765,5 +1783,44 @@ Validated By    : Signature"#;
 
         let items = parse_arch_news_rss(xml).unwrap();
         assert_eq!(items.len(), 1);
+    }
+
+    // =========================================================================
+    // Circuit Breaker Integration Tests
+    // =========================================================================
+
+    #[test]
+    fn test_package_manager_with_resilience() {
+        // Test that with_resilience creates a properly configured package manager
+        let pm = DefaultPackageManager::with_resilience();
+        assert!(pm.executor.is_some());
+        // Should have detected AUR helper or fallen back to None
+        let _ = pm.aur_helper();
+    }
+
+    #[test]
+    fn test_package_manager_with_executor() {
+        use iron_core::resilience::RealCommandExecutor;
+        use std::sync::Arc;
+
+        // Test that with_executor accepts a custom executor
+        let executor = Arc::new(RealCommandExecutor::with_defaults());
+        let pm = DefaultPackageManager::with_executor(executor);
+        assert!(pm.executor.is_some());
+    }
+
+    #[test]
+    fn test_package_manager_without_executor() {
+        // Test backward compatibility - new() should work without executor
+        let pm = DefaultPackageManager::new();
+        assert!(pm.executor.is_none());
+    }
+
+    #[test]
+    fn test_package_manager_with_options_no_executor() {
+        // Test with_options doesn't set executor
+        let pm = DefaultPackageManager::with_options(AurHelper::None, true);
+        assert!(pm.executor.is_none());
+        assert!(pm.dry_run);
     }
 }

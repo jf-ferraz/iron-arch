@@ -5,6 +5,25 @@
 //! - Commit, push, and pull operations
 //! - git-crypt secrets management
 //! - Sync workflow support
+//!
+//! # Testing Support
+//!
+//! The `test_fixtures` module provides mock responses for git commands,
+//! enabling comprehensive testing without actual git repository operations:
+//!
+//! ```rust,ignore
+//! use iron_git::test_fixtures::GitMockBuilder;
+//! use std::sync::Arc;
+//!
+//! let executor = GitMockBuilder::new()
+//!     .with_branch("main")
+//!     .with_modified_files(&["src/lib.rs"])
+//!     .build();
+//!
+//! // Use with DefaultGitManager::with_executor()
+//! ```
+
+pub mod test_fixtures;
 
 use iron_core::resilience::{CommandExecutor, RealCommandExecutor};
 use iron_core::{GitError, IronResult};
@@ -104,7 +123,10 @@ impl DefaultGitManager {
         if !root.join(".git").exists() {
             return Err(GitError::NotARepository { path: root }.into());
         }
-        Ok(Self { root, executor: None })
+        Ok(Self {
+            root,
+            executor: None,
+        })
     }
 
     /// Create a git manager with a command executor for resilient operations
@@ -141,11 +163,12 @@ impl DefaultGitManager {
             let mut full_args = vec!["-C", self.root.to_str().unwrap_or(".")];
             full_args.extend(args);
 
-            let output = executor.execute_full("git", &full_args).map_err(|e| {
-                GitError::PushFailed {
-                    message: format!("Failed to run git: {}", e),
-                }
-            })?;
+            let output =
+                executor
+                    .execute_full("git", &full_args)
+                    .map_err(|e| GitError::PushFailed {
+                        message: format!("Failed to run git: {}", e),
+                    })?;
 
             if output.success() {
                 Ok(output.stdout)
@@ -268,11 +291,12 @@ impl DefaultSecretsManager {
         if let Some(ref executor) = self.executor {
             // For git-crypt, we need to run it from the repo directory
             // Use execute_with_env to set the working directory context
-            let output = executor.execute_full("git-crypt", args).map_err(|e| {
-                GitError::PushFailed {
-                    message: format!("Failed to run git-crypt: {}", e),
-                }
-            })?;
+            let output =
+                executor
+                    .execute_full("git-crypt", args)
+                    .map_err(|e| GitError::PushFailed {
+                        message: format!("Failed to run git-crypt: {}", e),
+                    })?;
 
             if output.success() {
                 Ok(output.stdout)
@@ -421,10 +445,7 @@ pub fn parse_git_status(output: &str) -> GitStatus {
                         if let Some(end) = ahead_str.find(|c: char| !c.is_ascii_digit()) {
                             status.ahead = ahead_str[..end].parse().unwrap_or(0);
                         } else {
-                            status.ahead = ahead_str
-                                .trim_end_matches(']')
-                                .parse()
-                                .unwrap_or(0);
+                            status.ahead = ahead_str.trim_end_matches(']').parse().unwrap_or(0);
                         }
                     }
                     if let Some(behind_pos) = info.find("behind ") {
@@ -432,10 +453,7 @@ pub fn parse_git_status(output: &str) -> GitStatus {
                         if let Some(end) = behind_str.find(|c: char| !c.is_ascii_digit()) {
                             status.behind = behind_str[..end].parse().unwrap_or(0);
                         } else {
-                            status.behind = behind_str
-                                .trim_end_matches(']')
-                                .parse()
-                                .unwrap_or(0);
+                            status.behind = behind_str.trim_end_matches(']').parse().unwrap_or(0);
                         }
                     }
                 }
@@ -496,12 +514,9 @@ pub fn parse_encrypted_files(output: &str) -> Vec<PathBuf> {
         .lines()
         .filter_map(|line| {
             // Format: "encrypted: path/to/file" or "    encrypted: path/to/file"
-            let trimmed = line.trim();
-            if trimmed.starts_with("encrypted:") {
-                Some(PathBuf::from(trimmed[10..].trim()))
-            } else {
-                None
-            }
+            line.trim()
+                .strip_prefix("encrypted:")
+                .map(|path| PathBuf::from(path.trim()))
         })
         .collect()
 }
@@ -860,21 +875,21 @@ encrypted: secrets/token.txt
 
     impl GitManager for MockGitManager {
         fn status(&self) -> IronResult<GitStatus> {
-            self.status_result
-                .clone()
-                .ok_or_else(|| GitError::NotARepository {
+            self.status_result.clone().ok_or_else(|| {
+                GitError::NotARepository {
                     path: PathBuf::from("/mock"),
                 }
-                .into())
+                .into()
+            })
         }
 
         fn diff(&self) -> IronResult<String> {
-            self.diff_result
-                .clone()
-                .ok_or_else(|| GitError::NotARepository {
+            self.diff_result.clone().ok_or_else(|| {
+                GitError::NotARepository {
                     path: PathBuf::from("/mock"),
                 }
-                .into())
+                .into()
+            })
         }
 
         fn commit(&self, _message: &str) -> IronResult<()> {
@@ -951,5 +966,91 @@ encrypted: secrets/token.txt
         let result = mock.pull("origin", "main").unwrap();
         assert!(result.success);
         assert!(!result.has_conflicts);
+    }
+
+    // ==========================================================================
+    // Circuit Breaker Integration Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_git_manager_with_resilience() {
+        use tempfile::TempDir;
+
+        // Create a temporary git repository for testing
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root = temp_dir.path().to_path_buf();
+
+        // Initialize git repo
+        std::fs::create_dir_all(root.join(".git")).expect("Failed to create .git");
+
+        // Test that with_resilience creates a properly configured manager
+        let manager = DefaultGitManager::with_resilience(root).expect("Failed to create manager");
+        assert!(manager.executor.is_some());
+    }
+
+    #[test]
+    fn test_git_manager_with_executor() {
+        use iron_core::resilience::RealCommandExecutor;
+        use std::sync::Arc;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root = temp_dir.path().to_path_buf();
+        std::fs::create_dir_all(root.join(".git")).expect("Failed to create .git");
+
+        let executor = Arc::new(RealCommandExecutor::with_defaults());
+        let manager =
+            DefaultGitManager::with_executor(root, executor).expect("Failed to create manager");
+        assert!(manager.executor.is_some());
+    }
+
+    #[test]
+    fn test_git_manager_without_executor() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root = temp_dir.path().to_path_buf();
+        std::fs::create_dir_all(root.join(".git")).expect("Failed to create .git");
+
+        // Test backward compatibility - new() should work without executor
+        let manager = DefaultGitManager::new(root).expect("Failed to create manager");
+        assert!(manager.executor.is_none());
+    }
+
+    #[test]
+    fn test_secrets_manager_with_resilience() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root = temp_dir.path().to_path_buf();
+
+        let manager = DefaultSecretsManager::with_resilience(root);
+        assert!(manager.executor.is_some());
+    }
+
+    #[test]
+    fn test_secrets_manager_with_executor() {
+        use iron_core::resilience::RealCommandExecutor;
+        use std::sync::Arc;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root = temp_dir.path().to_path_buf();
+
+        let executor = Arc::new(RealCommandExecutor::with_defaults());
+        let manager = DefaultSecretsManager::with_executor(root, executor);
+        assert!(manager.executor.is_some());
+    }
+
+    #[test]
+    fn test_secrets_manager_without_executor() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root = temp_dir.path().to_path_buf();
+
+        // Test backward compatibility - new() should work without executor
+        let manager = DefaultSecretsManager::new(root);
+        assert!(manager.executor.is_none());
     }
 }
