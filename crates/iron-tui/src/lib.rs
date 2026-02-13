@@ -69,6 +69,7 @@ pub fn run_with_config(
 }
 
 #[cfg(test)]
+#[allow(clippy::field_reassign_with_default)]
 mod tests {
     use super::*;
     use app::{ConfirmAction, HealthStatus, View};

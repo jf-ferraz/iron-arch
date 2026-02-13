@@ -481,7 +481,7 @@ mod tests {
     fn test_recoverable_trait() {
         let err = IronError::State(StateError::NoActiveHost);
         assert!(err.auto_recovery().is_some());
-        assert!(err.manual_recovery_steps().len() > 0);
+        assert!(!err.manual_recovery_steps().is_empty());
     }
 
     #[test]

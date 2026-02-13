@@ -122,6 +122,7 @@ modules = []
 }
 
 /// Get iron command with --no-color for predictable output
+#[allow(deprecated)]
 fn iron() -> Command {
     let mut cmd = Command::cargo_bin("iron").unwrap();
     cmd.arg("--no-color");
@@ -129,6 +130,7 @@ fn iron() -> Command {
 }
 
 /// Get iron command without --no-color
+#[allow(deprecated)]
 fn iron_raw() -> Command {
     Command::cargo_bin("iron").unwrap()
 }
