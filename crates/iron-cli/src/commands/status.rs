@@ -3,8 +3,9 @@
 //! Shows system status overview.
 
 use crate::context::{AppContext, require_init};
-use crate::output::StatusBadge;
+use crate::output::{Output, StatusBadge};
 use anyhow::Result;
+use iron_core::availability::{AvailabilityStatus, ServiceAvailability};
 use iron_core::services::bundle::BundleService;
 use iron_core::services::host::HostService;
 use iron_core::services::module::ModuleService;
@@ -22,6 +23,7 @@ struct StatusData {
     modules: ModulesStatus,
     sync: SyncStatusData,
     secrets: SecretsStatusData,
+    services: ServicesStatusData,
 }
 
 #[derive(Serialize)]
@@ -62,6 +64,57 @@ struct SecretsStatusData {
     status: String,
 }
 
+#[derive(Serialize)]
+struct ServiceStatusData {
+    name: String,
+    status: String,
+    reason: Option<String>,
+}
+
+#[derive(Serialize)]
+struct ServicesStatusData {
+    secrets: ServiceStatusData,
+    sync: ServiceStatusData,
+    snapshots: ServiceStatusData,
+    aur: ServiceStatusData,
+}
+
+/// Format service status for display
+fn format_service_status(name: &str, status: &AvailabilityStatus, output: &Output) {
+    match status {
+        AvailabilityStatus::Available => {
+            output.list_item_status(name, StatusBadge::Ok);
+        }
+        AvailabilityStatus::Degraded(reason) => {
+            output.list_item_status(&format!("{}: {}", name, reason), StatusBadge::Warning);
+        }
+        AvailabilityStatus::Unavailable(reason) => {
+            output.list_item_status(&format!("{}: {}", name, reason), StatusBadge::Error);
+        }
+    }
+}
+
+/// Convert AvailabilityStatus to ServiceStatusData for JSON output
+fn availability_to_service_data(name: &str, status: &AvailabilityStatus) -> ServiceStatusData {
+    match status {
+        AvailabilityStatus::Available => ServiceStatusData {
+            name: name.to_string(),
+            status: "available".to_string(),
+            reason: None,
+        },
+        AvailabilityStatus::Degraded(reason) => ServiceStatusData {
+            name: name.to_string(),
+            status: "degraded".to_string(),
+            reason: Some(reason.clone()),
+        },
+        AvailabilityStatus::Unavailable(reason) => ServiceStatusData {
+            name: name.to_string(),
+            status: "unavailable".to_string(),
+            reason: Some(reason.clone()),
+        },
+    }
+}
+
 /// Execute status command
 pub fn execute(ctx: &AppContext) -> Result<()> {
     require_init(ctx)?;
@@ -93,6 +146,9 @@ pub fn execute(ctx: &AppContext) -> Result<()> {
 
     // Get secrets status
     let secrets_status = secrets_service.status().ok();
+
+    // Check service availability (NFR-11)
+    let availability = ServiceAvailability::check();
 
     if output.is_json() {
         let data = StatusData {
@@ -127,6 +183,12 @@ pub fn execute(ctx: &AppContext) -> Result<()> {
                     .as_ref()
                     .map(|s| format!("{:?}", s))
                     .unwrap_or_default(),
+            },
+            services: ServicesStatusData {
+                secrets: availability_to_service_data("Secrets (git-crypt)", &availability.secrets),
+                sync: availability_to_service_data("Sync (git remote)", &availability.sync),
+                snapshots: availability_to_service_data("Snapshots", &availability.snapshots),
+                aur: availability_to_service_data("AUR Helper", &availability.aur),
             },
         };
         output.json(&data);
@@ -201,6 +263,13 @@ pub fn execute(ctx: &AppContext) -> Result<()> {
     } else {
         output.list_item_status("Unknown", StatusBadge::Inactive);
     }
+
+    // Services availability (NFR-11: Graceful degradation)
+    output.subheader("Services");
+    format_service_status("Secrets (git-crypt)", &availability.secrets, output);
+    format_service_status("Sync (git remote)", &availability.sync, output);
+    format_service_status("Snapshots", &availability.snapshots, output);
+    format_service_status("AUR Helper", &availability.aur, output);
 
     Ok(())
 }
