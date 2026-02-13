@@ -1,0 +1,18 @@
+# INVALID: Fields after [[dotfiles]] become part of the array table
+id = "invalid-module"
+name = "Invalid Module"
+description = "This module has incorrect TOML ordering"
+kind = "AppConfig"
+
+packages = []
+aur_packages = []
+
+# This comes BEFORE conflicts - WRONG!
+[[dotfiles]]
+source = "config"
+target = "~/.config/test"
+link = true
+
+# BUG: This becomes part of the [[dotfiles]] table, not top-level
+conflicts = []
+depends = []

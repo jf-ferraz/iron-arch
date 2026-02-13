@@ -18,12 +18,6 @@ packages = [
 
 aur_packages = []
 
-# Dotfiles to link
-[[dotfiles]]
-source = "config/nvim"
-target = "~/.config/nvim"
-link = true
-
 # Conflicts
 conflicts = ["vim-minimal"]
 
@@ -32,3 +26,9 @@ depends = []
 
 # Hooks
 post_install = "scripts/setup-nvim.sh"
+
+# Dotfiles to link (must be last - TOML array of tables)
+[[dotfiles]]
+source = "config/nvim"
+target = "~/.config/nvim"
+link = true

@@ -1,0 +1,13 @@
+# Test bundle configuration
+id = "test-bundle"
+name = "Test Bundle"
+description = "A test bundle for integration testing"
+bundle_type = "WaylandCompositor"
+
+packages = ["compositor", "status-bar"]
+aur_packages = []
+profiles = ["minimal", "developer"]
+default_profile = "minimal"
+conflicts = ["other-bundle"]
+services = ["pipewire", "wireplumber"]
+post_install = "setup.sh"

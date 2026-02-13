@@ -1,0 +1,23 @@
+# Git Config Module
+# Git configuration with useful aliases and settings
+
+id = "git-config"
+name = "Git Configuration"
+description = "Git configuration with useful aliases, delta diff viewer, and signing setup"
+kind = "DevTools"
+
+# Packages
+packages = ["git", "git-delta", "github-cli"]
+aur_packages = []
+
+# Conflicts with other git configs
+conflicts = ["git-minimal"]
+
+# Dependencies
+depends = []
+
+# Dotfiles (must be last - TOML array of tables)
+[[dotfiles]]
+source = "config/git"
+target = "~/.config/git"
+link = true

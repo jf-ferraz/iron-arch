@@ -1,0 +1,34 @@
+# Dev Tools Module
+# Essential development tools and utilities
+
+id = "dev-tools"
+name = "Development Tools"
+description = "Essential CLI tools for development (ripgrep, fd, bat, eza, etc.)"
+kind = "DevTools"
+
+# Packages - essential development tools
+packages = [
+    "ripgrep",
+    "fd",
+    "bat",
+    "eza",
+    "fzf",
+    "jq",
+    "yq",
+    "httpie",
+    "tokei",
+    "hyperfine",
+    "just",
+    "watchexec",
+]
+
+aur_packages = []
+
+# No conflicts - these are additive tools
+conflicts = []
+
+# Dependencies
+depends = []
+
+# No dotfiles - this module only installs packages
+dotfiles = []

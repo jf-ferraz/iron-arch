@@ -1,0 +1,9 @@
+# Test profile configuration
+id = "test-profile"
+name = "Test Profile"
+description = "A test profile for integration testing"
+
+modules = ["module-a", "module-b", "module-c"]
+theme = "test-theme"
+shell = "zsh"
+for_bundle = "test-bundle"

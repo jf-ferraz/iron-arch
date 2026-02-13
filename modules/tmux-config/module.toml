@@ -1,0 +1,23 @@
+# Tmux Config Module
+# Terminal multiplexer configuration
+
+id = "tmux-config"
+name = "Tmux Configuration"
+description = "Tmux configuration with sensible defaults and developer keybindings"
+kind = "Shell"
+
+# Packages
+packages = ["tmux"]
+aur_packages = []
+
+# Conflicts with other tmux configs
+conflicts = ["tmux-minimal"]
+
+# Dependencies
+depends = []
+
+# Dotfiles (must be last - TOML array of tables)
+[[dotfiles]]
+source = "config/tmux"
+target = "~/.config/tmux"
+link = true

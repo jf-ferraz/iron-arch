@@ -1,0 +1,25 @@
+# Test module with all fields in correct order
+id = "valid-module"
+name = "Valid Module"
+description = "A test module with proper TOML ordering"
+kind = "AppConfig"
+
+packages = ["pkg1", "pkg2"]
+aur_packages = ["aur-pkg1"]
+
+# These MUST come before [[dotfiles]]
+conflicts = ["other-module"]
+depends = ["base-module"]
+pre_install = "hooks/pre.sh"
+post_install = "hooks/post.sh"
+
+# Array of tables MUST be last
+[[dotfiles]]
+source = "config"
+target = "~/.config/test"
+link = true
+
+[[dotfiles]]
+source = "local"
+target = "~/.local/share/test"
+link = false

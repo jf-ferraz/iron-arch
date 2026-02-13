@@ -1,17 +1,22 @@
 //! State Management Service
 //!
 //! Provides robust state management with transactions and audit logging.
+//! Uses file locking for safe concurrent access across processes.
 
 use crate::state::{IronState, MaintenanceState, OperationStatus};
 use crate::{IronResult, StateError};
 use chrono::Utc;
+use fs2::FileExt;
 use serde::{Deserialize, Serialize};
-use std::fs;
+use std::fs::{self, File, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 /// State file name
 const STATE_FILE: &str = "state.json";
+
+/// Lock file name for concurrent access protection
+const LOCK_FILE: &str = ".state.lock";
 
 /// Audit log file name
 const AUDIT_LOG_FILE: &str = "audit.log";
@@ -209,15 +214,14 @@ impl StateManager {
         self.state().active_modules.clone()
     }
 
-    /// Enable a module
+    /// Enable a module (with file locking for concurrent safety)
     pub fn enable_module(&self, module_id: &str) -> IronResult<()> {
-        {
-            let mut state = self.state.lock().unwrap();
-            if !state.active_modules.contains(&module_id.to_string()) {
-                state.active_modules.push(module_id.to_string());
+        let module_id_owned = module_id.to_string();
+        self.with_locked_state(|state| {
+            if !state.active_modules.contains(&module_id_owned) {
+                state.active_modules.push(module_id_owned.clone());
             }
-        }
-        self.persist()?;
+        })?;
         self.audit(
             "enable_module",
             OperationStatus::Success,
@@ -225,13 +229,12 @@ impl StateManager {
         )
     }
 
-    /// Disable a module
+    /// Disable a module (with file locking for concurrent safety)
     pub fn disable_module(&self, module_id: &str) -> IronResult<()> {
-        {
-            let mut state = self.state.lock().unwrap();
-            state.active_modules.retain(|m| m != module_id);
-        }
-        self.persist()?;
+        let module_id_owned = module_id.to_string();
+        self.with_locked_state(|state| {
+            state.active_modules.retain(|m| m != &module_id_owned);
+        })?;
         self.audit(
             "disable_module",
             OperationStatus::Success,
@@ -313,8 +316,118 @@ impl StateManager {
         )
     }
 
-    /// Persist state to disk
+    /// Get the lock file path
+    fn lock_path(&self) -> PathBuf {
+        self.root.join(LOCK_FILE)
+    }
+
+    /// Acquire an exclusive lock on the state file
+    /// Returns the lock file handle which must be held for the duration of the operation
+    fn acquire_lock(&self) -> IronResult<File> {
+        let lock_path = self.lock_path();
+
+        // Ensure parent directory exists
+        if let Some(parent) = lock_path.parent() {
+            fs::create_dir_all(parent).map_err(|_| StateError::Corrupted {
+                path: lock_path.clone(),
+            })?;
+        }
+
+        // Open or create the lock file
+        let lock_file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&lock_path)
+            .map_err(|_| StateError::Corrupted {
+                path: lock_path.clone(),
+            })?;
+
+        // Acquire exclusive lock (blocks until available)
+        lock_file.lock_exclusive().map_err(|_| StateError::Corrupted {
+            path: lock_path,
+        })?;
+
+        Ok(lock_file)
+    }
+
+    /// Reload state from disk (call after acquiring lock to get latest state)
+    fn reload_from_disk(&self) -> IronResult<()> {
+        let state_path = self.state_path();
+        if state_path.exists() {
+            let content = fs::read_to_string(&state_path).map_err(|_| StateError::Corrupted {
+                path: state_path.clone(),
+            })?;
+            let new_state: IronState = serde_json::from_str(&content)
+                .map_err(|_| StateError::Corrupted { path: state_path })?;
+
+            let mut state = self.state.lock().unwrap();
+            *state = new_state;
+        }
+        Ok(())
+    }
+
+    /// Execute a locked state operation
+    /// This acquires the lock, reloads state from disk, executes the operation,
+    /// and persists the result atomically.
+    pub fn with_locked_state<F, T>(&self, operation: F) -> IronResult<T>
+    where
+        F: FnOnce(&mut IronState) -> T,
+    {
+        // Acquire exclusive file lock
+        let _lock = self.acquire_lock()?;
+
+        // Reload state from disk to get latest changes from other processes
+        self.reload_from_disk()?;
+
+        // Execute the operation
+        let result = {
+            let mut state = self.state.lock().unwrap();
+            operation(&mut state)
+        };
+
+        // Persist the changes
+        self.persist_unlocked()?;
+
+        Ok(result)
+    }
+
+    /// Persist state to disk with file locking for concurrent safety
     pub fn persist(&self) -> IronResult<()> {
+        let state_path = self.state_path();
+
+        // Create parent directory if needed
+        if let Some(parent) = state_path.parent() {
+            fs::create_dir_all(parent).map_err(|_| StateError::Corrupted {
+                path: state_path.clone(),
+            })?;
+        }
+
+        // Acquire exclusive file lock to prevent concurrent writes
+        let _lock = self.acquire_lock()?;
+
+        // Write to temp file first (atomic write)
+        let temp_path = state_path.with_extension("tmp");
+        let state = self.state();
+        let content = serde_json::to_string_pretty(&*state).map_err(|_| StateError::Corrupted {
+            path: state_path.clone(),
+        })?;
+
+        fs::write(&temp_path, &content).map_err(|_| StateError::Corrupted {
+            path: state_path.clone(),
+        })?;
+
+        // Atomic rename
+        fs::rename(&temp_path, &state_path)
+            .map_err(|_| StateError::Corrupted { path: state_path })?;
+
+        // Lock is automatically released when _lock goes out of scope
+        Ok(())
+    }
+
+    /// Internal persist without acquiring lock (called when lock is already held)
+    fn persist_unlocked(&self) -> IronResult<()> {
         let state_path = self.state_path();
 
         // Create parent directory if needed
@@ -544,5 +657,61 @@ mod tests {
 
         let audit = manager.recent_audit(10);
         assert!(audit.len() >= 2);
+    }
+
+    #[test]
+    fn test_concurrent_module_operations() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().to_path_buf();
+
+        // Create two managers pointing to the same state file
+        let manager1 = Arc::new(StateManager::new(path.clone()).unwrap());
+        let manager2 = Arc::new(StateManager::new(path.clone()).unwrap());
+
+        // Spawn two threads that modify state concurrently
+        let m1 = Arc::clone(&manager1);
+        let handle1 = thread::spawn(move || {
+            for i in 0..10 {
+                m1.enable_module(&format!("mod-a-{}", i)).unwrap();
+            }
+        });
+
+        let m2 = Arc::clone(&manager2);
+        let handle2 = thread::spawn(move || {
+            for i in 0..10 {
+                m2.enable_module(&format!("mod-b-{}", i)).unwrap();
+            }
+        });
+
+        handle1.join().unwrap();
+        handle2.join().unwrap();
+
+        // Create a fresh manager to read the final state from disk
+        let final_manager = StateManager::new(path).unwrap();
+        let modules = final_manager.active_modules();
+        let a_count = modules.iter().filter(|m| m.starts_with("mod-a-")).count();
+        let b_count = modules.iter().filter(|m| m.starts_with("mod-b-")).count();
+
+        assert_eq!(a_count, 10, "All mod-a modules should be present");
+        assert_eq!(b_count, 10, "All mod-b modules should be present");
+    }
+
+    #[test]
+    fn test_with_locked_state() {
+        let (manager, _temp) = create_test_manager();
+
+        // Test that with_locked_state works correctly
+        let result = manager
+            .with_locked_state(|state| {
+                state.active_modules.push("test-mod".to_string());
+                42
+            })
+            .unwrap();
+
+        assert_eq!(result, 42);
+        assert!(manager.is_module_active("test-mod"));
     }
 }

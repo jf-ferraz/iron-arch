@@ -1,0 +1,23 @@
+# Waybar Dev Module
+# Developer-focused status bar configuration
+
+id = "waybar-dev"
+name = "Waybar (Dev)"
+description = "Waybar status bar with developer-focused modules (git, system stats, workspaces)"
+kind = "DesktopComponent"
+
+# Packages
+packages = ["waybar", "otf-font-awesome", "ttf-jetbrains-mono-nerd"]
+aur_packages = []
+
+# Conflicts with other waybar configs
+conflicts = ["waybar-minimal", "waybar-gaming"]
+
+# Dependencies
+depends = []
+
+# Dotfiles (must be last - TOML array of tables)
+[[dotfiles]]
+source = "config/waybar"
+target = "~/.config/waybar"
+link = true

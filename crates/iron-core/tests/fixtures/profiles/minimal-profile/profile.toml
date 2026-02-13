@@ -1,0 +1,4 @@
+# Minimal profile with only required fields
+id = "minimal-profile"
+name = "Minimal"
+modules = []

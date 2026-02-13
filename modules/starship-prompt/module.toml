@@ -1,0 +1,23 @@
+# Starship Prompt Module
+# Cross-shell prompt configuration
+
+id = "starship-prompt"
+name = "Starship Prompt"
+description = "Fast, customizable cross-shell prompt with git integration and language indicators"
+kind = "Shell"
+
+# Packages
+packages = ["starship"]
+aur_packages = []
+
+# Conflicts with other prompt configs
+conflicts = ["powerlevel10k", "oh-my-posh"]
+
+# Dependencies
+depends = []
+
+# Dotfiles (must be last - TOML array of tables)
+[[dotfiles]]
+source = "config/starship.toml"
+target = "~/.config/starship.toml"
+link = true
