@@ -12,10 +12,16 @@ use clap::{CommandFactory, Parser};
 use clap_complete::generate;
 use cli::{Cli, Commands};
 use context::AppContext;
+use iron_core::logging::{init_logging, LogConfig};
 
 fn main() -> Result<()> {
-    // Initialize logging
-    tracing_subscriber::fmt::init();
+    // Initialize structured JSON logging (NFR-9, NFR-10)
+    let log_config = LogConfig::default();
+    if let Err(e) = init_logging(&log_config) {
+        eprintln!("Warning: Failed to initialize logging: {}", e);
+        // Fall back to basic stderr logging
+        tracing_subscriber::fmt::init();
+    }
 
     let cli = Cli::parse();
 
@@ -34,7 +40,16 @@ fn main() -> Result<()> {
             status,
             clear_progress,
             yes,
-        }) => commands::update::execute(&ctx, dry_run, force, no_snapshot, resume, status, clear_progress, yes),
+        }) => commands::update::execute(
+            &ctx,
+            dry_run,
+            force,
+            no_snapshot,
+            resume,
+            status,
+            clear_progress,
+            yes,
+        ),
         Some(Commands::Bundle { action }) => commands::bundle::execute(&ctx, action),
         Some(Commands::Profile { action }) => commands::profile::execute(&ctx, action),
         Some(Commands::Module { action }) => commands::module::execute(&ctx, action),
