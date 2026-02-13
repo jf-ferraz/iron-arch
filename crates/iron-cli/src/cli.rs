@@ -3,15 +3,18 @@
 //! Defines the command-line interface structure using clap.
 
 use clap::{Parser, Subcommand, ValueEnum};
+use clap_complete::Shell;
 
 /// Iron - Declarative Arch Linux Configuration Management
 #[derive(Parser)]
 #[command(name = "iron")]
 #[command(author, version)]
 #[command(about = "Less is More - Turning your Arch into Iron")]
-#[command(long_about = "Iron is a declarative configuration management tool for Arch Linux.\n\n\
+#[command(
+    long_about = "Iron is a declarative configuration management tool for Arch Linux.\n\n\
     It manages your dotfiles, packages, and system configuration through a \
-    hierarchy of Hosts, Bundles, Profiles, and Modules.")]
+    hierarchy of Hosts, Bundles, Profiles, and Modules."
+)]
 pub struct Cli {
     /// Iron root directory
     #[arg(short, long, default_value = "~/.config/iron", global = true)]
@@ -160,6 +163,13 @@ pub enum Commands {
 
     /// Launch TUI dashboard
     Go,
+
+    /// Generate shell completions
+    Completions {
+        /// Shell to generate completions for
+        #[arg(value_enum)]
+        shell: Shell,
+    },
 }
 
 /// Bundle subcommands

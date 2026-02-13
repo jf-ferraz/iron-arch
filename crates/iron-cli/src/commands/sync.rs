@@ -3,7 +3,7 @@
 //! Git sync operations.
 
 use crate::cli::SyncAction;
-use crate::context::{require_init, AppContext};
+use crate::context::{AppContext, require_init};
 use crate::output::StatusBadge;
 use anyhow::Result;
 use iron_core::services::sync::{SyncService, SyncStatus};
@@ -81,16 +81,25 @@ fn status(ctx: &AppContext) -> Result<()> {
             output.list_item_status("Up to date with remote", badge);
         }
         SyncStatus::Ahead => {
-            output.list_item_status(&format!("{} commits ahead of remote", info.commits_ahead), badge);
+            output.list_item_status(
+                &format!("{} commits ahead of remote", info.commits_ahead),
+                badge,
+            );
             output.info("Run 'iron sync push' to push changes");
         }
         SyncStatus::Behind => {
-            output.list_item_status(&format!("{} commits behind remote", info.commits_behind), badge);
+            output.list_item_status(
+                &format!("{} commits behind remote", info.commits_behind),
+                badge,
+            );
             output.info("Run 'iron sync pull' to pull changes");
         }
         SyncStatus::Diverged => {
             output.list_item_status(
-                &format!("Diverged: {} ahead, {} behind", info.commits_ahead, info.commits_behind),
+                &format!(
+                    "Diverged: {} ahead, {} behind",
+                    info.commits_ahead, info.commits_behind
+                ),
                 badge,
             );
             output.warning("Manual merge may be required");
@@ -179,7 +188,10 @@ fn pull(ctx: &AppContext, stash: bool) -> Result<()> {
         }
         SyncStatus::Dirty => {
             if stash {
-                output.info(&format!("Stashing {} uncommitted changes", info.dirty_files));
+                output.info(&format!(
+                    "Stashing {} uncommitted changes",
+                    info.dirty_files
+                ));
                 sync_service.stash()?;
                 output.list_item_status("Changes stashed", StatusBadge::Ok);
             } else {

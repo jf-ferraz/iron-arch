@@ -9,7 +9,9 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 /// Render the header bar
 pub fn render_header(frame: &mut Frame, area: Rect, app: &App) {
     let host_name = app.current_host.as_deref().unwrap_or("unknown");
-    let bundle_name = app.active_bundle.as_ref()
+    let bundle_name = app
+        .active_bundle
+        .as_ref()
         .map(|b| b.id.as_str())
         .unwrap_or("none");
 
@@ -104,32 +106,18 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
 
     // Default keybindings footer
     let keybindings = match app.view {
-        View::Dashboard => vec![
-            ("[q]", "Quit"),
-            ("[?]", "Help"),
-            ("[Tab]", "Navigate"),
-        ],
+        View::Dashboard => vec![("[q]", "Quit"), ("[?]", "Help"), ("[Tab]", "Navigate")],
         View::Bundles | View::Profiles | View::Modules => vec![
             ("[↑↓]", "Select"),
             ("[Enter]", "Details"),
             ("[Esc]", "Back"),
             ("[?]", "Help"),
         ],
-        View::BundleDetail | View::ProfileDetail | View::ModuleDetail => vec![
-            ("[Enter]", "Activate"),
-            ("[Esc]", "Back"),
-            ("[?]", "Help"),
-        ],
-        View::UpdatePreview => vec![
-            ("[u]", "Update"),
-            ("[r]", "Refresh"),
-            ("[Esc]", "Back"),
-        ],
-        _ => vec![
-            ("[q]", "Quit"),
-            ("[?]", "Help"),
-            ("[Esc]", "Back"),
-        ],
+        View::BundleDetail | View::ProfileDetail | View::ModuleDetail => {
+            vec![("[Enter]", "Activate"), ("[Esc]", "Back"), ("[?]", "Help")]
+        }
+        View::UpdatePreview => vec![("[u]", "Update"), ("[r]", "Refresh"), ("[Esc]", "Back")],
+        _ => vec![("[q]", "Quit"), ("[?]", "Help"), ("[Esc]", "Back")],
     };
 
     let mut spans: Vec<Span> = vec![Span::raw(" ")];

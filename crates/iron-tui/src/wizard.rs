@@ -6,8 +6,7 @@ use iron_core::services::{BundleService, DefaultBundleService, StateManager};
 use std::path::Path;
 
 /// Wizard state machine
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum WizardStep {
     /// Welcome screen
     #[default]
@@ -23,7 +22,6 @@ pub enum WizardStep {
     /// Setup complete
     Complete,
 }
-
 
 /// Wizard state
 #[derive(Debug, Clone, Default)]
@@ -114,12 +112,16 @@ impl WizardState {
 
     /// Get selected bundle ID
     pub fn selected_bundle(&self) -> Option<&str> {
-        self.available_bundles.get(self.selected_bundle_index).map(|s| s.as_str())
+        self.available_bundles
+            .get(self.selected_bundle_index)
+            .map(|s| s.as_str())
     }
 
     /// Get selected profile ID
     pub fn selected_profile(&self) -> Option<&str> {
-        self.available_profiles.get(self.selected_profile_index).map(|s| s.as_str())
+        self.available_profiles
+            .get(self.selected_profile_index)
+            .map(|s| s.as_str())
     }
 
     /// Detect host from system
@@ -148,14 +150,16 @@ impl WizardState {
         self.available_bundles.clear();
         let bundles_dir = config_dir.join("bundles");
         if bundles_dir.exists()
-            && let Ok(entries) = std::fs::read_dir(&bundles_dir) {
-                for entry in entries.flatten() {
-                    if entry.file_type().map(|t| t.is_dir()).unwrap_or(false)
-                        && let Some(name) = entry.file_name().to_str() {
-                            self.available_bundles.push(name.to_string());
-                        }
+            && let Ok(entries) = std::fs::read_dir(&bundles_dir)
+        {
+            for entry in entries.flatten() {
+                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false)
+                    && let Some(name) = entry.file_name().to_str()
+                {
+                    self.available_bundles.push(name.to_string());
                 }
             }
+        }
         self.available_bundles.sort();
     }
 
@@ -164,21 +168,24 @@ impl WizardState {
         self.available_profiles.clear();
         let profiles_dir = config_dir.join("profiles");
         if profiles_dir.exists()
-            && let Ok(entries) = std::fs::read_dir(&profiles_dir) {
-                for entry in entries.flatten() {
-                    if entry.file_type().map(|t| t.is_dir()).unwrap_or(false)
-                        && let Some(name) = entry.file_name().to_str() {
-                            self.available_profiles.push(name.to_string());
-                        }
+            && let Ok(entries) = std::fs::read_dir(&profiles_dir)
+        {
+            for entry in entries.flatten() {
+                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false)
+                    && let Some(name) = entry.file_name().to_str()
+                {
+                    self.available_profiles.push(name.to_string());
                 }
             }
+        }
         self.available_profiles.sort();
     }
 
     /// Select next bundle
     pub fn select_next_bundle(&mut self) {
         if !self.available_bundles.is_empty() {
-            self.selected_bundle_index = (self.selected_bundle_index + 1) % self.available_bundles.len();
+            self.selected_bundle_index =
+                (self.selected_bundle_index + 1) % self.available_bundles.len();
         }
     }
 
@@ -196,7 +203,8 @@ impl WizardState {
     /// Select next profile
     pub fn select_next_profile(&mut self) {
         if !self.available_profiles.is_empty() {
-            self.selected_profile_index = (self.selected_profile_index + 1) % self.available_profiles.len();
+            self.selected_profile_index =
+                (self.selected_profile_index + 1) % self.available_profiles.len();
         }
     }
 
@@ -245,11 +253,12 @@ impl WizardState {
 
         // Set active profile if selected
         if let Some(profile_id) = self.selected_profile()
-            && let Err(e) = state_manager.set_active_profile(&self.host_id, profile_id) {
-                self.processing = false;
-                self.error = Some(format!("Failed to set profile: {:?}", e));
-                return Err(self.error.clone().unwrap());
-            }
+            && let Err(e) = state_manager.set_active_profile(&self.host_id, profile_id)
+        {
+            self.processing = false;
+            self.error = Some(format!("Failed to set profile: {:?}", e));
+            return Err(self.error.clone().unwrap());
+        }
 
         self.processing = false;
         self.next_step(); // Move to Complete

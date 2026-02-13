@@ -20,9 +20,7 @@ pub fn render_settings(frame: &mut Frame, area: Rect, _app: &App) {
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan));
 
-    let para = Paragraph::new(text)
-        .block(block)
-        .wrap(Wrap { trim: true });
+    let para = Paragraph::new(text).block(block).wrap(Wrap { trim: true });
 
     frame.render_widget(para, area);
 }

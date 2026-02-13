@@ -29,8 +29,7 @@ pub struct Host {
 }
 
 /// Hardware specifications for a host
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct HardwareSpec {
     /// CPU model/vendor
     pub cpu: Option<String>,
@@ -140,4 +139,3 @@ impl Host {
         false
     }
 }
-

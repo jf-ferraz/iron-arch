@@ -130,7 +130,12 @@ impl<S: SnapshotManager> DefaultRecoveryService<S> {
     /// Get list of enabled user services
     fn get_enabled_services(&self) -> Vec<String> {
         std::process::Command::new("systemctl")
-            .args(["--user", "list-unit-files", "--state=enabled", "--no-legend"])
+            .args([
+                "--user",
+                "list-unit-files",
+                "--state=enabled",
+                "--no-legend",
+            ])
             .output()
             .ok()
             .map(|o| {
@@ -178,12 +183,14 @@ impl<S: SnapshotManager> RecoveryService for DefaultRecoveryService<S> {
 
         // Set active bundle
         if let Some(bundle_id) = &export.active_bundle {
-            self.state_manager.set_active_bundle(&export.host_id, bundle_id)?;
+            self.state_manager
+                .set_active_bundle(&export.host_id, bundle_id)?;
         }
 
         // Set active profile
         if let Some(profile_id) = &export.active_profile {
-            self.state_manager.set_active_profile(&export.host_id, profile_id)?;
+            self.state_manager
+                .set_active_profile(&export.host_id, profile_id)?;
         }
 
         // Enable modules
@@ -233,7 +240,11 @@ impl<S: SnapshotManager> RecoveryService for DefaultRecoveryService<S> {
             if !official_packages.is_empty() {
                 script.push_str(&format!(
                     "sudo pacman -S --needed --noconfirm {}\n",
-                    official_packages.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" ")
+                    official_packages
+                        .iter()
+                        .map(|s| s.as_str())
+                        .collect::<Vec<_>>()
+                        .join(" ")
                 ));
             }
 
@@ -290,10 +301,11 @@ impl<S: SnapshotManager> RecoveryService for DefaultRecoveryService<S> {
             script.push_str("# Iron configuration\n");
 
             if let Some(bundle) = &export.active_bundle
-                && options.include_bundle {
-                    script.push_str(&format!("# Activate bundle: {}\n", bundle));
-                    script.push_str(&format!("iron bundle activate {}\n", bundle));
-                }
+                && options.include_bundle
+            {
+                script.push_str(&format!("# Activate bundle: {}\n", bundle));
+                script.push_str(&format!("iron bundle activate {}\n", bundle));
+            }
 
             if options.include_modules && !export.active_modules.is_empty() {
                 script.push_str("# Enable modules\n");
@@ -328,10 +340,8 @@ impl<S: SnapshotManager> RecoveryService for DefaultRecoveryService<S> {
             path: path.to_path_buf(),
         })?;
 
-        serde_json::from_str(&content).map_err(|e| {
-            crate::IronError::OperationFailed {
-                message: format!("Failed to parse export: {}", e),
-            }
+        serde_json::from_str(&content).map_err(|e| crate::IronError::OperationFailed {
+            message: format!("Failed to parse export: {}", e),
         })
     }
 
@@ -366,15 +376,24 @@ impl<S: SnapshotManager> RecoveryService for DefaultRecoveryService<S> {
         // Create archive
         let archive_path = output_dir.join(format!("{}.tar.gz", backup_name));
         std::process::Command::new("tar")
-            .args(["-czf", archive_path.to_str().unwrap(), "-C", output_dir.to_str().unwrap(), &backup_name])
+            .args([
+                "-czf",
+                archive_path.to_str().unwrap(),
+                "-C",
+                output_dir.to_str().unwrap(),
+                &backup_name,
+            ])
             .status()
             .ok();
 
         // Clean up uncompressed directory
         fs::remove_dir_all(&backup_path).ok();
 
-        self.state_manager
-            .record_operation("create_backup", OperationStatus::Success, Some(archive_path.display().to_string()))?;
+        self.state_manager.record_operation(
+            "create_backup",
+            OperationStatus::Success,
+            Some(archive_path.display().to_string()),
+        )?;
 
         Ok(archive_path)
     }
@@ -386,7 +405,12 @@ impl<S: SnapshotManager> RecoveryService for DefaultRecoveryService<S> {
         })?;
 
         std::process::Command::new("tar")
-            .args(["-xzf", backup_path.to_str().unwrap(), "-C", temp_dir.path().to_str().unwrap()])
+            .args([
+                "-xzf",
+                backup_path.to_str().unwrap(),
+                "-C",
+                temp_dir.path().to_str().unwrap(),
+            ])
             .status()
             .map_err(|_| crate::IronError::OperationFailed {
                 message: "Failed to extract backup".to_string(),

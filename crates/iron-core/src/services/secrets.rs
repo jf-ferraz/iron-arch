@@ -204,7 +204,12 @@ impl SecretsService for DefaultSecretsService {
 
     fn list_keys(&self) -> IronResult<Vec<GpgKey>> {
         // List GPG keys that have access
-        let gpg_dir = self.repo_root.join(".git-crypt").join("keys").join("default").join("0");
+        let gpg_dir = self
+            .repo_root
+            .join(".git-crypt")
+            .join("keys")
+            .join("default")
+            .join("0");
 
         if !gpg_dir.exists() {
             return Ok(vec![]);
@@ -215,28 +220,29 @@ impl SecretsService for DefaultSecretsService {
         if let Ok(entries) = std::fs::read_dir(&gpg_dir) {
             for entry in entries.flatten() {
                 if let Some(filename) = entry.file_name().to_str()
-                    && filename.ends_with(".gpg") {
-                        let key_id = filename.trim_end_matches(".gpg").to_string();
-                        // Try to get user info from gpg
-                        let user_id = Command::new("gpg")
-                            .args(["--list-keys", "--with-colons", &key_id])
-                            .output()
-                            .ok()
-                            .and_then(|o| {
-                                String::from_utf8_lossy(&o.stdout)
-                                    .lines()
-                                    .find(|l| l.starts_with("uid"))
-                                    .and_then(|l| l.split(':').nth(9))
-                                    .map(|s| s.to_string())
-                            })
-                            .unwrap_or_else(|| "Unknown".to_string());
+                    && filename.ends_with(".gpg")
+                {
+                    let key_id = filename.trim_end_matches(".gpg").to_string();
+                    // Try to get user info from gpg
+                    let user_id = Command::new("gpg")
+                        .args(["--list-keys", "--with-colons", &key_id])
+                        .output()
+                        .ok()
+                        .and_then(|o| {
+                            String::from_utf8_lossy(&o.stdout)
+                                .lines()
+                                .find(|l| l.starts_with("uid"))
+                                .and_then(|l| l.split(':').nth(9))
+                                .map(|s| s.to_string())
+                        })
+                        .unwrap_or_else(|| "Unknown".to_string());
 
-                        keys.push(GpgKey {
-                            id: key_id,
-                            user_id,
-                            trust: "unknown".to_string(),
-                        });
-                    }
+                    keys.push(GpgKey {
+                        id: key_id,
+                        user_id,
+                        trust: "unknown".to_string(),
+                    });
+                }
             }
         }
 
@@ -274,9 +280,10 @@ impl SecretsService for DefaultSecretsService {
         if let Ok(content) = std::fs::read_to_string(&gitattributes) {
             for line in content.lines() {
                 if (line.contains("filter=git-crypt") || line.contains("diff=git-crypt"))
-                    && let Some(pattern) = line.split_whitespace().next() {
-                        encrypted_patterns.push(pattern.to_string());
-                    }
+                    && let Some(pattern) = line.split_whitespace().next()
+                {
+                    encrypted_patterns.push(pattern.to_string());
+                }
             }
         }
 

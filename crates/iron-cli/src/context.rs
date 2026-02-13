@@ -30,11 +30,17 @@ pub struct AppContext {
 
 impl AppContext {
     /// Create a new application context
-    pub fn new(root: &str, format: OutputFormat, verbose: bool, quiet: bool, no_color: bool) -> Result<Self> {
+    pub fn new(
+        root: &str,
+        format: OutputFormat,
+        verbose: bool,
+        quiet: bool,
+        no_color: bool,
+    ) -> Result<Self> {
         let root = expand_home(Path::new(root));
 
-        let state = StateManager::new(root.clone())
-            .context("Failed to initialize state manager")?;
+        let state =
+            StateManager::new(root.clone()).context("Failed to initialize state manager")?;
 
         let output = Output::new(format, verbose, quiet, no_color);
 

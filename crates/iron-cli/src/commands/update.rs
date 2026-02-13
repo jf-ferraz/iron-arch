@@ -2,8 +2,8 @@
 //!
 //! Safe system update with risk assessment.
 
-use crate::context::{require_init, AppContext};
-use crate::output::{render_risk, StatusBadge};
+use crate::context::{AppContext, require_init};
+use crate::output::{StatusBadge, render_risk};
 use anyhow::Result;
 use iron_core::services::update::{UpdateRisk, UpdateService};
 use serde::Serialize;
@@ -46,16 +46,35 @@ pub fn execute(ctx: &AppContext, dry_run: bool, force: bool, no_snapshot: bool) 
     output.subheader(&format!("{} packages to update", plan.packages.len()));
 
     // Group by risk
-    let critical: Vec<_> = plan.packages.iter().filter(|p| matches!(p.risk, UpdateRisk::Critical)).collect();
-    let high: Vec<_> = plan.packages.iter().filter(|p| matches!(p.risk, UpdateRisk::High)).collect();
-    let medium: Vec<_> = plan.packages.iter().filter(|p| matches!(p.risk, UpdateRisk::Medium)).collect();
-    let low: Vec<_> = plan.packages.iter().filter(|p| matches!(p.risk, UpdateRisk::Low)).collect();
+    let critical: Vec<_> = plan
+        .packages
+        .iter()
+        .filter(|p| matches!(p.risk, UpdateRisk::Critical))
+        .collect();
+    let high: Vec<_> = plan
+        .packages
+        .iter()
+        .filter(|p| matches!(p.risk, UpdateRisk::High))
+        .collect();
+    let medium: Vec<_> = plan
+        .packages
+        .iter()
+        .filter(|p| matches!(p.risk, UpdateRisk::Medium))
+        .collect();
+    let low: Vec<_> = plan
+        .packages
+        .iter()
+        .filter(|p| matches!(p.risk, UpdateRisk::Low))
+        .collect();
 
     if !critical.is_empty() {
         output.warning(&format!("Critical risk packages ({})", critical.len()));
         for pkg in &critical {
             output.list_item_status(
-                &format!("{}: {} -> {}", pkg.name, pkg.current_version, pkg.new_version),
+                &format!(
+                    "{}: {} -> {}",
+                    pkg.name, pkg.current_version, pkg.new_version
+                ),
                 StatusBadge::Error,
             );
             if let Some(reason) = &pkg.risk_reason {
@@ -68,7 +87,10 @@ pub fn execute(ctx: &AppContext, dry_run: bool, force: bool, no_snapshot: bool) 
         output.warning(&format!("High risk packages ({})", high.len()));
         for pkg in &high {
             output.list_item_status(
-                &format!("{}: {} -> {}", pkg.name, pkg.current_version, pkg.new_version),
+                &format!(
+                    "{}: {} -> {}",
+                    pkg.name, pkg.current_version, pkg.new_version
+                ),
                 StatusBadge::Warning,
             );
             if let Some(reason) = &pkg.risk_reason {
@@ -80,14 +102,20 @@ pub fn execute(ctx: &AppContext, dry_run: bool, force: bool, no_snapshot: bool) 
     if !medium.is_empty() && output.is_verbose() {
         output.info(&format!("Medium risk packages ({})", medium.len()));
         for pkg in &medium {
-            output.list_item(&format!("{}: {} -> {}", pkg.name, pkg.current_version, pkg.new_version));
+            output.list_item(&format!(
+                "{}: {} -> {}",
+                pkg.name, pkg.current_version, pkg.new_version
+            ));
         }
     }
 
     if !low.is_empty() && output.is_verbose() {
         output.info(&format!("Low risk packages ({})", low.len()));
         for pkg in &low {
-            output.list_item(&format!("{}: {} -> {}", pkg.name, pkg.current_version, pkg.new_version));
+            output.list_item(&format!(
+                "{}: {} -> {}",
+                pkg.name, pkg.current_version, pkg.new_version
+            ));
         }
     }
 
@@ -121,12 +149,16 @@ pub fn execute(ctx: &AppContext, dry_run: bool, force: bool, no_snapshot: bool) 
     if output.is_json() {
         let preview = UpdatePreview {
             risk: risk_str.clone(),
-            packages: plan.packages.iter().map(|p| PackageInfo {
-                name: p.name.clone(),
-                current: p.current_version.clone(),
-                new: p.new_version.clone(),
-                risk: format!("{:?}", p.risk),
-            }).collect(),
+            packages: plan
+                .packages
+                .iter()
+                .map(|p| PackageInfo {
+                    name: p.name.clone(),
+                    current: p.current_version.clone(),
+                    new: p.new_version.clone(),
+                    risk: format!("{:?}", p.risk),
+                })
+                .collect(),
             can_proceed,
         };
         output.json(&preview);

@@ -79,9 +79,7 @@ pub fn render_profile_detail(frame: &mut Frame, area: Rect, app: &App) {
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan));
 
-    let para = Paragraph::new(lines)
-        .block(block)
-        .wrap(Wrap { trim: true });
+    let para = Paragraph::new(lines).block(block).wrap(Wrap { trim: true });
 
     frame.render_widget(para, area);
 }

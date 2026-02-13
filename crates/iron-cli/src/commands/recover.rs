@@ -2,7 +2,7 @@
 //!
 //! State export/import and recovery workflows.
 
-use crate::context::{require_init, AppContext};
+use crate::context::{AppContext, require_init};
 use anyhow::Result;
 use iron_core::services::recovery::{InstallScriptOptions, RecoveryService};
 use std::fs;
@@ -72,8 +72,20 @@ fn export_state(ctx: &AppContext) -> Result<()> {
     if output.is_verbose() {
         output.subheader("Export Contents");
         output.kv("Host ID", &export_data.host_id);
-        output.kv("Bundle", export_data.active_bundle.as_ref().unwrap_or(&"None".to_string()));
-        output.kv("Profile", export_data.active_profile.as_ref().unwrap_or(&"None".to_string()));
+        output.kv(
+            "Bundle",
+            export_data
+                .active_bundle
+                .as_ref()
+                .unwrap_or(&"None".to_string()),
+        );
+        output.kv(
+            "Profile",
+            export_data
+                .active_profile
+                .as_ref()
+                .unwrap_or(&"None".to_string()),
+        );
         output.kv("Modules", export_data.active_modules.len());
         output.kv("Packages", export_data.packages.len());
         output.kv("AUR Packages", export_data.aur_packages.len());
@@ -105,8 +117,20 @@ fn import_state(ctx: &AppContext, file: &str) -> Result<()> {
     // Show what will be imported
     output.subheader("Import Preview");
     output.kv("Host", &export_data.host_id);
-    output.kv("Bundle", export_data.active_bundle.as_ref().unwrap_or(&"None".to_string()));
-    output.kv("Profile", export_data.active_profile.as_ref().unwrap_or(&"None".to_string()));
+    output.kv(
+        "Bundle",
+        export_data
+            .active_bundle
+            .as_ref()
+            .unwrap_or(&"None".to_string()),
+    );
+    output.kv(
+        "Profile",
+        export_data
+            .active_profile
+            .as_ref()
+            .unwrap_or(&"None".to_string()),
+    );
     output.kv("Modules", export_data.active_modules.len());
     output.kv("Packages", export_data.packages.len());
 

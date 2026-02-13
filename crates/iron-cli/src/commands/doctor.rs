@@ -2,7 +2,7 @@
 //!
 //! System health check and diagnostics.
 
-use crate::context::{require_init, AppContext};
+use crate::context::{AppContext, require_init};
 use crate::output::StatusBadge;
 use anyhow::Result;
 use iron_core::services::host::HostService;
@@ -87,7 +87,10 @@ pub fn execute(ctx: &AppContext) -> Result<()> {
                 message: format!("Current host: {}", host_id),
             });
         } else {
-            output.list_item_status(&format!("Host {} config missing", host_id), StatusBadge::Error);
+            output.list_item_status(
+                &format!("Host {} config missing", host_id),
+                StatusBadge::Error,
+            );
             errors += 1;
             checks.push(HealthCheck {
                 name: "current_host".to_string(),
@@ -127,13 +130,15 @@ pub fn execute(ctx: &AppContext) -> Result<()> {
     // Check 5: External tools
     output.subheader("External Tools");
 
-    let tools = [
-        ("pacman", "Package manager"),
-        ("git", "Version control"),
-    ];
+    let tools = [("pacman", "Package manager"), ("git", "Version control")];
 
     for (tool, desc) in &tools {
-        if Command::new("which").arg(tool).output().map(|o| o.status.success()).unwrap_or(false) {
+        if Command::new("which")
+            .arg(tool)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+        {
             output.list_item_status(&format!("{} ({})", tool, desc), StatusBadge::Ok);
             checks.push(HealthCheck {
                 name: format!("tool_{}", tool),
@@ -161,7 +166,12 @@ pub fn execute(ctx: &AppContext) -> Result<()> {
     ];
 
     for (tool, desc) in &optional_tools {
-        if Command::new("which").arg(tool).output().map(|o| o.status.success()).unwrap_or(false) {
+        if Command::new("which")
+            .arg(tool)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+        {
             output.list_item_status(&format!("{} ({})", tool, desc), StatusBadge::Ok);
         } else {
             output.verbose(&format!("{} not available (optional)", tool));
@@ -179,10 +189,12 @@ pub fn execute(ctx: &AppContext) -> Result<()> {
             let target = iron_core::validation::expand_home(Path::new(&dotfile.target));
             if target.is_symlink()
                 && let Ok(link_target) = std::fs::read_link(&target)
-                    && !link_target.exists() {
-                        output.list_item_status(&format!("Broken: {}", target.display()), StatusBadge::Error);
-                        broken_links += 1;
-                    }
+                && !link_target.exists()
+            {
+                output
+                    .list_item_status(&format!("Broken: {}", target.display()), StatusBadge::Error);
+                broken_links += 1;
+            }
         }
     }
 

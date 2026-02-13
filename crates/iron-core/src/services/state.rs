@@ -101,7 +101,8 @@ impl StateManager {
             let content = fs::read_to_string(&state_path).map_err(|_| StateError::Corrupted {
                 path: state_path.clone(),
             })?;
-            serde_json::from_str(&content).map_err(|_| StateError::Corrupted { path: state_path })?
+            serde_json::from_str(&content)
+                .map_err(|_| StateError::Corrupted { path: state_path })?
         } else {
             IronState::default()
         };
@@ -120,9 +121,10 @@ impl StateManager {
         let log_path = root.join(AUDIT_LOG_FILE);
         if log_path.exists()
             && let Ok(content) = fs::read_to_string(&log_path)
-                && let Ok(entries) = serde_json::from_str(&content) {
-                    return entries;
-                }
+            && let Ok(entries) = serde_json::from_str(&content)
+        {
+            return entries;
+        }
         Vec::new()
     }
 
@@ -153,7 +155,11 @@ impl StateManager {
             state.current_host = Some(host_id.to_string());
         }
         self.persist()?;
-        self.audit("set_current_host", OperationStatus::Success, Some(host_id.to_string()))
+        self.audit(
+            "set_current_host",
+            OperationStatus::Success,
+            Some(host_id.to_string()),
+        )
     }
 
     /// Get active bundle for a host
@@ -165,7 +171,9 @@ impl StateManager {
     pub fn set_active_bundle(&self, host_id: &str, bundle_id: &str) -> IronResult<()> {
         {
             let mut state = self.state.lock().unwrap();
-            state.active_bundles.insert(host_id.to_string(), bundle_id.to_string());
+            state
+                .active_bundles
+                .insert(host_id.to_string(), bundle_id.to_string());
         }
         self.persist()?;
         self.audit(
@@ -184,7 +192,9 @@ impl StateManager {
     pub fn set_active_profile(&self, host_id: &str, profile_id: &str) -> IronResult<()> {
         {
             let mut state = self.state.lock().unwrap();
-            state.active_profiles.insert(host_id.to_string(), profile_id.to_string());
+            state
+                .active_profiles
+                .insert(host_id.to_string(), profile_id.to_string());
         }
         self.persist()?;
         self.audit(
@@ -208,7 +218,11 @@ impl StateManager {
             }
         }
         self.persist()?;
-        self.audit("enable_module", OperationStatus::Success, Some(module_id.to_string()))
+        self.audit(
+            "enable_module",
+            OperationStatus::Success,
+            Some(module_id.to_string()),
+        )
     }
 
     /// Disable a module
@@ -218,7 +232,11 @@ impl StateManager {
             state.active_modules.retain(|m| m != module_id);
         }
         self.persist()?;
-        self.audit("disable_module", OperationStatus::Success, Some(module_id.to_string()))
+        self.audit(
+            "disable_module",
+            OperationStatus::Success,
+            Some(module_id.to_string()),
+        )
     }
 
     /// Is a module active?
@@ -258,7 +276,11 @@ impl StateManager {
             snapshot,
         };
 
-        self.audit("begin_transaction", OperationStatus::Success, Some(transaction.id.clone()))?;
+        self.audit(
+            "begin_transaction",
+            OperationStatus::Success,
+            Some(transaction.id.clone()),
+        )?;
 
         Ok(TransactionGuard {
             manager: self,
@@ -314,13 +336,19 @@ impl StateManager {
         })?;
 
         // Atomic rename
-        fs::rename(&temp_path, &state_path).map_err(|_| StateError::Corrupted { path: state_path })?;
+        fs::rename(&temp_path, &state_path)
+            .map_err(|_| StateError::Corrupted { path: state_path })?;
 
         Ok(())
     }
 
     /// Record an audit entry
-    pub fn audit(&self, operation: &str, status: OperationStatus, details: Option<String>) -> IronResult<()> {
+    pub fn audit(
+        &self,
+        operation: &str,
+        status: OperationStatus,
+        details: Option<String>,
+    ) -> IronResult<()> {
         let entry = AuditEntry {
             timestamp: Utc::now(),
             operation: operation.to_string(),
@@ -359,7 +387,12 @@ impl StateManager {
     }
 
     /// Record an operation in history
-    pub fn record_operation(&self, operation: &str, status: OperationStatus, details: Option<String>) -> IronResult<()> {
+    pub fn record_operation(
+        &self,
+        operation: &str,
+        status: OperationStatus,
+        details: Option<String>,
+    ) -> IronResult<()> {
         {
             let mut state = self.state.lock().unwrap();
             state.record_operation(operation, status.clone(), details.clone());
@@ -371,20 +404,17 @@ impl StateManager {
     /// Export state to JSON
     pub fn export(&self) -> IronResult<String> {
         let state = self.state();
-        serde_json::to_string_pretty(&*state).map_err(|_| {
-            crate::IronError::OperationFailed {
-                message: "Failed to export state".to_string(),
-            }
+        serde_json::to_string_pretty(&*state).map_err(|_| crate::IronError::OperationFailed {
+            message: "Failed to export state".to_string(),
         })
     }
 
     /// Import state from JSON
     pub fn import(&self, json: &str) -> IronResult<()> {
-        let new_state: IronState = serde_json::from_str(json).map_err(|e| {
-            crate::IronError::OperationFailed {
+        let new_state: IronState =
+            serde_json::from_str(json).map_err(|e| crate::IronError::OperationFailed {
                 message: format!("Failed to import state: {}", e),
-            }
-        })?;
+            })?;
 
         {
             let mut state = self.state.lock().unwrap();
@@ -424,7 +454,10 @@ mod tests {
     fn test_active_bundle() {
         let (manager, _temp) = create_test_manager();
         manager.set_active_bundle("laptop", "hyprland").unwrap();
-        assert_eq!(manager.active_bundle("laptop"), Some("hyprland".to_string()));
+        assert_eq!(
+            manager.active_bundle("laptop"),
+            Some("hyprland".to_string())
+        );
     }
 
     #[test]

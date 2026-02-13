@@ -213,9 +213,10 @@ impl Output {
     /// Print JSON data
     pub fn json<T: Serialize>(&self, data: &T) {
         if let OutputFormat::Json = self.format
-            && let Ok(json) = serde_json::to_string_pretty(data) {
-                println!("{}", json);
-            }
+            && let Ok(json) = serde_json::to_string_pretty(data)
+        {
+            println!("{}", json);
+        }
     }
 
     /// Print a table row

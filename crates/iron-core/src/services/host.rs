@@ -76,14 +76,12 @@ impl DefaultHostService {
 impl HostService for DefaultHostService {
     fn detect_hardware(&self) -> IronResult<HardwareSpec> {
         // Detect CPU
-        let cpu = self
-            .read_sys_file("/proc/cpuinfo")
-            .and_then(|info| {
-                info.lines()
-                    .find(|l| l.starts_with("model name"))
-                    .and_then(|l| l.split(':').nth(1))
-                    .map(|s| s.trim().to_string())
-            });
+        let cpu = self.read_sys_file("/proc/cpuinfo").and_then(|info| {
+            info.lines()
+                .find(|l| l.starts_with("model name"))
+                .and_then(|l| l.split(':').nth(1))
+                .map(|s| s.trim().to_string())
+        });
 
         // Detect GPU using lspci
         let gpu = self.run_command("lspci", &[]).and_then(|output| {
@@ -176,14 +174,16 @@ impl HostService for DefaultHostService {
                     }
                     if line.contains("Hz")
                         && let Some(hz) = line.split_whitespace().find(|s| s.ends_with("Hz"))
-                            && let Ok(rate) = hz.trim_end_matches("Hz").parse::<f32>() {
-                                current_refresh = Some(rate as u32);
-                            }
+                        && let Ok(rate) = hz.trim_end_matches("Hz").parse::<f32>()
+                    {
+                        current_refresh = Some(rate as u32);
+                    }
                 } else if line.starts_with("Scale:")
                     && let Some(scale) = line.split(':').nth(1)
-                        && let Ok(s) = scale.trim().parse() {
-                            current_scale = Some(s);
-                        }
+                    && let Ok(s) = scale.trim().parse()
+                {
+                    current_scale = Some(s);
+                }
             }
 
             // Save last monitor
@@ -199,29 +199,33 @@ impl HostService for DefaultHostService {
 
         // Fallback to xrandr for X11
         if monitors.is_empty()
-            && let Some(output) = self.run_command("xrandr", &["--query"]) {
-                for line in output.lines() {
-                    if line.contains(" connected") {
-                        let parts: Vec<&str> = line.split_whitespace().collect();
-                        if !parts.is_empty() {
-                            let output_name = parts[0].to_string();
-                            let resolution = parts
-                                .iter()
-                                .find(|s| s.contains('x') && s.chars().all(|c| c.is_numeric() || c == 'x' || c == '+'))
-                                .map(|s| s.split('+').next().unwrap_or(*s))
-                                .unwrap_or("unknown")
-                                .to_string();
+            && let Some(output) = self.run_command("xrandr", &["--query"])
+        {
+            for line in output.lines() {
+                if line.contains(" connected") {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if !parts.is_empty() {
+                        let output_name = parts[0].to_string();
+                        let resolution = parts
+                            .iter()
+                            .find(|s| {
+                                s.contains('x')
+                                    && s.chars().all(|c| c.is_numeric() || c == 'x' || c == '+')
+                            })
+                            .map(|s| s.split('+').next().unwrap_or(*s))
+                            .unwrap_or("unknown")
+                            .to_string();
 
-                            monitors.push(MonitorConfig {
-                                output: output_name,
-                                resolution,
-                                refresh_rate: Some(60),
-                                scale: Some(1.0),
-                            });
-                        }
+                        monitors.push(MonitorConfig {
+                            output: output_name,
+                            resolution,
+                            refresh_rate: Some(60),
+                            scale: Some(1.0),
+                        });
                     }
                 }
             }
+        }
 
         Ok(monitors)
     }
@@ -229,10 +233,8 @@ impl HostService for DefaultHostService {
     fn hostname(&self) -> IronResult<String> {
         self.read_sys_file("/etc/hostname")
             .or_else(|| self.run_command("hostname", &[]))
-            .ok_or_else(|| {
-                crate::IronError::OperationFailed {
-                    message: "Could not determine hostname".to_string(),
-                }
+            .ok_or_else(|| crate::IronError::OperationFailed {
+                message: "Could not determine hostname".to_string(),
             })
     }
 
@@ -242,9 +244,8 @@ impl HostService for DefaultHostService {
             return Err(StateError::HostNotFound { id: id.to_string() }.into());
         }
 
-        let content = fs::read_to_string(&path).map_err(|_| StateError::HostNotFound {
-            id: id.to_string(),
-        })?;
+        let content = fs::read_to_string(&path)
+            .map_err(|_| StateError::HostNotFound { id: id.to_string() })?;
 
         toml::from_str(&content).map_err(|e| {
             crate::ConfigError::ParseError {
@@ -258,11 +259,9 @@ impl HostService for DefaultHostService {
     fn save_host(&self, host: &Host) -> IronResult<()> {
         fs::create_dir_all(&self.hosts_dir).ok();
         let path = self.host_path(&host.id);
-        let content = toml::to_string_pretty(host).map_err(|e| {
-            crate::ConfigError::ParseError {
-                path: path.clone(),
-                message: e.to_string(),
-            }
+        let content = toml::to_string_pretty(host).map_err(|e| crate::ConfigError::ParseError {
+            path: path.clone(),
+            message: e.to_string(),
         })?;
 
         fs::write(&path, content).map_err(|_| crate::FsError::PermissionDenied { path })?;
@@ -274,12 +273,21 @@ impl HostService for DefaultHostService {
         let mut hosts = Vec::new();
 
         if self.hosts_dir.exists() {
-            for entry in fs::read_dir(&self.hosts_dir).into_iter().flatten().flatten() {
-                if entry.path().extension().map(|e| e == "toml").unwrap_or(false)
+            for entry in fs::read_dir(&self.hosts_dir)
+                .into_iter()
+                .flatten()
+                .flatten()
+            {
+                if entry
+                    .path()
+                    .extension()
+                    .map(|e| e == "toml")
+                    .unwrap_or(false)
                     && let Some(id) = entry.path().file_stem().and_then(|s| s.to_str())
-                        && let Ok(host) = self.load_host(id) {
-                            hosts.push(host);
-                        }
+                    && let Ok(host) = self.load_host(id)
+                {
+                    hosts.push(host);
+                }
             }
         }
 
@@ -288,7 +296,9 @@ impl HostService for DefaultHostService {
 
     fn find_by_hostname(&self, hostname: &str) -> IronResult<Option<Host>> {
         let hosts = self.list_hosts()?;
-        Ok(hosts.into_iter().find(|h| h.id == hostname || h.name == hostname))
+        Ok(hosts
+            .into_iter()
+            .find(|h| h.id == hostname || h.name == hostname))
     }
 
     fn create_from_current(&self, id: &str, name: &str) -> IronResult<Host> {

@@ -1,9 +1,9 @@
 //! State management - Track active configurations
 
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
-use std::path::PathBuf;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 /// Global Iron state
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -78,7 +78,12 @@ impl IronState {
     }
 
     /// Record an operation
-    pub fn record_operation(&mut self, operation: &str, status: OperationStatus, details: Option<String>) {
+    pub fn record_operation(
+        &mut self,
+        operation: &str,
+        status: OperationStatus,
+        details: Option<String>,
+    ) {
         self.last_operations.push(OperationRecord {
             operation: operation.to_string(),
             timestamp: Utc::now(),
@@ -88,7 +93,9 @@ impl IronState {
 
         // Keep only last 100 operations
         if self.last_operations.len() > 100 {
-            self.last_operations = self.last_operations.split_off(self.last_operations.len() - 100);
+            self.last_operations = self
+                .last_operations
+                .split_off(self.last_operations.len() - 100);
         }
     }
 }

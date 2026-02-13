@@ -22,12 +22,12 @@ Iron empowers users of all experience levels to:
 
 ### Safety First
 - **Breaking Change Detection** - Arch News, AUR flags, dependency conflicts
-- **Risk Scoring** - Know before you update (LOW/MEDIUM/HIGH)
+- **Risk Scoring** - Know before you update (LOW/MEDIUM/HIGH/CRITICAL)
 - **Auto-Snapshots** - Timeshift/Snapper integration before changes
 - **Instant Rollback** - One command to restore previous state
 
 ### User Experience
-- **Dashboard TUI** - System health at a glance
+- **Dashboard TUI** - System health at a glance with ratatui
 - **Guided Wizards** - First-time setup, profile creation, bundle switching
 - **Newcomer Friendly** - 5-minute learning curve
 - **Power User Ready** - Full CLI for scripting and automation
@@ -67,26 +67,112 @@ HOST (Hardware + System Config)
               └── MODULE (Individual Component)
 ```
 
+### Crate Structure
+
+```
+iron/
+├── crates/
+│   ├── iron-core/     # Domain models, services, state management (62 tests)
+│   ├── iron-cli/      # CLI application with 11 command groups (54 tests)
+│   ├── iron-tui/      # TUI dashboard with ratatui (22 tests)
+│   ├── iron-fs/       # File system operations (3 tests)
+│   ├── iron-pacman/   # Package management (12 tests)
+│   ├── iron-git/      # Git operations (9 tests)
+│   └── iron-systemd/  # Systemd service management (3 tests)
+├── bundles/           # Desktop environment bundles
+├── profiles/          # User profiles
+├── modules/           # Configuration modules
+└── hosts/             # Host-specific configs
+```
+
+## CLI Commands
+
+```
+iron                         # Launch TUI dashboard
+iron init                    # Initialize Iron configuration
+iron status                  # Show system status
+iron doctor                  # System health check
+iron clean                   # System cleanup
+iron update [--dry-run]      # Safe system update
+
+iron bundle list             # List available bundles
+iron bundle install <id>     # Install a bundle
+iron bundle switch <id>      # Switch active bundle
+
+iron profile list            # List available profiles
+iron profile select <id>     # Activate a profile
+iron profile create <name>   # Create new profile
+
+iron module list             # List all modules
+iron module enable <id>      # Enable a module
+iron module disable <id>     # Disable a module
+
+iron host list               # List configured hosts
+iron host current            # Show current host
+iron host catalog            # Catalog hardware
+
+iron sync status             # Show sync status
+iron sync push               # Push changes to remote
+iron sync pull               # Pull changes from remote
+
+iron secrets status          # Show secrets status
+iron secrets unlock          # Decrypt secrets
+iron secrets lock            # Encrypt secrets
+
+iron recover                 # Recovery workflow
+```
+
 ## Documentation
 
-- [Requirements Specification](docs/requirements/REQUIREMENTS-SPEC-v1.0.md)
-- [Architecture Design](docs/architecture/) (coming soon)
-- [User Guide](docs/guide/) (coming soon)
-- [Developer Guide](docs/dev/) (coming soon)
+- [Requirements Specification](docs/requirements/REQUIREMENTS-SPEC-v1.0.md) - Full project requirements
+- [Architecture Design](docs/architecture/ARCHITECTURE.md) - Technical architecture and design
+- [API Reference](docs/architecture/API.md) - Service and type documentation
+- [Configuration Reference](docs/architecture/CONFIG.md) - TOML configuration formats
+- [Implementation Plan](docs/workflow/IMPLEMENTATION-PLAN.md) - Development phases
+- [User Guide](docs/guide/USER-GUIDE.md) - Getting started and usage
+- [Contributing](docs/dev/CONTRIBUTING.md) - Developer guide
 
 ## Project Status
 
-**Phase**: Requirements Complete, Architecture Design Next
+**Current Version**: 0.1.0
+**Phase**: 6/7 Complete (CLI Integration Tests)
+**Test Coverage**: 165 tests passing
 
-See [REQUIREMENTS-SPEC-v1.0.md](docs/requirements/REQUIREMENTS-SPEC-v1.0.md) for full specification.
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 1 | Foundation (Domain Models, Errors, Validation) | ✅ Complete |
+| 2 | Infrastructure (FS, Pacman, Git, Systemd) | ✅ Complete |
+| 3 | Core Services (8 services implemented) | ✅ Complete |
+| 4 | CLI Implementation (11 command groups) | ✅ Complete |
+| 5 | TUI Implementation (ratatui + crossterm) | ✅ Complete |
+| 6 | CLI Integration Tests (54 tests) | ✅ Complete |
+| 7 | Polish & Release | Pending |
 
 ## Tech Stack
 
-- **Language**: Rust
-- **TUI**: Ratatui
-- **Config**: TOML
-- **Operations**: Bash scripts
-- **Sync**: Git
+- **Language**: Rust (Edition 2024)
+- **TUI**: Ratatui 0.29 + Crossterm 0.28
+- **CLI**: Clap 4.0 with derive macros
+- **Config**: TOML (toml 0.8)
+- **State**: JSON (serde_json)
+- **Git**: git2 0.19
+- **Async**: Tokio 1.0
+
+## Building
+
+```bash
+# Development build
+cargo build
+
+# Release build
+cargo build --release
+
+# Run tests
+cargo test --workspace
+
+# Run with coverage
+cargo tarpaulin --workspace
+```
 
 ## License
 

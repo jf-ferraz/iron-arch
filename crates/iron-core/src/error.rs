@@ -413,9 +413,11 @@ impl Recoverable for IronError {
             IronError::Git(GitError::SecretsLocked) => Some(RecoveryAction::RunCommand {
                 command: "iron secrets unlock".to_string(),
             }),
-            IronError::Snapshot(SnapshotError::NoSnapshotTool) => Some(RecoveryAction::RunCommand {
-                command: "sudo pacman -S timeshift".to_string(),
-            }),
+            IronError::Snapshot(SnapshotError::NoSnapshotTool) => {
+                Some(RecoveryAction::RunCommand {
+                    command: "sudo pacman -S timeshift".to_string(),
+                })
+            }
             _ => None,
         }
     }

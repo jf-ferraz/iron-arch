@@ -121,7 +121,9 @@ impl DefaultSyncService {
 
     /// Get current branch name
     fn current_branch(&self) -> Option<String> {
-        self.git(&["branch", "--show-current"]).ok().filter(|s| !s.is_empty())
+        self.git(&["branch", "--show-current"])
+            .ok()
+            .filter(|s| !s.is_empty())
     }
 
     /// Get upstream tracking branch
@@ -133,7 +135,8 @@ impl DefaultSyncService {
 
     /// Get ahead/behind counts
     fn ahead_behind(&self) -> (usize, usize) {
-        if let Ok(output) = self.git(&["rev-list", "--left-right", "--count", "@{upstream}...HEAD"]) {
+        if let Ok(output) = self.git(&["rev-list", "--left-right", "--count", "@{upstream}...HEAD"])
+        {
             let parts: Vec<&str> = output.split_whitespace().collect();
             if parts.len() == 2 {
                 let behind = parts[0].parse().unwrap_or(0);
@@ -246,10 +249,7 @@ impl SyncService for DefaultSyncService {
         // Check for conflicts first
         let conflicts = self.check_conflicts()?;
         if !conflicts.is_empty() {
-            return Err(GitError::MergeConflict {
-                files: conflicts,
-            }
-            .into());
+            return Err(GitError::MergeConflict { files: conflicts }.into());
         }
 
         // Pull first
@@ -278,8 +278,11 @@ impl SyncService for DefaultSyncService {
         // Commit
         self.git(&["commit", "-m", message])?;
 
-        self.state_manager
-            .record_operation("git_commit", OperationStatus::Success, Some(message.to_string()))?;
+        self.state_manager.record_operation(
+            "git_commit",
+            OperationStatus::Success,
+            Some(message.to_string()),
+        )?;
 
         Ok(())
     }
@@ -293,7 +296,9 @@ impl SyncService for DefaultSyncService {
         let _ = self.fetch();
 
         // Check for unmerged files
-        let unmerged = self.git(&["diff", "--name-only", "--diff-filter=U"]).unwrap_or_default();
+        let unmerged = self
+            .git(&["diff", "--name-only", "--diff-filter=U"])
+            .unwrap_or_default();
 
         Ok(unmerged.lines().map(|s| s.to_string()).collect())
     }

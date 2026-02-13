@@ -60,11 +60,10 @@ pub mod config {
 
     /// Serialize a type to TOML and write to file
     pub fn write_toml<T: serde::Serialize>(path: &Path, value: &T) -> IronResult<()> {
-        let content =
-            toml::to_string_pretty(value).map_err(|e| ConfigError::ParseError {
-                path: path.to_path_buf(),
-                message: format!("Serialization failed: {}", e),
-            })?;
+        let content = toml::to_string_pretty(value).map_err(|e| ConfigError::ParseError {
+            path: path.to_path_buf(),
+            message: format!("Serialization failed: {}", e),
+        })?;
 
         atomic_write(path, content.as_bytes())
     }
@@ -291,11 +290,13 @@ pub mod backup {
         if let Ok(entries) = fs::read_dir(parent) {
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().to_string();
-                if name.starts_with(&prefix) && name.ends_with(&suffix)
+                if name.starts_with(&prefix)
+                    && name.ends_with(&suffix)
                     && let Ok(metadata) = entry.metadata()
-                        && let Ok(modified) = metadata.modified() {
-                            backups.push((entry.path(), modified));
-                        }
+                    && let Ok(modified) = metadata.modified()
+                {
+                    backups.push((entry.path(), modified));
+                }
             }
         }
 
@@ -382,10 +383,8 @@ pub fn read_file(path: &Path) -> IronResult<Vec<u8>> {
 /// Read file as string
 pub fn read_file_string(path: &Path) -> IronResult<String> {
     let content = read_file(path)?;
-    String::from_utf8(content).map_err(|e| {
-        iron_core::IronError::OperationFailed {
-            message: format!("Invalid UTF-8 in {}: {}", path.display(), e),
-        }
+    String::from_utf8(content).map_err(|e| iron_core::IronError::OperationFailed {
+        message: format!("Invalid UTF-8 in {}: {}", path.display(), e),
     })
 }
 
@@ -439,9 +438,10 @@ pub mod path {
                 return format!("{}{}", home, &path[1..]);
             }
         } else if path == "~"
-            && let Ok(home) = env::var("HOME") {
-                return home;
-            }
+            && let Ok(home) = env::var("HOME")
+        {
+            return home;
+        }
         path.to_string()
     }
 
@@ -454,7 +454,12 @@ pub mod path {
             if let Some(end) = result[start..].find('}') {
                 let var_name = &result[start + 2..start + end];
                 let replacement = env::var(var_name).unwrap_or_default();
-                result = format!("{}{}{}", &result[..start], replacement, &result[start + end + 1..]);
+                result = format!(
+                    "{}{}{}",
+                    &result[..start],
+                    replacement,
+                    &result[start + end + 1..]
+                );
             } else {
                 break;
             }
@@ -565,7 +570,11 @@ pub mod traverse {
                 } else {
                     e.path()
                         .extension()
-                        .map(|ext| options.extensions.contains(&ext.to_string_lossy().to_string()))
+                        .map(|ext| {
+                            options
+                                .extensions
+                                .contains(&ext.to_string_lossy().to_string())
+                        })
                         .unwrap_or(false)
                 }
             })
@@ -645,7 +654,10 @@ mod tests {
         symlink::create(&source, &target).unwrap();
 
         assert!(target.is_symlink());
-        assert_eq!(symlink::status(&target, &source), symlink::SymlinkStatus::Valid);
+        assert_eq!(
+            symlink::status(&target, &source),
+            symlink::SymlinkStatus::Valid
+        );
     }
 
     #[test]
@@ -762,11 +774,8 @@ mod tests {
         fs::create_dir(temp_dir.path().join("sub")).unwrap();
         fs::write(temp_dir.path().join("sub/c.txt"), "").unwrap();
 
-        let all_files = traverse::find_files(
-            temp_dir.path(),
-            &traverse::TraverseOptions::default(),
-        )
-        .unwrap();
+        let all_files =
+            traverse::find_files(temp_dir.path(), &traverse::TraverseOptions::default()).unwrap();
         assert_eq!(all_files.len(), 3);
 
         let toml_files = traverse::find_files(

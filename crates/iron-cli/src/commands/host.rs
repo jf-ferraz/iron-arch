@@ -3,7 +3,7 @@
 //! Host management and hardware detection.
 
 use crate::cli::HostAction;
-use crate::context::{require_init, AppContext};
+use crate::context::{AppContext, require_init};
 use crate::output::StatusBadge;
 use anyhow::Result;
 use iron_core::services::host::HostService;
@@ -57,27 +57,34 @@ fn list(ctx: &AppContext) -> Result<()> {
     output.header("Configured Hosts");
 
     if output.is_json() {
-        let host_info: Vec<HostInfo> = hosts.iter().map(|h| HostInfo {
-            id: h.id.clone(),
-            name: h.name.clone(),
-            description: h.description.clone(),
-            hardware: HardwareInfo {
-                cpu: h.hardware.cpu.clone(),
-                gpu: h.hardware.gpu.clone(),
-                ram_mb: h.hardware.ram_mb,
-                chassis: h.hardware.chassis.as_ref().map(|c| format!("{:?}", c)),
-                monitors: h.hardware.monitors.len(),
-            },
-            bundles: h.installed_bundles.clone(),
-            active_bundle: h.active_bundle.clone(),
-        }).collect();
+        let host_info: Vec<HostInfo> = hosts
+            .iter()
+            .map(|h| HostInfo {
+                id: h.id.clone(),
+                name: h.name.clone(),
+                description: h.description.clone(),
+                hardware: HardwareInfo {
+                    cpu: h.hardware.cpu.clone(),
+                    gpu: h.hardware.gpu.clone(),
+                    ram_mb: h.hardware.ram_mb,
+                    chassis: h.hardware.chassis.as_ref().map(|c| format!("{:?}", c)),
+                    monitors: h.hardware.monitors.len(),
+                },
+                bundles: h.installed_bundles.clone(),
+                active_bundle: h.active_bundle.clone(),
+            })
+            .collect();
         output.json(&host_info);
         return Ok(());
     }
 
     for host in &hosts {
         let is_current = current.as_ref().map(|c| c == &host.id).unwrap_or(false);
-        let badge = if is_current { StatusBadge::Active } else { StatusBadge::Inactive };
+        let badge = if is_current {
+            StatusBadge::Active
+        } else {
+            StatusBadge::Inactive
+        };
         let current_marker = if is_current { " (current)" } else { "" };
 
         output.list_item_status(
@@ -105,7 +112,9 @@ fn current(ctx: &AppContext) -> Result<()> {
     let output = &ctx.output;
     let host_service = ctx.host_service();
 
-    let host_id = ctx.current_host().ok_or_else(|| anyhow::anyhow!("No current host"))?;
+    let host_id = ctx
+        .current_host()
+        .ok_or_else(|| anyhow::anyhow!("No current host"))?;
     let host = host_service.load_host(&host_id)?;
 
     if output.is_json() {

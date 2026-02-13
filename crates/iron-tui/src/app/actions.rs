@@ -84,8 +84,7 @@ impl App {
                             self.status_message = Some(format!("Enabled module: {}", id));
                         }
                         Err(e) => {
-                            self.error_message =
-                                Some(format!("Failed to enable module: {:?}", e));
+                            self.error_message = Some(format!("Failed to enable module: {:?}", e));
                         }
                     }
                 }
@@ -98,8 +97,7 @@ impl App {
                             self.status_message = Some(format!("Disabled module: {}", id));
                         }
                         Err(e) => {
-                            self.error_message =
-                                Some(format!("Failed to disable module: {:?}", e));
+                            self.error_message = Some(format!("Failed to disable module: {:?}", e));
                         }
                     }
                 }
@@ -283,8 +281,7 @@ impl App {
             if let Some(ref current) = self.active_bundle
                 && let Err(e) = bundle_service.deactivate(&current.id)
             {
-                self.error_message =
-                    Some(format!("Failed to deactivate current bundle: {:?}", e));
+                self.error_message = Some(format!("Failed to deactivate current bundle: {:?}", e));
                 return;
             }
 

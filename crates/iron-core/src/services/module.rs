@@ -155,12 +155,17 @@ impl ModuleService for DefaultModuleService {
             return Ok(modules);
         }
 
-        for entry in fs::read_dir(&self.modules_dir).into_iter().flatten().flatten() {
+        for entry in fs::read_dir(&self.modules_dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
             if entry.file_type().map(|t| t.is_dir()).unwrap_or(false)
                 && let Some(id) = entry.file_name().to_str()
-                    && let Ok(module) = self.load(id) {
-                        modules.push(module);
-                    }
+                && let Ok(module) = self.load(id)
+            {
+                modules.push(module);
+            }
         }
 
         Ok(modules)
@@ -172,9 +177,8 @@ impl ModuleService for DefaultModuleService {
             return Err(StateError::ModuleNotFound { id: id.to_string() }.into());
         }
 
-        let content = fs::read_to_string(&path).map_err(|_| StateError::ModuleNotFound {
-            id: id.to_string(),
-        })?;
+        let content = fs::read_to_string(&path)
+            .map_err(|_| StateError::ModuleNotFound { id: id.to_string() })?;
 
         toml::from_str(&content).map_err(|e| {
             crate::ConfigError::ParseError {
@@ -261,7 +265,8 @@ impl ModuleService for DefaultModuleService {
         }
 
         // Check dotfile target conflicts
-        let module_targets: Vec<String> = module.dotfiles.iter().map(|d| d.target.clone()).collect();
+        let module_targets: Vec<String> =
+            module.dotfiles.iter().map(|d| d.target.clone()).collect();
 
         for enabled_mod in &enabled {
             for df in &enabled_mod.dotfiles {
@@ -288,10 +293,11 @@ impl ModuleService for DefaultModuleService {
         for (source, target) in self.resolve_dotfiles(&module) {
             if target.is_symlink()
                 && let Ok(link_target) = fs::read_link(&target)
-                    && link_target == source {
-                        any_linked = true;
-                        continue;
-                    }
+                && link_target == source
+            {
+                any_linked = true;
+                continue;
+            }
             all_linked = false;
         }
 

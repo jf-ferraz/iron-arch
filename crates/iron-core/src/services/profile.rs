@@ -74,7 +74,11 @@ impl<M: ModuleService> DefaultProfileService<M> {
     }
 
     /// Build full inheritance chain
-    fn build_inheritance_chain(&self, id: &str, visited: &mut HashSet<String>) -> IronResult<Vec<String>> {
+    fn build_inheritance_chain(
+        &self,
+        id: &str,
+        visited: &mut HashSet<String>,
+    ) -> IronResult<Vec<String>> {
         if visited.contains(id) {
             // Circular inheritance detected, stop
             return Ok(vec![]);
@@ -101,12 +105,17 @@ impl<M: ModuleService> ProfileService for DefaultProfileService<M> {
             return Ok(profiles);
         }
 
-        for entry in fs::read_dir(&self.profiles_dir).into_iter().flatten().flatten() {
+        for entry in fs::read_dir(&self.profiles_dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
             if entry.file_type().map(|t| t.is_dir()).unwrap_or(false)
                 && let Some(id) = entry.file_name().to_str()
-                    && let Ok(profile) = self.load(id) {
-                        profiles.push(profile);
-                    }
+                && let Ok(profile) = self.load(id)
+            {
+                profiles.push(profile);
+            }
         }
 
         Ok(profiles)
@@ -118,9 +127,8 @@ impl<M: ModuleService> ProfileService for DefaultProfileService<M> {
             return Err(StateError::ProfileNotFound { id: id.to_string() }.into());
         }
 
-        let content = fs::read_to_string(&path).map_err(|_| StateError::ProfileNotFound {
-            id: id.to_string(),
-        })?;
+        let content = fs::read_to_string(&path)
+            .map_err(|_| StateError::ProfileNotFound { id: id.to_string() })?;
 
         toml::from_str(&content).map_err(|e| {
             crate::ConfigError::ParseError {
@@ -150,9 +158,10 @@ impl<M: ModuleService> ProfileService for DefaultProfileService<M> {
         for module_id in &modules {
             // Skip if already installed
             if let Ok(state) = self.module_service.status(module_id)
-                && state == ModuleState::Installed {
-                    continue;
-                }
+                && state == ModuleState::Installed
+            {
+                continue;
+            }
             self.module_service.enable(module_id)?;
         }
 
@@ -171,9 +180,10 @@ impl<M: ModuleService> ProfileService for DefaultProfileService<M> {
         // Disable each module (in reverse order)
         for module_id in modules.iter().rev() {
             if let Ok(state) = self.module_service.status(module_id)
-                && state == ModuleState::Installed {
-                    self.module_service.disable(module_id)?;
-                }
+                && state == ModuleState::Installed
+            {
+                self.module_service.disable(module_id)?;
+            }
         }
 
         // Note: We don't clear active profile here as another profile might be applied
@@ -191,9 +201,10 @@ impl<M: ModuleService> ProfileService for DefaultProfileService<M> {
         let mut installed_count = 0;
         for module_id in &modules {
             if let Ok(state) = self.module_service.status(module_id)
-                && state == ModuleState::Installed {
-                    installed_count += 1;
-                }
+                && state == ModuleState::Installed
+            {
+                installed_count += 1;
+            }
         }
 
         if installed_count == modules.len() {
@@ -235,7 +246,12 @@ impl<M: ModuleService> ProfileService for DefaultProfileService<M> {
         let all_profiles = self.discover()?;
         Ok(all_profiles
             .into_iter()
-            .filter(|p| p.for_bundle.as_ref().map(|b| b == bundle_id).unwrap_or(true))
+            .filter(|p| {
+                p.for_bundle
+                    .as_ref()
+                    .map(|b| b == bundle_id)
+                    .unwrap_or(true)
+            })
             .collect())
     }
 }

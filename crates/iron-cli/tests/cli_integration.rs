@@ -304,7 +304,9 @@ mod status {
             .arg("status")
             .assert()
             .failure()
-            .stderr(predicate::str::contains("not initialized").or(predicate::str::contains("init")));
+            .stderr(
+                predicate::str::contains("not initialized").or(predicate::str::contains("init")),
+            );
     }
 
     #[test]
@@ -346,7 +348,9 @@ mod status {
             .arg("status")
             .assert()
             .success()
-            .stdout(predicate::str::contains("No bundle active").or(predicate::str::contains("OFF")));
+            .stdout(
+                predicate::str::contains("No bundle active").or(predicate::str::contains("OFF")),
+            );
     }
 }
 
@@ -367,7 +371,9 @@ mod doctor {
             .arg("doctor")
             .assert()
             .failure()
-            .stderr(predicate::str::contains("not initialized").or(predicate::str::contains("init")));
+            .stderr(
+                predicate::str::contains("not initialized").or(predicate::str::contains("init")),
+            );
     }
 
     #[test]
@@ -443,7 +449,9 @@ mod bundle {
             .arg("list")
             .assert()
             .failure()
-            .stderr(predicate::str::contains("not initialized").or(predicate::str::contains("init")));
+            .stderr(
+                predicate::str::contains("not initialized").or(predicate::str::contains("init")),
+            );
     }
 
     #[test]
@@ -546,7 +554,9 @@ mod profile {
             .arg("list")
             .assert()
             .failure()
-            .stderr(predicate::str::contains("not initialized").or(predicate::str::contains("init")));
+            .stderr(
+                predicate::str::contains("not initialized").or(predicate::str::contains("init")),
+            );
     }
 
     #[test]
@@ -616,7 +626,9 @@ mod module {
             .arg("list")
             .assert()
             .failure()
-            .stderr(predicate::str::contains("not initialized").or(predicate::str::contains("init")));
+            .stderr(
+                predicate::str::contains("not initialized").or(predicate::str::contains("init")),
+            );
     }
 
     #[test]
@@ -757,7 +769,9 @@ mod sync {
             .arg("status")
             .assert()
             .failure()
-            .stderr(predicate::str::contains("not initialized").or(predicate::str::contains("init")));
+            .stderr(
+                predicate::str::contains("not initialized").or(predicate::str::contains("init")),
+            );
     }
 
     #[test]
@@ -794,7 +808,9 @@ mod secrets {
             .arg("status")
             .assert()
             .failure()
-            .stderr(predicate::str::contains("not initialized").or(predicate::str::contains("init")));
+            .stderr(
+                predicate::str::contains("not initialized").or(predicate::str::contains("init")),
+            );
     }
 
     #[test]
@@ -829,7 +845,9 @@ mod update {
             .arg("update")
             .assert()
             .failure()
-            .stderr(predicate::str::contains("not initialized").or(predicate::str::contains("init")));
+            .stderr(
+                predicate::str::contains("not initialized").or(predicate::str::contains("init")),
+            );
     }
 
     #[test]
@@ -864,7 +882,9 @@ mod clean {
             .arg("clean")
             .assert()
             .failure()
-            .stderr(predicate::str::contains("not initialized").or(predicate::str::contains("init")));
+            .stderr(
+                predicate::str::contains("not initialized").or(predicate::str::contains("init")),
+            );
     }
 
     #[test]
@@ -913,7 +933,9 @@ mod recover {
             .arg("--export")
             .assert()
             .failure()
-            .stderr(predicate::str::contains("not initialized").or(predicate::str::contains("init")));
+            .stderr(
+                predicate::str::contains("not initialized").or(predicate::str::contains("init")),
+            );
     }
 
     #[test]

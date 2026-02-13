@@ -3,7 +3,7 @@
 //! Profile management.
 
 use crate::cli::ProfileAction;
-use crate::context::{require_init, AppContext};
+use crate::context::{AppContext, require_init};
 use crate::output::StatusBadge;
 use anyhow::Result;
 use iron_core::profile::ProfileState;
@@ -50,7 +50,8 @@ fn list(ctx: &AppContext, bundle_filter: Option<String>) -> Result<()> {
 
     // Filter by bundle if specified
     let profiles: Vec<_> = if let Some(bundle) = &bundle_filter {
-        profiles.into_iter()
+        profiles
+            .into_iter()
             .filter(|p| p.for_bundle.as_ref().map(|b| b == bundle).unwrap_or(true))
             .collect()
     } else {
@@ -60,17 +61,22 @@ fn list(ctx: &AppContext, bundle_filter: Option<String>) -> Result<()> {
     output.header("Available Profiles");
 
     if output.is_json() {
-        let profile_info: Vec<ProfileInfo> = profiles.iter().map(|p| {
-            let state = profile_service.state(&p.id).unwrap_or(ProfileState::Inactive);
-            ProfileInfo {
-                id: p.id.clone(),
-                name: p.name.clone(),
-                description: p.description.clone(),
-                extends: p.extends.clone(),
-                modules: p.modules.clone(),
-                state: format!("{:?}", state),
-            }
-        }).collect();
+        let profile_info: Vec<ProfileInfo> = profiles
+            .iter()
+            .map(|p| {
+                let state = profile_service
+                    .state(&p.id)
+                    .unwrap_or(ProfileState::Inactive);
+                ProfileInfo {
+                    id: p.id.clone(),
+                    name: p.name.clone(),
+                    description: p.description.clone(),
+                    extends: p.extends.clone(),
+                    modules: p.modules.clone(),
+                    state: format!("{:?}", state),
+                }
+            })
+            .collect();
         output.json(&profile_info);
         return Ok(());
     }
@@ -79,7 +85,9 @@ fn list(ctx: &AppContext, bundle_filter: Option<String>) -> Result<()> {
     let active = profile_service.active().ok().flatten();
 
     for profile in &profiles {
-        let state = profile_service.state(&profile.id).unwrap_or(ProfileState::Inactive);
+        let state = profile_service
+            .state(&profile.id)
+            .unwrap_or(ProfileState::Inactive);
         let is_active = active.as_ref().map(|a| a.id == profile.id).unwrap_or(false);
 
         let badge = match state {
@@ -89,10 +97,17 @@ fn list(ctx: &AppContext, bundle_filter: Option<String>) -> Result<()> {
         };
 
         let active_marker = if is_active { " (active)" } else { "" };
-        let extends_info = profile.extends.as_ref().map(|e| format!(" [extends: {}]", e)).unwrap_or_default();
+        let extends_info = profile
+            .extends
+            .as_ref()
+            .map(|e| format!(" [extends: {}]", e))
+            .unwrap_or_default();
 
         output.list_item_status(
-            &format!("{} - {}{}{}", profile.id, profile.name, extends_info, active_marker),
+            &format!(
+                "{} - {}{}{}",
+                profile.id, profile.name, extends_info, active_marker
+            ),
             badge,
         );
 
@@ -259,11 +274,13 @@ fn edit(ctx: &AppContext, id: &str) -> Result<()> {
 
     let editor = std::env::var("EDITOR").unwrap_or_else(|_| "nano".to_string());
 
-    output.info(&format!("Opening {} in {}...", profile_path.display(), editor));
+    output.info(&format!(
+        "Opening {} in {}...",
+        profile_path.display(),
+        editor
+    ));
 
-    let status = Command::new(&editor)
-        .arg(&profile_path)
-        .status()?;
+    let status = Command::new(&editor).arg(&profile_path).status()?;
 
     if status.success() {
         output.success("Profile saved");

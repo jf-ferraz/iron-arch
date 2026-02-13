@@ -3,7 +3,7 @@
 //! Desktop environment/bundle management.
 
 use crate::cli::BundleAction;
-use crate::context::{require_init, AppContext};
+use crate::context::{AppContext, require_init};
 use crate::output::StatusBadge;
 use anyhow::Result;
 use iron_core::bundle::BundleState;
@@ -50,17 +50,22 @@ fn list(ctx: &AppContext, all: bool) -> Result<()> {
     output.header("Available Bundles");
 
     if output.is_json() {
-        let bundle_info: Vec<BundleInfo> = bundles.iter().map(|b| {
-            let state = bundle_service.state(&b.id).unwrap_or(BundleState::NotInstalled);
-            BundleInfo {
-                id: b.id.clone(),
-                name: b.name.clone(),
-                description: b.description.clone(),
-                bundle_type: format!("{:?}", b.bundle_type),
-                state: format!("{:?}", state),
-                packages: b.packages.len() + b.aur_packages.len(),
-            }
-        }).collect();
+        let bundle_info: Vec<BundleInfo> = bundles
+            .iter()
+            .map(|b| {
+                let state = bundle_service
+                    .state(&b.id)
+                    .unwrap_or(BundleState::NotInstalled);
+                BundleInfo {
+                    id: b.id.clone(),
+                    name: b.name.clone(),
+                    description: b.description.clone(),
+                    bundle_type: format!("{:?}", b.bundle_type),
+                    state: format!("{:?}", state),
+                    packages: b.packages.len() + b.aur_packages.len(),
+                }
+            })
+            .collect();
         output.json(&bundle_info);
         return Ok(());
     }
@@ -69,7 +74,9 @@ fn list(ctx: &AppContext, all: bool) -> Result<()> {
     let active = bundle_service.active().ok().flatten();
 
     for bundle in &bundles {
-        let state = bundle_service.state(&bundle.id).unwrap_or(BundleState::NotInstalled);
+        let state = bundle_service
+            .state(&bundle.id)
+            .unwrap_or(BundleState::NotInstalled);
         let is_active = active.as_ref().map(|a| a.id == bundle.id).unwrap_or(false);
 
         let badge = match state {
@@ -89,7 +96,10 @@ fn list(ctx: &AppContext, all: bool) -> Result<()> {
                 output.verbose(&format!("  {}", desc));
             }
             output.verbose(&format!("  Type: {:?}", bundle.bundle_type));
-            output.verbose(&format!("  Packages: {}", bundle.packages.len() + bundle.aur_packages.len()));
+            output.verbose(&format!(
+                "  Packages: {}",
+                bundle.packages.len() + bundle.aur_packages.len()
+            ));
         }
     }
 

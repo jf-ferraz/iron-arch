@@ -2,7 +2,7 @@
 //!
 //! System cleanup operations.
 
-use crate::context::{require_init, AppContext};
+use crate::context::{AppContext, require_init};
 use crate::output::StatusBadge;
 use anyhow::Result;
 use iron_core::services::module::ModuleService;
@@ -11,7 +11,13 @@ use std::path::Path;
 use std::process::Command;
 
 /// Execute clean command
-pub fn execute(ctx: &AppContext, orphans: bool, cache: bool, symlinks: bool, all: bool) -> Result<()> {
+pub fn execute(
+    ctx: &AppContext,
+    orphans: bool,
+    cache: bool,
+    symlinks: bool,
+    all: bool,
+) -> Result<()> {
     require_init(ctx)?;
 
     let output = &ctx.output;
@@ -58,9 +64,7 @@ fn clean_orphans(ctx: &AppContext) -> Result<()> {
     let output = &ctx.output;
 
     // Check for orphans
-    let orphan_check = Command::new("pacman")
-        .args(["-Qtdq"])
-        .output();
+    let orphan_check = Command::new("pacman").args(["-Qtdq"]).output();
 
     match orphan_check {
         Ok(result) => {
@@ -118,9 +122,10 @@ fn clean_symlinks(ctx: &AppContext) -> Result<()> {
             let target = expand_home(Path::new(&dotfile.target));
             if target.is_symlink()
                 && let Ok(link_target) = std::fs::read_link(&target)
-                    && !link_target.exists() {
-                        broken.push(target.clone());
-                    }
+                && !link_target.exists()
+            {
+                broken.push(target.clone());
+            }
         }
     }
 

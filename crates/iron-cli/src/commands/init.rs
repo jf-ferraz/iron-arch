@@ -9,7 +9,12 @@ use iron_core::services::host::HostService;
 use std::fs;
 
 /// Execute init command
-pub fn execute(ctx: &AppContext, id: Option<String>, name: Option<String>, force: bool) -> Result<()> {
+pub fn execute(
+    ctx: &AppContext,
+    id: Option<String>,
+    name: Option<String>,
+    force: bool,
+) -> Result<()> {
     let output = &ctx.output;
 
     // Check if already initialized
@@ -23,7 +28,9 @@ pub fn execute(ctx: &AppContext, id: Option<String>, name: Option<String>, force
 
     // Determine host ID
     let host_service = ctx.host_service();
-    let hostname = host_service.hostname().unwrap_or_else(|_| "unknown".to_string());
+    let hostname = host_service
+        .hostname()
+        .unwrap_or_else(|_| "unknown".to_string());
     let host_id = id.unwrap_or_else(|| hostname.clone());
     let host_name = name.unwrap_or_else(|| format!("{}'s Iron Host", hostname));
 
@@ -66,7 +73,10 @@ pub fn execute(ctx: &AppContext, id: Option<String>, name: Option<String>, force
     // Create host configuration
     output.subheader("Creating host configuration");
     let host = host_service.create_from_current(&host_id, &host_name)?;
-    output.list_item_status(&format!("Host config: hosts/{}.toml", host.id), StatusBadge::Ok);
+    output.list_item_status(
+        &format!("Host config: hosts/{}.toml", host.id),
+        StatusBadge::Ok,
+    );
 
     // Set current host
     ctx.state.set_current_host(&host_id)?;

@@ -15,8 +15,8 @@ use std::process::Command;
 
 // Re-export types from iron-core for backward compatibility
 pub use iron_core::{
-    assess_risk, ArchNewsItem, InstalledPackage, PackageManager, PackageUpdate, RiskLevel,
-    UpdatePreview,
+    ArchNewsItem, InstalledPackage, PackageManager, PackageUpdate, RiskLevel, UpdatePreview,
+    assess_risk,
 };
 
 /// AUR helper type
@@ -61,7 +61,10 @@ impl DefaultPackageManager {
 
     /// Create a package manager with specific options
     pub fn with_options(aur_helper: AurHelper, dry_run: bool) -> Self {
-        Self { aur_helper, dry_run }
+        Self {
+            aur_helper,
+            dry_run,
+        }
     }
 
     /// Get the detected AUR helper
@@ -71,12 +74,13 @@ impl DefaultPackageManager {
 
     /// Run pacman command
     fn run_pacman(&self, args: &[&str]) -> IronResult<String> {
-        let output = Command::new("pacman")
-            .args(args)
-            .output()
-            .map_err(|e| PackageError::PacmanError {
-                message: format!("Failed to run pacman: {}", e),
-            })?;
+        let output =
+            Command::new("pacman")
+                .args(args)
+                .output()
+                .map_err(|e| PackageError::PacmanError {
+                    message: format!("Failed to run pacman: {}", e),
+                })?;
 
         if output.status.success() {
             Ok(String::from_utf8_lossy(&output.stdout).to_string())
@@ -92,12 +96,13 @@ impl DefaultPackageManager {
     /// Run AUR helper command
     fn run_aur_helper(&self, args: &[&str]) -> IronResult<String> {
         let cmd = self.aur_helper.command();
-        let output = Command::new(cmd)
-            .args(args)
-            .output()
-            .map_err(|e| PackageError::PacmanError {
-                message: format!("Failed to run {}: {}", cmd, e),
-            })?;
+        let output =
+            Command::new(cmd)
+                .args(args)
+                .output()
+                .map_err(|e| PackageError::PacmanError {
+                    message: format!("Failed to run {}: {}", cmd, e),
+                })?;
 
         if output.status.success() {
             Ok(String::from_utf8_lossy(&output.stdout).to_string())
@@ -123,7 +128,11 @@ impl DefaultPackageManager {
                         new_version: parts[3].to_string(),
                         is_aur,
                         is_flagged: false,
-                        repository: if is_aur { "aur".to_string() } else { "".to_string() },
+                        repository: if is_aur {
+                            "aur".to_string()
+                        } else {
+                            "".to_string()
+                        },
                     })
                 } else {
                     None
@@ -145,10 +154,11 @@ impl PackageManager for DefaultPackageManager {
 
         // Check official repository updates using checkupdates
         if let Ok(output) = Command::new("checkupdates").output()
-            && output.status.success() {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                updates.extend(self.parse_updates_output(&stdout, false));
-            }
+            && output.status.success()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            updates.extend(self.parse_updates_output(&stdout, false));
+        }
 
         // Check AUR updates if helper available
         if self.aur_helper != AurHelper::None {
@@ -159,9 +169,10 @@ impl PackageManager for DefaultPackageManager {
             };
 
             if !aur_args.is_empty()
-                && let Ok(output) = self.run_aur_helper(&aur_args) {
-                    updates.extend(self.parse_updates_output(&output, true));
-                }
+                && let Ok(output) = self.run_aur_helper(&aur_args)
+            {
+                updates.extend(self.parse_updates_output(&output, true));
+            }
         }
 
         Ok(updates)
@@ -181,12 +192,13 @@ impl PackageManager for DefaultPackageManager {
         let pkg_refs: Vec<&str> = packages.iter().map(|s| s.as_str()).collect();
         args.extend(pkg_refs);
 
-        let status = Command::new(cmd)
-            .args(&args)
-            .status()
-            .map_err(|e| PackageError::InstallFailed {
-                message: e.to_string(),
-            })?;
+        let status =
+            Command::new(cmd)
+                .args(&args)
+                .status()
+                .map_err(|e| PackageError::InstallFailed {
+                    message: e.to_string(),
+                })?;
 
         if status.success() {
             Ok(())
@@ -216,12 +228,11 @@ impl PackageManager for DefaultPackageManager {
         let pkg_refs: Vec<&str> = packages.iter().map(|s| s.as_str()).collect();
         args.extend(pkg_refs);
 
-        let status = Command::new("pacman")
-            .args(&args)
-            .status()
-            .map_err(|e| PackageError::RemoveFailed {
+        let status = Command::new("pacman").args(&args).status().map_err(|e| {
+            PackageError::RemoveFailed {
                 message: e.to_string(),
-            })?;
+            }
+        })?;
 
         if status.success() {
             Ok(())
@@ -322,15 +333,16 @@ impl PackageManager for DefaultPackageManager {
                     "Installed Size" => {
                         // Parse size like "123.45 MiB"
                         if let Some(size_str) = value.split_whitespace().next()
-                            && let Ok(size) = size_str.parse::<f64>() {
-                                let unit = value.split_whitespace().nth(1).unwrap_or("B");
-                                pkg.size = match unit {
-                                    "KiB" => (size * 1024.0) as u64,
-                                    "MiB" => (size * 1024.0 * 1024.0) as u64,
-                                    "GiB" => (size * 1024.0 * 1024.0 * 1024.0) as u64,
-                                    _ => size as u64,
-                                };
-                            }
+                            && let Ok(size) = size_str.parse::<f64>()
+                        {
+                            let unit = value.split_whitespace().nth(1).unwrap_or("B");
+                            pkg.size = match unit {
+                                "KiB" => (size * 1024.0) as u64,
+                                "MiB" => (size * 1024.0 * 1024.0) as u64,
+                                "GiB" => (size * 1024.0 * 1024.0 * 1024.0) as u64,
+                                _ => size as u64,
+                            };
+                        }
                     }
                     "Install Reason" => {
                         pkg.explicit = value.contains("Explicitly installed");
@@ -344,12 +356,11 @@ impl PackageManager for DefaultPackageManager {
     }
 
     fn sync_database(&self) -> IronResult<()> {
-        let status = Command::new("pacman")
-            .args(["-Sy"])
-            .status()
-            .map_err(|e| PackageError::PacmanError {
+        let status = Command::new("pacman").args(["-Sy"]).status().map_err(|e| {
+            PackageError::PacmanError {
                 message: e.to_string(),
-            })?;
+            }
+        })?;
 
         if status.success() {
             Ok(())
@@ -570,7 +581,10 @@ mod tests {
     #[test]
     fn test_risk_level_description() {
         assert_eq!(RiskLevel::Low.description(), "Safe to update");
-        assert_eq!(RiskLevel::Critical.description(), "Create snapshot before updating");
+        assert_eq!(
+            RiskLevel::Critical.description(),
+            "Create snapshot before updating"
+        );
     }
 
     #[test]

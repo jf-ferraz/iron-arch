@@ -114,10 +114,18 @@ impl<S: SnapshotManager> DefaultUpdateService<S> {
     }
 
     /// Assess risk level for a single package
-    fn assess_package_risk(&self, name: &str, _current: &str, _new: &str) -> (UpdateRisk, Option<String>) {
+    fn assess_package_risk(
+        &self,
+        name: &str,
+        _current: &str,
+        _new: &str,
+    ) -> (UpdateRisk, Option<String>) {
         // Critical packages
         if name.starts_with("linux") || name == "linux" || name.starts_with("linux-") {
-            return (UpdateRisk::Critical, Some("Kernel update requires reboot".to_string()));
+            return (
+                UpdateRisk::Critical,
+                Some("Kernel update requires reboot".to_string()),
+            );
         }
 
         if name.starts_with("nvidia") || name.contains("nvidia-") {
@@ -128,7 +136,10 @@ impl<S: SnapshotManager> DefaultUpdateService<S> {
         }
 
         if name == "systemd" || name.starts_with("systemd-") {
-            return (UpdateRisk::High, Some("Systemd update is system-critical".to_string()));
+            return (
+                UpdateRisk::High,
+                Some("Systemd update is system-critical".to_string()),
+            );
         }
 
         if name == "glibc" || name == "gcc-libs" {
@@ -137,7 +148,10 @@ impl<S: SnapshotManager> DefaultUpdateService<S> {
 
         // Medium risk packages
         if name.starts_with("mesa") || name.starts_with("vulkan") {
-            return (UpdateRisk::Medium, Some("Graphics driver update".to_string()));
+            return (
+                UpdateRisk::Medium,
+                Some("Graphics driver update".to_string()),
+            );
         }
 
         if name.starts_with("pipewire") || name.starts_with("wireplumber") {
@@ -149,17 +163,22 @@ impl<S: SnapshotManager> DefaultUpdateService<S> {
 
     /// Calculate overall risk from package list
     fn calculate_overall_risk(&self, packages: &[PackageUpdate]) -> UpdateRisk {
-        packages.iter().map(|p| p.risk).max().unwrap_or(UpdateRisk::Low)
+        packages
+            .iter()
+            .map(|p| p.risk)
+            .max()
+            .unwrap_or(UpdateRisk::Low)
     }
 
     /// Run pacman command
     fn run_pacman(&self, args: &[&str]) -> IronResult<String> {
-        let output = Command::new("pacman")
-            .args(args)
-            .output()
-            .map_err(|_| PackageError::PacmanFailed {
-                message: "Failed to execute pacman".to_string(),
-            })?;
+        let output =
+            Command::new("pacman")
+                .args(args)
+                .output()
+                .map_err(|_| PackageError::PacmanFailed {
+                    message: "Failed to execute pacman".to_string(),
+                })?;
 
         if output.status.success() {
             Ok(String::from_utf8_lossy(&output.stdout).to_string())
@@ -224,13 +243,19 @@ impl<S: SnapshotManager> UpdateService for DefaultUpdateService<S> {
         match result {
             Ok(status) if status.success() => {
                 self.state_manager.update_maintenance("update")?;
-                self.state_manager
-                    .record_operation("system_update", OperationStatus::Success, None)?;
+                self.state_manager.record_operation(
+                    "system_update",
+                    OperationStatus::Success,
+                    None,
+                )?;
                 Ok(())
             }
             Ok(_) => {
-                self.state_manager
-                    .record_operation("system_update", OperationStatus::Failed, Some("Update failed".to_string()))?;
+                self.state_manager.record_operation(
+                    "system_update",
+                    OperationStatus::Failed,
+                    Some("Update failed".to_string()),
+                )?;
                 Err(PackageError::PacmanFailed {
                     message: "System update failed".to_string(),
                 }
@@ -258,10 +283,7 @@ impl<S: SnapshotManager> UpdateService for DefaultUpdateService<S> {
         let pkg_refs: Vec<&str> = packages.iter().map(|s| s.as_str()).collect();
         args.extend(pkg_refs);
 
-        let result = Command::new("sudo")
-            .arg("pacman")
-            .args(&args)
-            .status();
+        let result = Command::new("sudo").arg("pacman").args(&args).status();
 
         match result {
             Ok(status) if status.success() => {
@@ -297,15 +319,15 @@ impl<S: SnapshotManager> UpdateService for DefaultUpdateService<S> {
             Ok(output) if output.status.success() => {
                 // Parse output to get freed space (rough estimate)
                 let stdout = String::from_utf8_lossy(&output.stdout);
-                let freed = stdout
-                    .lines()
-                    .filter(|l| l.contains("removed"))
-                    .count() as u64
-                    * 50_000_000; // Rough estimate: 50MB per package
+                let freed =
+                    stdout.lines().filter(|l| l.contains("removed")).count() as u64 * 50_000_000; // Rough estimate: 50MB per package
 
                 self.state_manager.update_maintenance("clean")?;
-                self.state_manager
-                    .record_operation("cache_clean", OperationStatus::Success, Some(format!("kept {}", keep_versions)))?;
+                self.state_manager.record_operation(
+                    "cache_clean",
+                    OperationStatus::Success,
+                    Some(format!("kept {}", keep_versions)),
+                )?;
 
                 Ok(freed)
             }

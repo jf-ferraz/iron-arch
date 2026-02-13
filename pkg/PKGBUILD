@@ -1,0 +1,68 @@
+# Maintainer: laraj <laraj@example.com>
+pkgname=iron
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Declarative Arch Linux configuration management platform"
+arch=('x86_64')
+url="https://github.com/laraj/iron"
+license=('MIT')
+depends=('git' 'pacman')
+makedepends=('cargo' 'git')
+optdepends=(
+    'git-crypt: encrypted secrets management'
+    'timeshift: system snapshot support'
+    'snapper: alternative snapshot support'
+    'paru: AUR package management'
+    'yay: AUR package management'
+)
+provides=('iron')
+conflicts=('iron-git')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+    cd "$pkgname-$pkgver"
+    export RUSTUP_TOOLCHAIN=stable
+    cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+    cd "$pkgname-$pkgver"
+    export RUSTUP_TOOLCHAIN=stable
+    export CARGO_TARGET_DIR=target
+    cargo build --frozen --release --all-features
+}
+
+check() {
+    cd "$pkgname-$pkgver"
+    export RUSTUP_TOOLCHAIN=stable
+    cargo test --frozen --all-features
+}
+
+package() {
+    cd "$pkgname-$pkgver"
+
+    # Install binary
+    install -Dm755 "target/release/iron" "$pkgdir/usr/bin/iron"
+
+    # Install license
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+
+    # Install documentation
+    install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+    install -Dm644 CHANGELOG.md "$pkgdir/usr/share/doc/$pkgname/CHANGELOG.md"
+
+    # Install shell completions (if generated)
+    if [[ -f "target/completions/iron.bash" ]]; then
+        install -Dm644 "target/completions/iron.bash" \
+            "$pkgdir/usr/share/bash-completion/completions/iron"
+    fi
+    if [[ -f "target/completions/iron.zsh" ]]; then
+        install -Dm644 "target/completions/iron.zsh" \
+            "$pkgdir/usr/share/zsh/site-functions/_iron"
+    fi
+    if [[ -f "target/completions/iron.fish" ]]; then
+        install -Dm644 "target/completions/iron.fish" \
+            "$pkgdir/usr/share/fish/vendor_completions.d/iron.fish"
+    fi
+}

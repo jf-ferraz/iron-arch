@@ -7,8 +7,8 @@ mod handlers;
 
 use crate::wizard::{TextInput, WizardState};
 use iron_core::{
-    services::StateManager, Bundle, Module, NoopPackageManager, PackageManager, PackageUpdate,
-    Profile, RiskLevel,
+    Bundle, Module, NoopPackageManager, PackageManager, PackageUpdate, Profile, RiskLevel,
+    services::StateManager,
 };
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -119,10 +119,7 @@ pub enum HealthStatus {
 
 impl Default for App {
     fn default() -> Self {
-        Self::new(
-            std::path::PathBuf::from("."),
-            Arc::new(NoopPackageManager),
-        )
+        Self::new(std::path::PathBuf::from("."), Arc::new(NoopPackageManager))
     }
 }
 

@@ -123,12 +123,11 @@ impl TimeshiftManager {
 
     /// Run timeshift command
     fn run_timeshift(&self, args: &[&str]) -> IronResult<String> {
-        let output = Command::new("timeshift")
-            .args(args)
-            .output()
-            .map_err(|e| SnapshotError::CreateFailed {
+        let output = Command::new("timeshift").args(args).output().map_err(|e| {
+            SnapshotError::CreateFailed {
                 message: format!("Failed to run timeshift: {}", e),
-            })?;
+            }
+        })?;
 
         if output.status.success() {
             Ok(String::from_utf8_lossy(&output.stdout).to_string())

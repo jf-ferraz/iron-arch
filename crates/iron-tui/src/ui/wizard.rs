@@ -153,9 +153,7 @@ fn render_wizard_host_setup(frame: &mut Frame, area: Rect, app: &App) {
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan));
 
-    let para = Paragraph::new(text)
-        .block(block)
-        .wrap(Wrap { trim: true });
+    let para = Paragraph::new(text).block(block).wrap(Wrap { trim: true });
 
     frame.render_widget(para, area);
 }
@@ -186,7 +184,11 @@ fn render_wizard_bundle_selection(frame: &mut Frame, area: Rect, app: &App) {
         )));
     } else {
         for (i, bundle) in bundles.iter().enumerate() {
-            let prefix = if i == selected_idx { "  ● " } else { "  ○ " };
+            let prefix = if i == selected_idx {
+                "  ● "
+            } else {
+                "  ○ "
+            };
             let style = if i == selected_idx {
                 Style::default()
                     .fg(Color::Green)
@@ -212,9 +214,7 @@ fn render_wizard_bundle_selection(frame: &mut Frame, area: Rect, app: &App) {
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan));
 
-    let para = Paragraph::new(text)
-        .block(block)
-        .wrap(Wrap { trim: true });
+    let para = Paragraph::new(text).block(block).wrap(Wrap { trim: true });
 
     frame.render_widget(para, area);
 }
@@ -245,7 +245,11 @@ fn render_wizard_profile_selection(frame: &mut Frame, area: Rect, app: &App) {
         )));
     } else {
         for (i, profile) in profiles.iter().enumerate() {
-            let prefix = if i == selected_idx { "  ● " } else { "  ○ " };
+            let prefix = if i == selected_idx {
+                "  ● "
+            } else {
+                "  ○ "
+            };
             let style = if i == selected_idx {
                 Style::default()
                     .fg(Color::Green)
@@ -271,9 +275,7 @@ fn render_wizard_profile_selection(frame: &mut Frame, area: Rect, app: &App) {
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan));
 
-    let para = Paragraph::new(text)
-        .block(block)
-        .wrap(Wrap { trim: true });
+    let para = Paragraph::new(text).block(block).wrap(Wrap { trim: true });
 
     frame.render_widget(para, area);
 }

@@ -65,7 +65,9 @@ impl DefaultBundleService {
 
     /// Get current host ID
     fn current_host(&self) -> IronResult<String> {
-        self.state_manager.current_host().ok_or_else(|| StateError::NoActiveHost.into())
+        self.state_manager
+            .current_host()
+            .ok_or_else(|| StateError::NoActiveHost.into())
     }
 
     /// Install bundle packages (placeholder - would call iron-pacman)
@@ -171,12 +173,17 @@ impl BundleService for DefaultBundleService {
             return Ok(bundles);
         }
 
-        for entry in fs::read_dir(&self.bundles_dir).into_iter().flatten().flatten() {
+        for entry in fs::read_dir(&self.bundles_dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
             if entry.file_type().map(|t| t.is_dir()).unwrap_or(false)
                 && let Some(id) = entry.file_name().to_str()
-                    && let Ok(bundle) = self.load(id) {
-                        bundles.push(bundle);
-                    }
+                && let Ok(bundle) = self.load(id)
+            {
+                bundles.push(bundle);
+            }
         }
 
         Ok(bundles)
@@ -188,9 +195,8 @@ impl BundleService for DefaultBundleService {
             return Err(StateError::BundleNotFound { id: id.to_string() }.into());
         }
 
-        let content = fs::read_to_string(&path).map_err(|_| StateError::BundleNotFound {
-            id: id.to_string(),
-        })?;
+        let content = fs::read_to_string(&path)
+            .map_err(|_| StateError::BundleNotFound { id: id.to_string() })?;
 
         toml::from_str(&content).map_err(|e| {
             crate::ConfigError::ParseError {
@@ -278,9 +284,10 @@ impl BundleService for DefaultBundleService {
         let host_id = self.current_host()?;
 
         if let Some(active_id) = self.state_manager.active_bundle(&host_id)
-            && active_id == id {
-                return Ok(BundleState::Active);
-            }
+            && active_id == id
+        {
+            return Ok(BundleState::Active);
+        }
 
         // Check if dotfiles are linked (dormant)
         let bundle_dir = self.bundle_dir(id);
@@ -318,9 +325,10 @@ impl BundleService for DefaultBundleService {
             if bundle.conflicts.contains(&other.id) {
                 // Check if the conflicting bundle is active
                 if let Ok(state) = self.state(&other.id)
-                    && state == BundleState::Active {
-                        conflicts.push(other.id.clone());
-                    }
+                    && state == BundleState::Active
+                {
+                    conflicts.push(other.id.clone());
+                }
             }
         }
 

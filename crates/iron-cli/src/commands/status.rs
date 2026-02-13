@@ -2,7 +2,7 @@
 //!
 //! Shows system status overview.
 
-use crate::context::{require_init, AppContext};
+use crate::context::{AppContext, require_init};
 use crate::output::StatusBadge;
 use anyhow::Result;
 use iron_core::services::bundle::BundleService;
@@ -115,12 +115,18 @@ pub fn execute(ctx: &AppContext) -> Result<()> {
                 enabled: enabled_modules.len(),
             },
             sync: SyncStatusData {
-                status: sync_info.as_ref().map(|s| format!("{:?}", s.status)).unwrap_or_default(),
+                status: sync_info
+                    .as_ref()
+                    .map(|s| format!("{:?}", s.status))
+                    .unwrap_or_default(),
                 behind: sync_info.as_ref().map(|s| s.commits_behind).unwrap_or(0),
                 ahead: sync_info.as_ref().map(|s| s.commits_ahead).unwrap_or(0),
             },
             secrets: SecretsStatusData {
-                status: secrets_status.as_ref().map(|s| format!("{:?}", s)).unwrap_or_default(),
+                status: secrets_status
+                    .as_ref()
+                    .map(|s| format!("{:?}", s))
+                    .unwrap_or_default(),
             },
         };
         output.json(&data);
@@ -142,7 +148,10 @@ pub fn execute(ctx: &AppContext) -> Result<()> {
     // Bundle info
     output.subheader("Bundle");
     if let Some(bundle) = &active_bundle {
-        output.list_item_status(&format!("{} ({})", bundle.name, bundle.id), StatusBadge::Active);
+        output.list_item_status(
+            &format!("{} ({})", bundle.name, bundle.id),
+            StatusBadge::Active,
+        );
     } else {
         output.list_item_status("No bundle active", StatusBadge::Inactive);
     }
@@ -150,7 +159,10 @@ pub fn execute(ctx: &AppContext) -> Result<()> {
     // Profile info
     output.subheader("Profile");
     if let Some(profile) = &active_profile {
-        output.list_item_status(&format!("{} ({})", profile.name, profile.id), StatusBadge::Active);
+        output.list_item_status(
+            &format!("{} ({})", profile.name, profile.id),
+            StatusBadge::Active,
+        );
     } else {
         output.list_item_status("No profile active", StatusBadge::Inactive);
     }

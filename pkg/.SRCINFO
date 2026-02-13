@@ -1,0 +1,22 @@
+pkgbase = iron
+	pkgdesc = Declarative Arch Linux configuration management platform
+	pkgver = 0.1.0
+	pkgrel = 1
+	url = https://github.com/laraj/iron
+	arch = x86_64
+	license = MIT
+	makedepends = cargo
+	makedepends = git
+	depends = git
+	depends = pacman
+	optdepends = git-crypt: encrypted secrets management
+	optdepends = timeshift: system snapshot support
+	optdepends = snapper: alternative snapshot support
+	optdepends = paru: AUR package management
+	optdepends = yay: AUR package management
+	provides = iron
+	conflicts = iron-git
+	source = iron-0.1.0.tar.gz::https://github.com/laraj/iron/archive/v0.1.0.tar.gz
+	sha256sums = SKIP
+
+pkgname = iron

@@ -3,7 +3,7 @@
 //! Module management.
 
 use crate::cli::ModuleAction;
-use crate::context::{require_init, AppContext};
+use crate::context::{AppContext, require_init};
 use crate::output::StatusBadge;
 use anyhow::Result;
 use iron_core::module::ModuleState;
@@ -27,7 +27,11 @@ pub fn execute(ctx: &AppContext, action: ModuleAction) -> Result<()> {
     require_init(ctx)?;
 
     match action {
-        ModuleAction::List { enabled, disabled, kind } => list(ctx, enabled, disabled, kind),
+        ModuleAction::List {
+            enabled,
+            disabled,
+            kind,
+        } => list(ctx, enabled, disabled, kind),
         ModuleAction::Show { id } => show(ctx, &id),
         ModuleAction::Enable { id, force } => enable(ctx, &id, force),
         ModuleAction::Disable { id, yes } => disable(ctx, &id, yes),
@@ -35,7 +39,12 @@ pub fn execute(ctx: &AppContext, action: ModuleAction) -> Result<()> {
 }
 
 /// List modules
-fn list(ctx: &AppContext, enabled_only: bool, disabled_only: bool, kind_filter: Option<String>) -> Result<()> {
+fn list(
+    ctx: &AppContext,
+    enabled_only: bool,
+    disabled_only: bool,
+    kind_filter: Option<String>,
+) -> Result<()> {
     let output = &ctx.output;
     let module_service = ctx.module_service();
 
@@ -48,44 +57,54 @@ fn list(ctx: &AppContext, enabled_only: bool, disabled_only: bool, kind_filter: 
     }
 
     // Filter modules
-    let modules: Vec<_> = modules.into_iter().filter(|m| {
-        let state = module_service.status(&m.id).unwrap_or(ModuleState::NotInstalled);
-        let is_enabled = matches!(state, ModuleState::Installed | ModuleState::Partial);
+    let modules: Vec<_> = modules
+        .into_iter()
+        .filter(|m| {
+            let state = module_service
+                .status(&m.id)
+                .unwrap_or(ModuleState::NotInstalled);
+            let is_enabled = matches!(state, ModuleState::Installed | ModuleState::Partial);
 
-        // Filter by enabled/disabled
-        if enabled_only && !is_enabled {
-            return false;
-        }
-        if disabled_only && is_enabled {
-            return false;
-        }
-
-        // Filter by kind
-        if let Some(kind) = &kind_filter {
-            let kind_str = format!("{:?}", m.kind).to_lowercase();
-            if !kind_str.contains(&kind.to_lowercase()) {
+            // Filter by enabled/disabled
+            if enabled_only && !is_enabled {
                 return false;
             }
-        }
+            if disabled_only && is_enabled {
+                return false;
+            }
 
-        true
-    }).collect();
+            // Filter by kind
+            if let Some(kind) = &kind_filter {
+                let kind_str = format!("{:?}", m.kind).to_lowercase();
+                if !kind_str.contains(&kind.to_lowercase()) {
+                    return false;
+                }
+            }
+
+            true
+        })
+        .collect();
 
     output.header("Available Modules");
 
     if output.is_json() {
-        let module_info: Vec<ModuleInfo> = modules.iter().map(|m| {
-            let state = module_service.status(&m.id).unwrap_or(ModuleState::NotInstalled);
-            ModuleInfo {
-                id: m.id.clone(),
-                name: m.name.clone(),
-                description: m.description.clone(),
-                kind: format!("{:?}", m.kind),
-                state: format!("{:?}", state),
-                packages: m.packages.len() + m.aur_packages.len(),
-                dotfiles: m.dotfiles.len(),
-            }
-        }).collect();
+        let module_info: Vec<ModuleInfo> = modules
+            .iter()
+            .map(|m| {
+                let state = module_service
+                    .status(&m.id)
+                    .unwrap_or(ModuleState::NotInstalled);
+                ModuleInfo {
+                    id: m.id.clone(),
+                    name: m.name.clone(),
+                    description: m.description.clone(),
+                    kind: format!("{:?}", m.kind),
+                    state: format!("{:?}", state),
+                    packages: m.packages.len() + m.aur_packages.len(),
+                    dotfiles: m.dotfiles.len(),
+                }
+            })
+            .collect();
         output.json(&module_info);
         return Ok(());
     }
@@ -101,7 +120,9 @@ fn list(ctx: &AppContext, enabled_only: bool, disabled_only: bool, kind_filter: 
         output.subheader(kind);
 
         for module in mods {
-            let state = module_service.status(&module.id).unwrap_or(ModuleState::NotInstalled);
+            let state = module_service
+                .status(&module.id)
+                .unwrap_or(ModuleState::NotInstalled);
 
             let badge = match state {
                 ModuleState::Installed => StatusBadge::Installed,
@@ -109,10 +130,7 @@ fn list(ctx: &AppContext, enabled_only: bool, disabled_only: bool, kind_filter: 
                 ModuleState::NotInstalled => StatusBadge::NotInstalled,
             };
 
-            output.list_item_status(
-                &format!("{} - {}", module.id, module.name),
-                badge,
-            );
+            output.list_item_status(&format!("{} - {}", module.id, module.name), badge);
 
             if output.is_verbose() {
                 if let Some(desc) = &module.description {

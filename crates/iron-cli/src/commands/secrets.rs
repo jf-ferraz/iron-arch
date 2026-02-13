@@ -3,7 +3,7 @@
 //! git-crypt secrets management.
 
 use crate::cli::SecretsAction;
-use crate::context::{require_init, AppContext};
+use crate::context::{AppContext, require_init};
 use crate::output::StatusBadge;
 use anyhow::Result;
 use iron_core::services::secrets::{SecretsService, SecretsStatus};
@@ -51,12 +51,18 @@ fn status(ctx: &AppContext) -> Result<()> {
 
         let info = SecretsInfo {
             status: format!("{:?}", status),
-            initialized: !matches!(status, SecretsStatus::NotInitialized | SecretsStatus::NotAvailable),
+            initialized: !matches!(
+                status,
+                SecretsStatus::NotInitialized | SecretsStatus::NotAvailable
+            ),
             encrypted_files: encrypted.iter().map(|p| p.display().to_string()).collect(),
-            keys: keys.iter().map(|k| KeyInfo {
-                id: k.id.clone(),
-                user_id: k.user_id.clone(),
-            }).collect(),
+            keys: keys
+                .iter()
+                .map(|k| KeyInfo {
+                    id: k.id.clone(),
+                    user_id: k.user_id.clone(),
+                })
+                .collect(),
         };
         output.json(&info);
         return Ok(());
@@ -89,13 +95,20 @@ fn status(ctx: &AppContext) -> Result<()> {
     }
 
     // Show encrypted files
-    if !matches!(status, SecretsStatus::NotInitialized | SecretsStatus::NotAvailable) {
+    if !matches!(
+        status,
+        SecretsStatus::NotInitialized | SecretsStatus::NotAvailable
+    ) {
         let encrypted = secrets_service.list_encrypted()?;
         if !encrypted.is_empty() {
             output.subheader("Encrypted Files");
             for file in &encrypted {
                 let is_locked = secrets_service.is_encrypted(file);
-                let badge = if is_locked { StatusBadge::Locked } else { StatusBadge::Unlocked };
+                let badge = if is_locked {
+                    StatusBadge::Locked
+                } else {
+                    StatusBadge::Unlocked
+                };
                 output.list_item_status(&file.display().to_string(), badge);
             }
         }
@@ -162,7 +175,10 @@ fn unlock(ctx: &AppContext, key_file: Option<String>) -> Result<()> {
     // Show unlocked files
     let encrypted = secrets_service.list_encrypted()?;
     if !encrypted.is_empty() {
-        output.info(&format!("{} encrypted files now accessible", encrypted.len()));
+        output.info(&format!(
+            "{} encrypted files now accessible",
+            encrypted.len()
+        ));
     }
 
     Ok(())
@@ -256,7 +272,10 @@ fn link(ctx: &AppContext) -> Result<()> {
         #[cfg(unix)]
         std::os::unix::fs::symlink(entry.path(), &target)?;
 
-        output.list_item_status(&format!("{} -> {}", relative.display(), target.display()), StatusBadge::Ok);
+        output.list_item_status(
+            &format!("{} -> {}", relative.display(), target.display()),
+            StatusBadge::Ok,
+        );
         linked += 1;
     }
 

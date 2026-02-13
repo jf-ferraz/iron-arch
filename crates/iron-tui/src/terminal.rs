@@ -8,7 +8,7 @@ use crossterm::{
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::prelude::*;
-use std::io::{self, stdout, Stdout};
+use std::io::{self, Stdout, stdout};
 use std::panic;
 
 /// Terminal wrapper that handles setup and cleanup

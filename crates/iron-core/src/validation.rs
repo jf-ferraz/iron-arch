@@ -7,9 +7,9 @@
 //! - Dependency resolution
 //! - Dotfile target conflict detection
 
+use crate::IronResult;
 use crate::error::ValidationError;
 use crate::module::Module;
-use crate::IronResult;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -77,7 +77,12 @@ impl ValidationResult {
     }
 
     /// Add a warning to the result
-    pub fn add_warning(&mut self, message: impl Into<String>, path: Option<PathBuf>, code: WarningCode) {
+    pub fn add_warning(
+        &mut self,
+        message: impl Into<String>,
+        path: Option<PathBuf>,
+        code: WarningCode,
+    ) {
         self.warnings.push(ValidationWarning {
             message: message.into(),
             path,
@@ -111,9 +116,7 @@ impl ValidationResult {
 pub fn validate_id(id: &str) -> Result<(), ValidationError> {
     // Check length
     if id.is_empty() {
-        return Err(ValidationError::InvalidIdFormat {
-            id: id.to_string(),
-        });
+        return Err(ValidationError::InvalidIdFormat { id: id.to_string() });
     }
 
     if id.len() > MAX_ID_LENGTH {
@@ -124,33 +127,30 @@ pub fn validate_id(id: &str) -> Result<(), ValidationError> {
     }
 
     // Check first character is a letter
-    if !id.chars().next().map(|c| c.is_ascii_lowercase()).unwrap_or(false) {
-        return Err(ValidationError::InvalidIdFormat {
-            id: id.to_string(),
-        });
+    if !id
+        .chars()
+        .next()
+        .map(|c| c.is_ascii_lowercase())
+        .unwrap_or(false)
+    {
+        return Err(ValidationError::InvalidIdFormat { id: id.to_string() });
     }
 
     // Check last character is not a hyphen
     if id.ends_with('-') {
-        return Err(ValidationError::InvalidIdFormat {
-            id: id.to_string(),
-        });
+        return Err(ValidationError::InvalidIdFormat { id: id.to_string() });
     }
 
     // Check all characters are valid
     for c in id.chars() {
         if !c.is_ascii_lowercase() && !c.is_ascii_digit() && c != '-' {
-            return Err(ValidationError::InvalidIdFormat {
-                id: id.to_string(),
-            });
+            return Err(ValidationError::InvalidIdFormat { id: id.to_string() });
         }
     }
 
     // Check for double hyphens
     if id.contains("--") {
-        return Err(ValidationError::InvalidIdFormat {
-            id: id.to_string(),
-        });
+        return Err(ValidationError::InvalidIdFormat { id: id.to_string() });
     }
 
     Ok(())
@@ -171,7 +171,8 @@ pub fn validate_path(path: &Path, allowed_root: &Path) -> Result<(), ValidationE
                         if components_count < 0 {
                             return Err(ValidationError::InvalidPath {
                                 path: path.to_path_buf(),
-                                message: "Path escapes root via parent directory references".to_string(),
+                                message: "Path escapes root via parent directory references"
+                                    .to_string(),
                             });
                         }
                     }
@@ -185,18 +186,17 @@ pub fn validate_path(path: &Path, allowed_root: &Path) -> Result<(), ValidationE
         }
     };
 
-    let canonical_root = allowed_root.canonicalize().map_err(|_| ValidationError::InvalidPath {
-        path: allowed_root.to_path_buf(),
-        message: "Root path does not exist".to_string(),
-    })?;
+    let canonical_root = allowed_root
+        .canonicalize()
+        .map_err(|_| ValidationError::InvalidPath {
+            path: allowed_root.to_path_buf(),
+            message: "Root path does not exist".to_string(),
+        })?;
 
     if !canonical_path.starts_with(&canonical_root) {
         return Err(ValidationError::InvalidPath {
             path: path.to_path_buf(),
-            message: format!(
-                "Path escapes allowed root: {}",
-                canonical_root.display()
-            ),
+            message: format!("Path escapes allowed root: {}", canonical_root.display()),
         });
     }
 
@@ -230,9 +230,10 @@ pub fn validate_path_safe(path: &Path) -> Result<(), ValidationError> {
 pub fn expand_home(path: &Path) -> PathBuf {
     let path_str = path.to_string_lossy();
     if path_str.starts_with('~')
-        && let Some(home) = dirs::home_dir() {
-            return PathBuf::from(path_str.replacen('~', &home.to_string_lossy(), 1));
-        }
+        && let Some(home) = dirs::home_dir()
+    {
+        return PathBuf::from(path_str.replacen('~', &home.to_string_lossy(), 1));
+    }
     path.to_path_buf()
 }
 
@@ -266,10 +267,16 @@ pub fn resolve_dependencies(
             return Ok(());
         }
 
-        let module = module_map.get(module_id).ok_or_else(|| ValidationError::MissingDependency {
-            module: path.last().cloned().unwrap_or_else(|| "unknown".to_string()),
-            dependency: module_id.to_string(),
-        })?;
+        let module =
+            module_map
+                .get(module_id)
+                .ok_or_else(|| ValidationError::MissingDependency {
+                    module: path
+                        .last()
+                        .cloned()
+                        .unwrap_or_else(|| "unknown".to_string()),
+                    dependency: module_id.to_string(),
+                })?;
 
         in_stack.insert(module_id.to_string());
         path.push(module_id.to_string());
@@ -301,10 +308,7 @@ pub fn resolve_dependencies(
 }
 
 /// Check for conflicts between modules
-pub fn check_module_conflicts(
-    modules: &[Module],
-    enabled: &[String],
-) -> Vec<ValidationError> {
+pub fn check_module_conflicts(modules: &[Module], enabled: &[String]) -> Vec<ValidationError> {
     let mut errors = Vec::new();
     let module_map: HashMap<&str, &Module> = modules.iter().map(|m| (m.id.as_str(), m)).collect();
 
@@ -326,10 +330,7 @@ pub fn check_module_conflicts(
 }
 
 /// Check for dotfile target conflicts
-pub fn check_dotfile_conflicts(
-    modules: &[Module],
-    enabled: &[String],
-) -> Vec<ValidationError> {
+pub fn check_dotfile_conflicts(modules: &[Module], enabled: &[String]) -> Vec<ValidationError> {
     let mut errors = Vec::new();
     let mut target_owners: HashMap<String, String> = HashMap::new();
 
@@ -589,8 +590,7 @@ mod tests {
             },
         ];
 
-        let conflicts =
-            check_module_conflicts(&modules, &["vim".to_string(), "nvim".to_string()]);
+        let conflicts = check_module_conflicts(&modules, &["vim".to_string(), "nvim".to_string()]);
         assert_eq!(conflicts.len(), 1);
     }
 
