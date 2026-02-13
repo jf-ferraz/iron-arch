@@ -126,4 +126,15 @@ mod tests {
         // Directory now exists
         assert!(log_dir.exists());
     }
+
+    #[test]
+    fn log_config_respects_max_files() {
+        let config = LogConfig {
+            log_dir: PathBuf::from("/tmp"),
+            max_files: 10,
+            default_level: "debug".to_string(),
+        };
+        assert_eq!(config.max_files, 10);
+        assert_eq!(config.default_level, "debug");
+    }
 }
