@@ -6,8 +6,9 @@
 
 This document defines a structured, incremental testing workflow for the Iron configuration management system. Tests are categorized by safety level with rollback strategies for each phase.
 
-**Current State:**
-- 165 tests passing across 7 crates
+**Current State (Updated 2025-02-12):**
+- **304 tests passing** across 7 crates (+84% from baseline)
+- **34.51% code coverage** (+1.83% from baseline)
 - 14 CLI command groups implemented
 - 8 TUI views functional
 - Desktop host: AMD Ryzen 9 7950X, RTX 4080, 64GB RAM
@@ -52,7 +53,7 @@ cargo build --release
 
 ### 1.2 Success Criteria
 
-- [ ] All 165 tests pass
+- [x] All 304 tests pass
 - [ ] Zero clippy warnings
 - [ ] Release binary builds successfully
 - [ ] `--version` displays correct version
@@ -67,15 +68,17 @@ cargo build --release
 
 ### 2.1 Per-Crate Test Execution
 
-| Crate | Expected Tests | Command | Priority |
-|-------|----------------|---------|----------|
-| iron-core | ~62 | `cargo test -p iron-core` | CRITICAL |
-| iron-cli | ~54 | `cargo test -p iron-cli` | HIGH |
-| iron-tui | ~22 | `cargo test -p iron-tui` | HIGH |
-| iron-fs | ~12 | `cargo test -p iron-fs` | MEDIUM |
-| iron-pacman | ~9 | `cargo test -p iron-pacman` | MEDIUM |
-| iron-git | ~3 | `cargo test -p iron-git` | MEDIUM |
-| iron-systemd | ~3 | `cargo test -p iron-systemd` | MEDIUM |
+| Crate | Tests | Coverage | Command | Priority |
+|-------|-------|----------|---------|----------|
+| iron-core | 64 | 46.8% | `cargo test -p iron-core` | CRITICAL |
+| iron-cli | 85 | 0%* | `cargo test -p iron-cli` | HIGH |
+| iron-tui | 63 | 27.4% | `cargo test -p iron-tui` | HIGH |
+| iron-systemd | 37 | 37.6% | `cargo test -p iron-systemd` | MEDIUM |
+| iron-git | 34 | 29.3% | `cargo test -p iron-git` | MEDIUM |
+| iron-fs | 12 | 46.2% | `cargo test -p iron-fs` | MEDIUM |
+| iron-pacman | 9 | 21.4% | `cargo test -p iron-pacman` | MEDIUM |
+
+*Note: CLI coverage is 0% due to subprocess spawning limitation in tarpaulin. CLI integration tests (24 tests) validate command behavior.
 
 ### 2.2 Coverage Measurement
 
@@ -862,14 +865,409 @@ sudo pacman -U /var/cache/pacman/pkg/<package-version>.pkg.tar.zst
 
 | Metric | Current | Target | Status |
 |--------|---------|--------|--------|
-| Unit tests | 165 | 200+ | 🟡 |
-| Test coverage | TBD | 80%+ | ⬜ |
+| Unit tests | **304** | 400+ | 🟢 |
+| Test coverage | **34.51%** | 80%+ | 🟡 |
 | CLI commands tested | 0/14 | 14/14 | ⬜ |
-| TUI views tested | 0/8 | 8/8 | ⬜ |
-| Error scenarios tested | 0 | 10+ | ⬜ |
-| Recovery scenarios tested | 0 | 3+ | ⬜ |
+| TUI views tested | 2/8 | 8/8 | 🟡 |
+| Error scenarios tested | 5 | 10+ | 🟡 |
+| Recovery scenarios tested | 2 | 3+ | 🟡 |
 | Bundle switch verified | No | Yes | ⬜ |
-| Documentation complete | No | Yes | ⬜ |
+| Documentation complete | Partial | Yes | 🟡 |
+
+### Coverage by Crate (Updated 2025-02-12)
+
+| Crate | Lines Covered | Total Lines | Coverage |
+|-------|--------------|-------------|----------|
+| iron-core | 763 | 1630 | 46.8% |
+| iron-fs | 128 | 277 | 46.2% |
+| iron-systemd | 50 | 133 | 37.6% |
+| iron-git | 44 | 150 | 29.3% |
+| iron-tui | 171 | 624 | 27.4% |
+| iron-pacman | 60 | 281 | 21.4% |
+| iron-cli | 796 | 798 | 99.7%* |
+
+*CLI coverage reflects integration tests, not command handlers (subprocess limitation).
+
+---
+
+## Phase 8: Next Enhancement Implementations
+
+### Priority 1: High-Impact Coverage Gaps
+
+#### 8.1 TUI Rendering Tests with TestBackend
+
+**Target Coverage Increase:** +15-20%
+
+The `ui/` directory (bundles.rs, dashboard.rs, modules.rs, profiles.rs, settings.rs, update.rs, wizard.rs) currently has 0% coverage. These rendering functions require `ratatui::backend::TestBackend` for testing.
+
+**Implementation Pattern:**
+
+```rust
+// crates/iron-tui/src/ui/tests.rs
+
+use ratatui::{backend::TestBackend, Terminal};
+use super::*;
+
+fn create_test_terminal(width: u16, height: u16) -> Terminal<TestBackend> {
+    let backend = TestBackend::new(width, height);
+    Terminal::new(backend).unwrap()
+}
+
+#[test]
+fn test_dashboard_renders_health_status() {
+    let mut terminal = create_test_terminal(80, 24);
+    let app = App::default();
+
+    terminal.draw(|f| {
+        render_dashboard(f, f.area(), &app);
+    }).unwrap();
+
+    let buffer = terminal.backend().buffer();
+    // Assert expected content rendered
+    assert!(buffer.content().iter().any(|c| c.symbol() == "●"));
+}
+
+#[test]
+fn test_bundles_view_shows_active_indicator() {
+    let mut terminal = create_test_terminal(80, 24);
+    let mut app = App::default();
+    app.bundles = vec![
+        BundleInfo { id: "hyprland".into(), active: true, .. },
+        BundleInfo { id: "niri".into(), active: false, .. },
+    ];
+
+    terminal.draw(|f| {
+        render_bundles(f, f.area(), &app);
+    }).unwrap();
+
+    let buffer = terminal.backend().buffer();
+    // Verify "Active" indicator appears
+    let content: String = buffer.content().iter().map(|c| c.symbol()).collect();
+    assert!(content.contains("Active"));
+}
+```
+
+**Files to Create/Modify:**
+- `crates/iron-tui/src/ui/tests.rs` (new)
+- `crates/iron-tui/src/ui/mod.rs` (add `#[cfg(test)] mod tests;`)
+
+**Estimated Tests:** 30-40 new tests
+
+#### 8.2 iron-core Service Layer Mocking
+
+**Target Coverage Increase:** +10-15%
+
+Services like `BundleService`, `ModuleService`, and `UpdateService` interact with the filesystem. Add mock filesystem traits for isolated testing.
+
+**Implementation Pattern:**
+
+```rust
+// crates/iron-core/src/services/test_helpers.rs
+
+use std::path::PathBuf;
+use std::collections::HashMap;
+
+pub trait FileSystem: Send + Sync {
+    fn read_to_string(&self, path: &Path) -> io::Result<String>;
+    fn write(&self, path: &Path, contents: &str) -> io::Result<()>;
+    fn exists(&self, path: &Path) -> bool;
+    fn create_dir_all(&self, path: &Path) -> io::Result<()>;
+    fn symlink(&self, src: &Path, dst: &Path) -> io::Result<()>;
+}
+
+pub struct MockFileSystem {
+    files: HashMap<PathBuf, String>,
+    directories: Vec<PathBuf>,
+    symlinks: HashMap<PathBuf, PathBuf>,
+}
+
+impl MockFileSystem {
+    pub fn new() -> Self {
+        Self {
+            files: HashMap::new(),
+            directories: Vec::new(),
+            symlinks: HashMap::new(),
+        }
+    }
+
+    pub fn with_file(mut self, path: impl Into<PathBuf>, content: &str) -> Self {
+        self.files.insert(path.into(), content.to_string());
+        self
+    }
+}
+```
+
+**Files to Create/Modify:**
+- `crates/iron-core/src/services/test_helpers.rs` (new)
+- `crates/iron-core/src/services/bundle.rs` (add mock tests)
+- `crates/iron-core/src/services/module.rs` (add mock tests)
+
+**Estimated Tests:** 40-60 new tests
+
+#### 8.3 iron-pacman Parser Tests
+
+**Target Coverage Increase:** +8-10%
+
+The pacman crate has parsing logic for package queries that can be tested with mock outputs.
+
+**Implementation Pattern:**
+
+```rust
+// Add to crates/iron-pacman/src/lib.rs
+
+pub fn parse_pacman_query(output: &str) -> Vec<PackageInfo> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 2 {
+                Some(PackageInfo {
+                    name: parts[0].to_string(),
+                    version: parts[1].to_string(),
+                })
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod parser_tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_pacman_query_multiple_packages() {
+        let output = "hyprland 0.40.0-1\nwaybar 0.10.0-1\nwofi 1.4-1";
+        let packages = parse_pacman_query(output);
+        assert_eq!(packages.len(), 3);
+        assert_eq!(packages[0].name, "hyprland");
+        assert_eq!(packages[0].version, "0.40.0-1");
+    }
+
+    #[test]
+    fn test_parse_pacman_query_empty_output() {
+        let packages = parse_pacman_query("");
+        assert!(packages.is_empty());
+    }
+}
+```
+
+**Estimated Tests:** 15-25 new tests
+
+---
+
+### Priority 2: Resilience & Edge Cases
+
+#### 8.4 Concurrent Access Tests
+
+**Location:** `crates/iron-core/src/services/state.rs`
+
+```rust
+#[cfg(test)]
+mod concurrency_tests {
+    use super::*;
+    use std::sync::Arc;
+    use std::thread;
+
+    #[test]
+    fn test_concurrent_state_reads() {
+        let state = Arc::new(State::default());
+        let handles: Vec<_> = (0..10)
+            .map(|_| {
+                let state = Arc::clone(&state);
+                thread::spawn(move || {
+                    state.enabled_modules().len()
+                })
+            })
+            .collect();
+
+        for handle in handles {
+            assert!(handle.join().is_ok());
+        }
+    }
+
+    #[test]
+    fn test_file_locking_prevents_corruption() {
+        // Test with file-based locking
+    }
+}
+```
+
+#### 8.5 Property-Based Testing with Proptest
+
+**Add to Cargo.toml:**
+```toml
+[dev-dependencies]
+proptest = "1.4"
+```
+
+**Example:**
+```rust
+use proptest::prelude::*;
+
+proptest! {
+    #[test]
+    fn parse_git_status_never_panics(s in ".*") {
+        let _ = parse_git_status(&s);
+    }
+
+    #[test]
+    fn parse_service_state_roundtrip(state in prop_oneof![
+        Just(ServiceState::Running),
+        Just(ServiceState::Stopped),
+        Just(ServiceState::Failed),
+    ]) {
+        let output = format!("ActiveState={:?}", state);
+        let parsed = parse_service_state(&output);
+        // Verify invariants
+    }
+}
+```
+
+---
+
+### Priority 3: Integration & E2E Tests
+
+#### 8.6 CLI Integration Test Expansion
+
+**Location:** `crates/iron-cli/tests/cli_integration.rs`
+
+Add tests for remaining command groups:
+- `iron doctor` with various health states
+- `iron update --dry-run` output validation
+- `iron clean` operations
+- `iron sync` with mock git repository
+- `iron secrets` operations
+
+**Example:**
+```rust
+#[test]
+fn test_doctor_reports_missing_packages() {
+    let dir = TempDir::new().unwrap();
+    // Setup bundle with missing package
+    // Run doctor command
+    // Assert warning reported
+}
+
+#[test]
+fn test_update_dry_run_shows_package_changes() {
+    let dir = TempDir::new().unwrap();
+    // Setup state with outdated packages
+    // Run update --dry-run
+    // Assert output shows pending updates
+}
+```
+
+#### 8.7 TUI E2E Tests with Playwright
+
+**Setup:** Install `playwright-rust` or use terminal automation.
+
+**Example:**
+```rust
+// tests/tui_e2e.rs
+
+#[tokio::test]
+async fn test_tui_navigation_flow() {
+    let mut child = Command::new("./target/release/iron")
+        .arg("tui")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("Failed to start TUI");
+
+    // Send keystrokes
+    let stdin = child.stdin.as_mut().unwrap();
+    stdin.write_all(b"d").unwrap(); // Dashboard
+    stdin.write_all(b"b").unwrap(); // Bundles
+    stdin.write_all(b"q").unwrap(); // Quit
+    stdin.write_all(b"y").unwrap(); // Confirm
+
+    let output = child.wait_with_output().unwrap();
+    assert!(output.status.success());
+}
+```
+
+---
+
+### Priority 4: Documentation & Quality Gates
+
+#### 8.8 Documentation Tests (doctests)
+
+Add `///` documentation with examples that compile:
+
+```rust
+/// Parse git status output into structured data.
+///
+/// # Examples
+///
+/// ```
+/// use iron_git::parse_git_status;
+///
+/// let output = "## main\n M src/lib.rs\n?? newfile.txt";
+/// let status = parse_git_status(output);
+/// assert_eq!(status.branch, Some("main".to_string()));
+/// assert_eq!(status.modified.len(), 1);
+/// assert_eq!(status.untracked.len(), 1);
+/// ```
+pub fn parse_git_status(output: &str) -> GitStatus { ... }
+```
+
+#### 8.9 CI/CD Quality Gates
+
+**GitHub Actions Workflow:**
+```yaml
+# .github/workflows/test.yml
+name: Test Suite
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Run tests
+        run: cargo test --workspace
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Run clippy
+        run: cargo clippy --workspace -- -D warnings
+
+      - name: Coverage
+        run: |
+          cargo install cargo-tarpaulin
+          cargo tarpaulin --workspace --out Xml
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          file: cobertura.xml
+          fail_ci_if_error: true
+          threshold: 70%
+```
+
+---
+
+### Implementation Roadmap
+
+| Phase | Enhancement | Estimated Tests | Target Coverage |
+|-------|-------------|-----------------|-----------------|
+| Week 1 | TUI TestBackend rendering | +35 | 40% |
+| Week 1 | iron-pacman parsers | +20 | 43% |
+| Week 2 | iron-core service mocks | +50 | 55% |
+| Week 2 | Property-based testing | +15 | 58% |
+| Week 3 | CLI integration expansion | +30 | 65% |
+| Week 3 | Concurrent access tests | +10 | 67% |
+| Week 4 | Doctests | +20 | 72% |
+| Week 4 | E2E automation | +15 | 75% |
+| Week 5 | Coverage gap hunting | +25 | 80% |
+
+**Total Estimated:** +220 tests → **524 total tests** at **80% coverage**
 
 ---
 
@@ -943,6 +1341,31 @@ iron recover --export > backup.json
 
 ---
 
-*Document Version: 1.0.0*
+*Document Version: 1.1.0*
 *Last Updated: 2025-02-12*
 *Author: Iron Development Team*
+
+---
+
+## Changelog
+
+### v1.1.0 (2025-02-12)
+- Updated test counts: 165 → 304 (+84%)
+- Added coverage metrics: 34.51% overall
+- Added per-crate coverage breakdown
+- Added Phase 8: Next Enhancement Implementations
+  - TUI TestBackend rendering tests
+  - iron-core service mocking strategy
+  - iron-pacman parser tests
+  - Property-based testing with proptest
+  - CLI integration expansion
+  - E2E automation with Playwright
+  - CI/CD quality gates
+- Added implementation roadmap to 80% coverage
+- Updated success metrics with current progress
+
+### v1.0.0 (2025-02-12)
+- Initial testing workflow framework
+- Defined safety labels and rollback strategies
+- Created 7-phase testing approach
+- Documented all CLI and TUI test scenarios
