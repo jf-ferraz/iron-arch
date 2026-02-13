@@ -6,9 +6,11 @@
 //! - git-crypt secrets management
 //! - Sync workflow support
 
+use iron_core::resilience::{CommandExecutor, RealCommandExecutor};
 use iron_core::{GitError, IronResult};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Arc;
 
 /// Git repository status
 #[derive(Debug, Clone, Default)]
@@ -91,6 +93,8 @@ pub trait SecretsManager {
 pub struct DefaultGitManager {
     /// Repository root path
     root: PathBuf,
+    /// Optional command executor for resilient command execution
+    executor: Option<Arc<dyn CommandExecutor>>,
 }
 
 impl DefaultGitManager {
@@ -100,7 +104,29 @@ impl DefaultGitManager {
         if !root.join(".git").exists() {
             return Err(GitError::NotARepository { path: root }.into());
         }
-        Ok(Self { root })
+        Ok(Self { root, executor: None })
+    }
+
+    /// Create a git manager with a command executor for resilient operations
+    ///
+    /// The executor provides circuit breaker patterns and timeout handling
+    /// for git commands. When the circuit opens due to repeated failures,
+    /// commands will fail fast without attempting execution.
+    pub fn with_executor(root: PathBuf, executor: Arc<dyn CommandExecutor>) -> IronResult<Self> {
+        if !root.join(".git").exists() {
+            return Err(GitError::NotARepository { path: root }.into());
+        }
+        Ok(Self {
+            root,
+            executor: Some(executor),
+        })
+    }
+
+    /// Create a git manager with default resilient executor
+    ///
+    /// Uses the default `RealCommandExecutor` with 120s timeout and circuit breaker.
+    pub fn with_resilience(root: PathBuf) -> IronResult<Self> {
+        Self::with_executor(root, Arc::new(RealCommandExecutor::with_defaults()))
     }
 
     /// Get the repository root
@@ -108,22 +134,43 @@ impl DefaultGitManager {
         &self.root
     }
 
-    /// Run a git command and return output
+    /// Run a git command using executor if available, otherwise direct execution
     fn run_git(&self, args: &[&str]) -> IronResult<String> {
-        let output = Command::new("git")
-            .args(args)
-            .current_dir(&self.root)
-            .output()
-            .map_err(iron_core::IronError::Io)?;
+        if let Some(ref executor) = self.executor {
+            // Build args with -C for working directory
+            let mut full_args = vec!["-C", self.root.to_str().unwrap_or(".")];
+            full_args.extend(args);
 
-        if output.status.success() {
-            Ok(String::from_utf8_lossy(&output.stdout).to_string())
-        } else {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            Err(GitError::PushFailed {
-                message: stderr.to_string(),
+            let output = executor.execute_full("git", &full_args).map_err(|e| {
+                GitError::PushFailed {
+                    message: format!("Failed to run git: {}", e),
+                }
+            })?;
+
+            if output.success() {
+                Ok(output.stdout)
+            } else {
+                Err(GitError::PushFailed {
+                    message: output.stderr,
+                }
+                .into())
             }
-            .into())
+        } else {
+            let output = Command::new("git")
+                .args(args)
+                .current_dir(&self.root)
+                .output()
+                .map_err(iron_core::IronError::Io)?;
+
+            if output.status.success() {
+                Ok(String::from_utf8_lossy(&output.stdout).to_string())
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                Err(GitError::PushFailed {
+                    message: stderr.to_string(),
+                }
+                .into())
+            }
         }
     }
 }
@@ -185,17 +232,73 @@ impl GitManager for DefaultGitManager {
 /// Default secrets manager using git-crypt
 pub struct DefaultSecretsManager {
     root: PathBuf,
+    /// Optional command executor for resilient command execution
+    executor: Option<Arc<dyn CommandExecutor>>,
 }
 
 impl DefaultSecretsManager {
     /// Create a new secrets manager
     pub fn new(root: PathBuf) -> Self {
-        Self { root }
+        Self {
+            root,
+            executor: None,
+        }
+    }
+
+    /// Create a secrets manager with a command executor for resilient operations
+    pub fn with_executor(root: PathBuf, executor: Arc<dyn CommandExecutor>) -> Self {
+        Self {
+            root,
+            executor: Some(executor),
+        }
+    }
+
+    /// Create a secrets manager with default resilient executor
+    pub fn with_resilience(root: PathBuf) -> Self {
+        Self::with_executor(root, Arc::new(RealCommandExecutor::with_defaults()))
     }
 
     /// Check if git-crypt is initialized
     pub fn is_initialized(&self) -> bool {
         self.root.join(".git-crypt").exists()
+    }
+
+    /// Run git-crypt command using executor if available, otherwise direct execution
+    fn run_gitcrypt(&self, args: &[&str]) -> IronResult<String> {
+        if let Some(ref executor) = self.executor {
+            // For git-crypt, we need to run it from the repo directory
+            // Use execute_with_env to set the working directory context
+            let output = executor.execute_full("git-crypt", args).map_err(|e| {
+                GitError::PushFailed {
+                    message: format!("Failed to run git-crypt: {}", e),
+                }
+            })?;
+
+            if output.success() {
+                Ok(output.stdout)
+            } else {
+                Err(GitError::PushFailed {
+                    message: output.stderr,
+                }
+                .into())
+            }
+        } else {
+            let output = Command::new("git-crypt")
+                .args(args)
+                .current_dir(&self.root)
+                .output()
+                .map_err(iron_core::IronError::Io)?;
+
+            if output.status.success() {
+                Ok(String::from_utf8_lossy(&output.stdout).to_string())
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                Err(GitError::PushFailed {
+                    message: stderr.to_string(),
+                }
+                .into())
+            }
+        }
     }
 }
 
@@ -231,26 +334,15 @@ impl SecretsManager for DefaultSecretsManager {
             return Err(GitError::GitCryptNotInitialized.into());
         }
 
-        let mut args = vec!["git-crypt", "unlock"];
+        let mut args = vec!["unlock"];
+        let key_str;
         if let Some(key) = key_path {
-            args.push(key.to_str().unwrap_or_default());
+            key_str = key.to_str().unwrap_or_default().to_string();
+            args.push(&key_str);
         }
 
-        let output = Command::new(args[0])
-            .args(&args[1..])
-            .current_dir(&self.root)
-            .output()
-            .map_err(iron_core::IronError::Io)?;
-
-        if output.status.success() {
-            Ok(())
-        } else {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            Err(GitError::PushFailed {
-                message: format!("Failed to unlock secrets: {}", stderr),
-            }
-            .into())
-        }
+        self.run_gitcrypt(&args)?;
+        Ok(())
     }
 
     fn lock(&self) -> IronResult<()> {
@@ -258,21 +350,8 @@ impl SecretsManager for DefaultSecretsManager {
             return Ok(());
         }
 
-        let output = Command::new("git-crypt")
-            .args(["lock"])
-            .current_dir(&self.root)
-            .output()
-            .map_err(iron_core::IronError::Io)?;
-
-        if output.status.success() {
-            Ok(())
-        } else {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            Err(GitError::PushFailed {
-                message: format!("Failed to lock secrets: {}", stderr),
-            }
-            .into())
-        }
+        self.run_gitcrypt(&["lock"])?;
+        Ok(())
     }
 
     fn list_encrypted(&self) -> IronResult<Vec<PathBuf>> {
@@ -280,20 +359,39 @@ impl SecretsManager for DefaultSecretsManager {
             return Ok(vec![]);
         }
 
-        let output = Command::new("git-crypt")
-            .args(["status", "-e"])
-            .current_dir(&self.root)
-            .output()
-            .map_err(iron_core::IronError::Io)?;
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        Ok(parse_encrypted_files(&stdout))
+        let output = self.run_gitcrypt(&["status", "-e"])?;
+        Ok(parse_encrypted_files(&output))
     }
 }
 
 /// Parse git status --porcelain -b output into GitStatus
 ///
-/// This is exposed for testing purposes.
+/// Parses the output of `git status --porcelain -b` into a structured [`GitStatus`].
+///
+/// # Examples
+///
+/// ```
+/// use iron_git::{parse_git_status, GitStatus};
+///
+/// // Parse a clean repository status
+/// let output = "## main...origin/main\n";
+/// let status = parse_git_status(output);
+/// assert!(status.is_clean);
+/// assert_eq!(status.branch, Some("main".to_string()));
+///
+/// // Parse status with modified files
+/// let output = "## develop...origin/develop\n M src/lib.rs\n?? new_file.txt\n";
+/// let status = parse_git_status(output);
+/// assert!(!status.is_clean);
+/// assert_eq!(status.modified.len(), 1);
+/// assert_eq!(status.untracked.len(), 1);
+///
+/// // Parse ahead/behind tracking
+/// let output = "## main...origin/main [ahead 3, behind 2]\n";
+/// let status = parse_git_status(output);
+/// assert_eq!(status.ahead, 3);
+/// assert_eq!(status.behind, 2);
+/// ```
 pub fn parse_git_status(output: &str) -> GitStatus {
     let mut status = GitStatus::default();
 
@@ -369,6 +467,30 @@ pub fn parse_git_status(output: &str) -> GitStatus {
 }
 
 /// Parse git-crypt status output to extract encrypted files
+///
+/// Parses the output of `git-crypt status -e` to extract the list of encrypted files.
+///
+/// # Examples
+///
+/// ```
+/// use iron_git::parse_encrypted_files;
+/// use std::path::PathBuf;
+///
+/// // Parse single encrypted file
+/// let output = "encrypted: secrets/api_key.txt\n";
+/// let files = parse_encrypted_files(output);
+/// assert_eq!(files.len(), 1);
+/// assert_eq!(files[0], PathBuf::from("secrets/api_key.txt"));
+///
+/// // Parse multiple encrypted files
+/// let output = "encrypted: secrets/api_key.txt\nencrypted: config/prod.yaml\n";
+/// let files = parse_encrypted_files(output);
+/// assert_eq!(files.len(), 2);
+///
+/// // Empty output returns empty vec
+/// let files = parse_encrypted_files("");
+/// assert!(files.is_empty());
+/// ```
 pub fn parse_encrypted_files(output: &str) -> Vec<PathBuf> {
     output
         .lines()
@@ -385,6 +507,25 @@ pub fn parse_encrypted_files(output: &str) -> Vec<PathBuf> {
 }
 
 /// Check if content appears to be git-crypt encrypted
+///
+/// Detects git-crypt encrypted content by checking for the magic header `\x00GITCRYPT`.
+///
+/// # Examples
+///
+/// ```
+/// use iron_git::is_gitcrypt_encrypted;
+///
+/// // Encrypted content starts with GITCRYPT header
+/// let encrypted = b"\x00GITCRYPT\x00\x10\x00\x00some_binary_data";
+/// assert!(is_gitcrypt_encrypted(encrypted));
+///
+/// // Plain text is not encrypted
+/// let plaintext = b"This is plaintext content";
+/// assert!(!is_gitcrypt_encrypted(plaintext));
+///
+/// // Empty content is not encrypted
+/// assert!(!is_gitcrypt_encrypted(b""));
+/// ```
 pub fn is_gitcrypt_encrypted(content: &[u8]) -> bool {
     content.starts_with(b"\x00GITCRYPT")
 }

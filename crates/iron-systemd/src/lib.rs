@@ -6,8 +6,10 @@
 //! - Service status queries
 //! - User vs system service handling
 
+use iron_core::resilience::{CommandExecutor, RealCommandExecutor};
 use iron_core::{IronResult, ServiceError};
 use std::process::Command;
+use std::sync::Arc;
 
 /// Service state from systemctl
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,12 +102,17 @@ pub trait ServiceManager {
 /// Default service manager using systemctl
 pub struct DefaultServiceManager {
     scope: ServiceScope,
+    /// Optional command executor for resilient command execution
+    executor: Option<Arc<dyn CommandExecutor>>,
 }
 
 impl DefaultServiceManager {
     /// Create a new service manager
     pub fn new(scope: ServiceScope) -> Self {
-        Self { scope }
+        Self {
+            scope,
+            executor: None,
+        }
     }
 
     /// Create a service manager for user services
@@ -118,7 +125,26 @@ impl DefaultServiceManager {
         Self::new(ServiceScope::System)
     }
 
-    /// Run systemctl command
+    /// Create a service manager with a command executor for resilient operations
+    ///
+    /// The executor provides circuit breaker patterns and timeout handling
+    /// for systemctl commands. When the circuit opens due to repeated failures,
+    /// commands will fail fast without attempting execution.
+    pub fn with_executor(scope: ServiceScope, executor: Arc<dyn CommandExecutor>) -> Self {
+        Self {
+            scope,
+            executor: Some(executor),
+        }
+    }
+
+    /// Create a service manager with default resilient executor
+    ///
+    /// Uses the default `RealCommandExecutor` with 120s timeout and circuit breaker.
+    pub fn with_resilience(scope: ServiceScope) -> Self {
+        Self::with_executor(scope, Arc::new(RealCommandExecutor::with_defaults()))
+    }
+
+    /// Run systemctl command using executor if available, otherwise direct execution
     fn run_systemctl(&self, args: &[&str]) -> IronResult<String> {
         let mut cmd_args = vec![];
 
@@ -128,29 +154,54 @@ impl DefaultServiceManager {
 
         cmd_args.extend(args);
 
-        let output = Command::new("systemctl")
-            .args(&cmd_args)
-            .output()
-            .map_err(|_| ServiceError::SystemctlNotFound)?;
+        if let Some(ref executor) = self.executor {
+            let args_refs: Vec<&str> = cmd_args.iter().map(|s| *s).collect();
+            let output = executor
+                .execute_full("systemctl", &args_refs)
+                .map_err(|_| ServiceError::SystemctlNotFound)?;
 
-        if output.status.success() {
-            Ok(String::from_utf8_lossy(&output.stdout).to_string())
-        } else {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-
-            // Check for specific errors
-            if stderr.contains("not found") || stderr.contains("No such file") {
-                return Err(ServiceError::NotFound {
-                    name: args.last().unwrap_or(&"unknown").to_string(),
+            if output.success() {
+                Ok(output.stdout)
+            } else {
+                // Check for specific errors
+                if output.stderr.contains("not found") || output.stderr.contains("No such file") {
+                    return Err(ServiceError::NotFound {
+                        name: args.last().unwrap_or(&"unknown").to_string(),
+                    }
+                    .into());
                 }
-                .into());
-            }
 
-            Err(ServiceError::EnableFailed {
-                name: args.last().unwrap_or(&"unknown").to_string(),
-                message: stderr.to_string(),
+                Err(ServiceError::EnableFailed {
+                    name: args.last().unwrap_or(&"unknown").to_string(),
+                    message: output.stderr,
+                }
+                .into())
             }
-            .into())
+        } else {
+            let output = Command::new("systemctl")
+                .args(&cmd_args)
+                .output()
+                .map_err(|_| ServiceError::SystemctlNotFound)?;
+
+            if output.status.success() {
+                Ok(String::from_utf8_lossy(&output.stdout).to_string())
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+
+                // Check for specific errors
+                if stderr.contains("not found") || stderr.contains("No such file") {
+                    return Err(ServiceError::NotFound {
+                        name: args.last().unwrap_or(&"unknown").to_string(),
+                    }
+                    .into());
+                }
+
+                Err(ServiceError::EnableFailed {
+                    name: args.last().unwrap_or(&"unknown").to_string(),
+                    message: stderr.to_string(),
+                }
+                .into())
+            }
         }
     }
 
@@ -299,19 +350,64 @@ pub fn disable_services(services: &[&str], scope: ServiceScope) -> IronResult<Ve
 
 /// Parse service state from systemctl status output
 ///
-/// This is exposed for testing purposes.
+/// Parses the `systemctl status` output to determine the current service state.
+///
+/// # Examples
+///
+/// ```
+/// use iron_systemd::{parse_service_state, ServiceState};
+///
+/// // Active service
+/// let output = "● ssh.service - OpenSSH Daemon\n   Active: active (running)";
+/// assert_eq!(parse_service_state(output), ServiceState::Active);
+///
+/// // Inactive service
+/// let output = "● test.service\n   Active: inactive (dead)";
+/// assert_eq!(parse_service_state(output), ServiceState::Inactive);
+///
+/// // Failed service
+/// let output = "● broken.service\n   Active: failed (Result: exit-code)";
+/// assert_eq!(parse_service_state(output), ServiceState::Failed);
+/// ```
 pub fn parse_service_state(output: &str) -> ServiceState {
     DefaultServiceManager::parse_state(output)
 }
 
 /// Parse enabled state from systemctl is-enabled output
 ///
-/// This is exposed for testing purposes.
+/// Parses the output of `systemctl is-enabled` to determine boot behavior.
+///
+/// # Examples
+///
+/// ```
+/// use iron_systemd::{parse_enabled_state, EnabledState};
+///
+/// assert_eq!(parse_enabled_state("enabled"), EnabledState::Enabled);
+/// assert_eq!(parse_enabled_state("disabled"), EnabledState::Disabled);
+/// assert_eq!(parse_enabled_state("masked"), EnabledState::Masked);
+/// assert_eq!(parse_enabled_state("static"), EnabledState::Static);
+/// assert_eq!(parse_enabled_state("unknown-value"), EnabledState::Unknown);
+/// ```
 pub fn parse_enabled_state(output: &str) -> EnabledState {
     DefaultServiceManager::parse_enabled(output)
 }
 
 /// Parse description from systemctl status output
+///
+/// Extracts the service description from `systemctl status` output.
+///
+/// # Examples
+///
+/// ```
+/// use iron_systemd::parse_description;
+///
+/// let output = "● ssh.service\n   Description: OpenSSH server daemon\n   Active: active";
+/// assert_eq!(parse_description(output), Some("OpenSSH server daemon".to_string()));
+///
+/// // No description line
+/// let output = "● test.service\n   Active: active (running)";
+/// assert_eq!(parse_description(output), None);
+/// ```
 pub fn parse_description(output: &str) -> Option<String> {
     output
         .lines()
@@ -321,6 +417,27 @@ pub fn parse_description(output: &str) -> Option<String> {
 }
 
 /// Parse list-units output into service info entries
+///
+/// Parses the output of `systemctl list-units --type=service` into structured data.
+///
+/// # Examples
+///
+/// ```
+/// use iron_systemd::{parse_list_units, ServiceState};
+///
+/// let output = "ssh.service    loaded active running OpenSSH Daemon";
+/// let services = parse_list_units(output);
+/// assert_eq!(services.len(), 1);
+/// assert_eq!(services[0].name, "ssh");
+/// assert_eq!(services[0].state, ServiceState::Active);
+///
+/// // Multiple services
+/// let output = "docker.service loaded active running Docker\ncups.service   loaded inactive dead CUPS";
+/// let services = parse_list_units(output);
+/// assert_eq!(services.len(), 2);
+/// assert_eq!(services[0].state, ServiceState::Active);
+/// assert_eq!(services[1].state, ServiceState::Inactive);
+/// ```
 pub fn parse_list_units(output: &str) -> Vec<ServiceInfo> {
     let mut services = Vec::new();
 

@@ -17,6 +17,7 @@ pub mod host;
 pub mod module;
 pub mod packages;
 pub mod profile;
+pub mod resilience;
 pub mod services;
 pub mod snapshot;
 pub mod state;
@@ -52,3 +53,9 @@ pub use validation::{
 
 // Filesystem abstraction for testing
 pub use fs_trait::{FileSystem, FsResult, MockFileSystem, RealFileSystem};
+
+// Resilience patterns
+pub use resilience::{
+    CircuitBreaker, CircuitBreakerConfig, CircuitBreakerStats, CircuitOpenError, CircuitState,
+    CommandConfig, CommandError, CommandExecutor, CommandOutput, RealCommandExecutor,
+};
