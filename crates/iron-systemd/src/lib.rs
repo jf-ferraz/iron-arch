@@ -297,48 +297,541 @@ pub fn disable_services(services: &[&str], scope: ServiceScope) -> IronResult<Ve
     Ok(failed)
 }
 
+/// Parse service state from systemctl status output
+///
+/// This is exposed for testing purposes.
+pub fn parse_service_state(output: &str) -> ServiceState {
+    DefaultServiceManager::parse_state(output)
+}
+
+/// Parse enabled state from systemctl is-enabled output
+///
+/// This is exposed for testing purposes.
+pub fn parse_enabled_state(output: &str) -> EnabledState {
+    DefaultServiceManager::parse_enabled(output)
+}
+
+/// Parse description from systemctl status output
+pub fn parse_description(output: &str) -> Option<String> {
+    output
+        .lines()
+        .find(|l| l.trim().starts_with("Description:"))
+        .and_then(|l| l.split_once(':'))
+        .map(|(_, desc)| desc.trim().to_string())
+}
+
+/// Parse list-units output into service info entries
+pub fn parse_list_units(output: &str) -> Vec<ServiceInfo> {
+    let mut services = Vec::new();
+
+    for line in output.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 4 {
+            let name = parts[0].trim_end_matches(".service").to_string();
+            let state = match parts[2] {
+                "active" => ServiceState::Active,
+                "inactive" => ServiceState::Inactive,
+                "failed" => ServiceState::Failed,
+                _ => ServiceState::Unknown,
+            };
+
+            // Description is everything after the 4th column
+            let description = if parts.len() > 4 {
+                Some(parts[4..].join(" "))
+            } else {
+                None
+            };
+
+            services.push(ServiceInfo {
+                name,
+                state,
+                enabled: EnabledState::Unknown,
+                description,
+            });
+        }
+    }
+
+    services
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    // ==========================================================================
+    // Enum tests
+    // ==========================================================================
+
     #[test]
-    fn test_service_state() {
+    fn test_service_state_equality() {
+        assert_eq!(ServiceState::Active, ServiceState::Active);
+        assert_ne!(ServiceState::Active, ServiceState::Inactive);
+        assert_ne!(ServiceState::Failed, ServiceState::Unknown);
+    }
+
+    #[test]
+    fn test_enabled_state_equality() {
+        assert_eq!(EnabledState::Enabled, EnabledState::Enabled);
+        assert_ne!(EnabledState::Enabled, EnabledState::Disabled);
+        assert_ne!(EnabledState::Masked, EnabledState::Static);
+    }
+
+    #[test]
+    fn test_service_scope_equality() {
+        assert_eq!(ServiceScope::User, ServiceScope::User);
+        assert_ne!(ServiceScope::User, ServiceScope::System);
+    }
+
+    // ==========================================================================
+    // ServiceInfo tests
+    // ==========================================================================
+
+    #[test]
+    fn test_service_info_creation() {
+        let info = ServiceInfo {
+            name: "ssh".to_string(),
+            state: ServiceState::Active,
+            enabled: EnabledState::Enabled,
+            description: Some("OpenSSH Daemon".to_string()),
+        };
+        assert_eq!(info.name, "ssh");
+        assert_eq!(info.state, ServiceState::Active);
+        assert_eq!(info.enabled, EnabledState::Enabled);
+        assert_eq!(info.description, Some("OpenSSH Daemon".to_string()));
+    }
+
+    #[test]
+    fn test_service_info_without_description() {
+        let info = ServiceInfo {
+            name: "test".to_string(),
+            state: ServiceState::Inactive,
+            enabled: EnabledState::Disabled,
+            description: None,
+        };
+        assert!(info.description.is_none());
+    }
+
+    // ==========================================================================
+    // Service state parsing tests
+    // ==========================================================================
+
+    #[test]
+    fn test_parse_state_active_running() {
+        let output = "● ssh.service - OpenSSH Daemon\n   Loaded: loaded\n   Active: active (running)";
+        assert_eq!(parse_service_state(output), ServiceState::Active);
+    }
+
+    #[test]
+    fn test_parse_state_inactive_dead() {
+        let output = "● test.service\n   Active: inactive (dead)";
+        assert_eq!(parse_service_state(output), ServiceState::Inactive);
+    }
+
+    #[test]
+    fn test_parse_state_failed() {
+        let output = "● broken.service\n   Active: failed (Result: exit-code)";
+        assert_eq!(parse_service_state(output), ServiceState::Failed);
+    }
+
+    #[test]
+    fn test_parse_state_unknown() {
+        let output = "some random output";
+        assert_eq!(parse_service_state(output), ServiceState::Unknown);
+    }
+
+    #[test]
+    fn test_parse_state_empty() {
+        assert_eq!(parse_service_state(""), ServiceState::Unknown);
+    }
+
+    #[test]
+    fn test_parse_state_activating() {
+        // Edge case: service is starting
+        let output = "Active: activating (start)";
+        assert_eq!(parse_service_state(output), ServiceState::Unknown);
+    }
+
+    // ==========================================================================
+    // Enabled state parsing tests
+    // ==========================================================================
+
+    #[test]
+    fn test_parse_enabled_enabled() {
+        assert_eq!(parse_enabled_state("enabled"), EnabledState::Enabled);
+    }
+
+    #[test]
+    fn test_parse_enabled_disabled() {
+        assert_eq!(parse_enabled_state("disabled"), EnabledState::Disabled);
+    }
+
+    #[test]
+    fn test_parse_enabled_masked() {
+        assert_eq!(parse_enabled_state("masked"), EnabledState::Masked);
+    }
+
+    #[test]
+    fn test_parse_enabled_static() {
+        assert_eq!(parse_enabled_state("static"), EnabledState::Static);
+    }
+
+    #[test]
+    fn test_parse_enabled_unknown() {
+        assert_eq!(parse_enabled_state("something else"), EnabledState::Unknown);
+    }
+
+    #[test]
+    fn test_parse_enabled_empty() {
+        assert_eq!(parse_enabled_state(""), EnabledState::Unknown);
+    }
+
+    #[test]
+    fn test_parse_enabled_with_extra_text() {
+        // is-enabled can output additional info
+        assert_eq!(parse_enabled_state("enabled\n"), EnabledState::Enabled);
+        assert_eq!(parse_enabled_state("disabled\n"), EnabledState::Disabled);
+    }
+
+    // ==========================================================================
+    // Description parsing tests
+    // ==========================================================================
+
+    #[test]
+    fn test_parse_description_present() {
+        let output = r#"● ssh.service - OpenSSH Daemon
+     Loaded: loaded (/usr/lib/systemd/system/sshd.service; enabled; preset: disabled)
+     Active: active (running) since Mon 2024-01-01 10:00:00 UTC
+   Description: OpenSSH server daemon"#;
         assert_eq!(
-            DefaultServiceManager::parse_state("active (running)"),
-            ServiceState::Active
-        );
-        assert_eq!(
-            DefaultServiceManager::parse_state("inactive (dead)"),
-            ServiceState::Inactive
-        );
-        assert_eq!(
-            DefaultServiceManager::parse_state("failed"),
-            ServiceState::Failed
+            parse_description(output),
+            Some("OpenSSH server daemon".to_string())
         );
     }
 
     #[test]
-    fn test_enabled_state() {
+    fn test_parse_description_none() {
+        let output = "● test.service\n   Active: active (running)";
+        assert_eq!(parse_description(output), None);
+    }
+
+    #[test]
+    fn test_parse_description_empty_value() {
+        let output = "Description:";
+        assert_eq!(parse_description(output), Some("".to_string()));
+    }
+
+    // ==========================================================================
+    // List-units parsing tests
+    // ==========================================================================
+
+    #[test]
+    fn test_parse_list_units_empty() {
+        let output = "";
+        let services = parse_list_units(output);
+        assert!(services.is_empty());
+    }
+
+    #[test]
+    fn test_parse_list_units_single() {
+        let output = "ssh.service                loaded active running OpenSSH Daemon";
+        let services = parse_list_units(output);
+        assert_eq!(services.len(), 1);
+        assert_eq!(services[0].name, "ssh");
+        assert_eq!(services[0].state, ServiceState::Active);
+    }
+
+    #[test]
+    fn test_parse_list_units_multiple() {
+        let output = r#"bluetooth.service          loaded active running Bluetooth service
+cups.service               loaded inactive dead    CUPS Scheduler
+docker.service             loaded active running Docker Application Container Engine
+sshd.service               loaded active running OpenSSH Daemon"#;
+        let services = parse_list_units(output);
+        assert_eq!(services.len(), 4);
+
+        assert_eq!(services[0].name, "bluetooth");
+        assert_eq!(services[0].state, ServiceState::Active);
+
+        assert_eq!(services[1].name, "cups");
+        assert_eq!(services[1].state, ServiceState::Inactive);
+
+        assert_eq!(services[2].name, "docker");
+        assert_eq!(services[2].state, ServiceState::Active);
+
+        assert_eq!(services[3].name, "sshd");
+        assert_eq!(services[3].state, ServiceState::Active);
+    }
+
+    #[test]
+    fn test_parse_list_units_failed_service() {
+        let output = "broken.service             loaded failed failed Broken Service";
+        let services = parse_list_units(output);
+        assert_eq!(services.len(), 1);
+        assert_eq!(services[0].name, "broken");
+        assert_eq!(services[0].state, ServiceState::Failed);
+    }
+
+    #[test]
+    fn test_parse_list_units_with_description() {
+        let output = "pipewire.service           loaded active running PipeWire Multimedia Service";
+        let services = parse_list_units(output);
+        assert_eq!(services.len(), 1);
         assert_eq!(
-            DefaultServiceManager::parse_enabled("enabled"),
-            EnabledState::Enabled
-        );
-        assert_eq!(
-            DefaultServiceManager::parse_enabled("disabled"),
-            EnabledState::Disabled
-        );
-        assert_eq!(
-            DefaultServiceManager::parse_enabled("masked"),
-            EnabledState::Masked
+            services[0].description,
+            Some("PipeWire Multimedia Service".to_string())
         );
     }
 
     #[test]
-    fn test_service_scope() {
-        let user = DefaultServiceManager::user();
+    fn test_parse_list_units_strips_service_suffix() {
+        let output = "test.service               loaded active running Test";
+        let services = parse_list_units(output);
+        assert_eq!(services[0].name, "test");
+    }
+
+    #[test]
+    fn test_parse_list_units_whitespace_handling() {
+        let output = "  service.service    loaded    active    running    Description  ";
+        let services = parse_list_units(output);
+        assert_eq!(services.len(), 1);
+        assert_eq!(services[0].name, "service");
+    }
+
+    // ==========================================================================
+    // DefaultServiceManager tests
+    // ==========================================================================
+
+    #[test]
+    fn test_service_manager_user() {
+        let manager = DefaultServiceManager::user();
+        assert_eq!(manager.scope, ServiceScope::User);
+    }
+
+    #[test]
+    fn test_service_manager_system() {
+        let manager = DefaultServiceManager::system();
+        assert_eq!(manager.scope, ServiceScope::System);
+    }
+
+    #[test]
+    fn test_service_manager_new() {
+        let user = DefaultServiceManager::new(ServiceScope::User);
         assert_eq!(user.scope, ServiceScope::User);
 
-        let system = DefaultServiceManager::system();
+        let system = DefaultServiceManager::new(ServiceScope::System);
         assert_eq!(system.scope, ServiceScope::System);
+    }
+
+    // ==========================================================================
+    // Mock ServiceManager for testing dependent code
+    // ==========================================================================
+
+    /// Mock service manager for testing
+    pub struct MockServiceManager {
+        pub services: std::collections::HashMap<String, ServiceInfo>,
+        pub fail_operations: bool,
+    }
+
+    impl Default for MockServiceManager {
+        fn default() -> Self {
+            Self {
+                services: std::collections::HashMap::new(),
+                fail_operations: false,
+            }
+        }
+    }
+
+    impl MockServiceManager {
+        pub fn with_services(services: Vec<ServiceInfo>) -> Self {
+            let map = services
+                .into_iter()
+                .map(|s| (s.name.clone(), s))
+                .collect();
+            Self {
+                services: map,
+                fail_operations: false,
+            }
+        }
+    }
+
+    impl ServiceManager for MockServiceManager {
+        fn status(&self, name: &str) -> IronResult<ServiceInfo> {
+            self.services.get(name).cloned().ok_or_else(|| {
+                ServiceError::NotFound {
+                    name: name.to_string(),
+                }
+                .into()
+            })
+        }
+
+        fn enable(&self, _name: &str) -> IronResult<()> {
+            if self.fail_operations {
+                Err(ServiceError::EnableFailed {
+                    name: _name.to_string(),
+                    message: "Mock failure".to_string(),
+                }
+                .into())
+            } else {
+                Ok(())
+            }
+        }
+
+        fn disable(&self, _name: &str) -> IronResult<()> {
+            if self.fail_operations {
+                Err(ServiceError::DisableFailed {
+                    name: _name.to_string(),
+                    message: "Mock failure".to_string(),
+                }
+                .into())
+            } else {
+                Ok(())
+            }
+        }
+
+        fn start(&self, _name: &str) -> IronResult<()> {
+            if self.fail_operations {
+                Err(ServiceError::StartFailed {
+                    name: _name.to_string(),
+                    message: "Mock failure".to_string(),
+                }
+                .into())
+            } else {
+                Ok(())
+            }
+        }
+
+        fn stop(&self, _name: &str) -> IronResult<()> {
+            if self.fail_operations {
+                Err(ServiceError::StopFailed {
+                    name: _name.to_string(),
+                    message: "Mock failure".to_string(),
+                }
+                .into())
+            } else {
+                Ok(())
+            }
+        }
+
+        fn restart(&self, _name: &str) -> IronResult<()> {
+            if self.fail_operations {
+                // Use StartFailed for restart failures (no RestartFailed variant)
+                Err(ServiceError::StartFailed {
+                    name: _name.to_string(),
+                    message: "Mock restart failure".to_string(),
+                }
+                .into())
+            } else {
+                Ok(())
+            }
+        }
+
+        fn exists(&self, name: &str) -> bool {
+            self.services.contains_key(name)
+        }
+
+        fn list(&self, pattern: Option<&str>) -> IronResult<Vec<ServiceInfo>> {
+            let services: Vec<ServiceInfo> = self
+                .services
+                .values()
+                .filter(|s| match pattern {
+                    Some(p) => s.name.contains(p),
+                    None => true,
+                })
+                .cloned()
+                .collect();
+            Ok(services)
+        }
+    }
+
+    #[test]
+    fn test_mock_service_manager_status() {
+        let mock = MockServiceManager::with_services(vec![ServiceInfo {
+            name: "ssh".to_string(),
+            state: ServiceState::Active,
+            enabled: EnabledState::Enabled,
+            description: Some("SSH Server".to_string()),
+        }]);
+
+        let info = mock.status("ssh").unwrap();
+        assert_eq!(info.name, "ssh");
+        assert_eq!(info.state, ServiceState::Active);
+    }
+
+    #[test]
+    fn test_mock_service_manager_status_not_found() {
+        let mock = MockServiceManager::default();
+        let result = mock.status("nonexistent");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_mock_service_manager_exists() {
+        let mock = MockServiceManager::with_services(vec![ServiceInfo {
+            name: "docker".to_string(),
+            state: ServiceState::Active,
+            enabled: EnabledState::Enabled,
+            description: None,
+        }]);
+
+        assert!(mock.exists("docker"));
+        assert!(!mock.exists("nonexistent"));
+    }
+
+    #[test]
+    fn test_mock_service_manager_list() {
+        let mock = MockServiceManager::with_services(vec![
+            ServiceInfo {
+                name: "pipewire".to_string(),
+                state: ServiceState::Active,
+                enabled: EnabledState::Enabled,
+                description: None,
+            },
+            ServiceInfo {
+                name: "pipewire-pulse".to_string(),
+                state: ServiceState::Active,
+                enabled: EnabledState::Enabled,
+                description: None,
+            },
+            ServiceInfo {
+                name: "wireplumber".to_string(),
+                state: ServiceState::Active,
+                enabled: EnabledState::Enabled,
+                description: None,
+            },
+        ]);
+
+        let all = mock.list(None).unwrap();
+        assert_eq!(all.len(), 3);
+
+        let filtered = mock.list(Some("pipewire")).unwrap();
+        assert_eq!(filtered.len(), 2);
+    }
+
+    #[test]
+    fn test_mock_service_manager_operations() {
+        let mock = MockServiceManager::default();
+        assert!(mock.enable("test").is_ok());
+        assert!(mock.disable("test").is_ok());
+        assert!(mock.start("test").is_ok());
+        assert!(mock.stop("test").is_ok());
+        assert!(mock.restart("test").is_ok());
+    }
+
+    #[test]
+    fn test_mock_service_manager_failing_operations() {
+        let mock = MockServiceManager {
+            services: std::collections::HashMap::new(),
+            fail_operations: true,
+        };
+        assert!(mock.enable("test").is_err());
+        assert!(mock.disable("test").is_err());
+        assert!(mock.start("test").is_err());
+        assert!(mock.stop("test").is_err());
+        assert!(mock.restart("test").is_err());
     }
 }

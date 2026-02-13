@@ -356,6 +356,33 @@ impl TextInput {
 mod tests {
     use super::*;
 
+    // ==========================================================================
+    // WizardStep tests
+    // ==========================================================================
+
+    #[test]
+    fn test_wizard_step_default() {
+        let step = WizardStep::default();
+        assert_eq!(step, WizardStep::Welcome);
+    }
+
+    #[test]
+    fn test_wizard_step_equality() {
+        assert_eq!(WizardStep::Welcome, WizardStep::Welcome);
+        assert_ne!(WizardStep::Welcome, WizardStep::HostSetup);
+    }
+
+    #[test]
+    fn test_wizard_step_clone() {
+        let step = WizardStep::BundleSelection;
+        let cloned = step.clone();
+        assert_eq!(step, cloned);
+    }
+
+    // ==========================================================================
+    // WizardState progression tests
+    // ==========================================================================
+
     #[test]
     fn test_wizard_step_progression() {
         let mut state = WizardState::new();
@@ -372,6 +399,43 @@ mod tests {
     }
 
     #[test]
+    fn test_wizard_full_progression() {
+        let mut state = WizardState::new();
+
+        // Forward through all steps
+        assert_eq!(state.step_number(), 1);
+        state.next_step();
+        assert_eq!(state.step_number(), 2);
+        state.next_step();
+        assert_eq!(state.step_number(), 3);
+        state.next_step();
+        assert_eq!(state.step_number(), 4);
+        state.next_step();
+        assert_eq!(state.step_number(), 5);
+        state.next_step();
+        assert_eq!(state.step_number(), 6); // Complete
+    }
+
+    #[test]
+    fn test_wizard_cannot_go_past_complete() {
+        let mut state = WizardState::new();
+        state.step = WizardStep::Complete;
+        state.next_step();
+        assert_eq!(state.step, WizardStep::Complete);
+    }
+
+    #[test]
+    fn test_wizard_cannot_go_before_welcome() {
+        let mut state = WizardState::new();
+        state.prev_step();
+        assert_eq!(state.step, WizardStep::Welcome);
+    }
+
+    // ==========================================================================
+    // WizardState can_proceed tests
+    // ==========================================================================
+
+    #[test]
     fn test_wizard_can_proceed() {
         let mut state = WizardState::new();
         assert!(state.can_proceed()); // Welcome always can proceed
@@ -382,6 +446,180 @@ mod tests {
         state.host_id = "test-host".to_string();
         assert!(state.can_proceed());
     }
+
+    #[test]
+    fn test_wizard_can_proceed_bundle_selection() {
+        let mut state = WizardState::new();
+        state.step = WizardStep::BundleSelection;
+        assert!(!state.can_proceed()); // No bundles available
+
+        state.available_bundles = vec!["hyprland".to_string()];
+        assert!(state.can_proceed());
+    }
+
+    #[test]
+    fn test_wizard_can_proceed_profile_selection() {
+        let mut state = WizardState::new();
+        state.step = WizardStep::ProfileSelection;
+        // Profile is optional, so always can proceed
+        assert!(state.can_proceed());
+    }
+
+    #[test]
+    fn test_wizard_can_proceed_confirmation() {
+        let mut state = WizardState::new();
+        state.step = WizardStep::Confirmation;
+        assert!(state.can_proceed());
+    }
+
+    #[test]
+    fn test_wizard_cannot_proceed_from_complete() {
+        let mut state = WizardState::new();
+        state.step = WizardStep::Complete;
+        assert!(!state.can_proceed());
+    }
+
+    // ==========================================================================
+    // WizardState can_go_back tests
+    // ==========================================================================
+
+    #[test]
+    fn test_wizard_can_go_back() {
+        let mut state = WizardState::new();
+        assert!(!state.can_go_back()); // Can't go back from Welcome
+
+        state.step = WizardStep::HostSetup;
+        assert!(state.can_go_back());
+
+        state.step = WizardStep::Complete;
+        assert!(!state.can_go_back()); // Can't go back from Complete
+    }
+
+    // ==========================================================================
+    // WizardState selection tests
+    // ==========================================================================
+
+    #[test]
+    fn test_wizard_bundle_selection() {
+        let mut state = WizardState::new();
+        state.available_bundles = vec![
+            "hyprland".to_string(),
+            "niri".to_string(),
+            "sway".to_string(),
+        ];
+
+        assert_eq!(state.selected_bundle(), Some("hyprland"));
+
+        state.select_next_bundle();
+        assert_eq!(state.selected_bundle(), Some("niri"));
+
+        state.select_next_bundle();
+        assert_eq!(state.selected_bundle(), Some("sway"));
+
+        state.select_next_bundle(); // Wraps around
+        assert_eq!(state.selected_bundle(), Some("hyprland"));
+
+        state.select_prev_bundle(); // Wraps back
+        assert_eq!(state.selected_bundle(), Some("sway"));
+    }
+
+    #[test]
+    fn test_wizard_profile_selection() {
+        let mut state = WizardState::new();
+        state.available_profiles = vec!["minimal".to_string(), "developer".to_string()];
+
+        assert_eq!(state.selected_profile(), Some("minimal"));
+
+        state.select_next_profile();
+        assert_eq!(state.selected_profile(), Some("developer"));
+
+        state.select_prev_profile();
+        assert_eq!(state.selected_profile(), Some("minimal"));
+    }
+
+    #[test]
+    fn test_wizard_empty_bundles_selection() {
+        let mut state = WizardState::new();
+        // No bundles
+        state.select_next_bundle();
+        assert_eq!(state.selected_bundle(), None);
+        state.select_prev_bundle();
+        assert_eq!(state.selected_bundle(), None);
+    }
+
+    #[test]
+    fn test_wizard_empty_profiles_selection() {
+        let mut state = WizardState::new();
+        // No profiles
+        state.select_next_profile();
+        assert_eq!(state.selected_profile(), None);
+        state.select_prev_profile();
+        assert_eq!(state.selected_profile(), None);
+    }
+
+    // ==========================================================================
+    // WizardState step_number tests
+    // ==========================================================================
+
+    #[test]
+    fn test_wizard_step_numbers() {
+        let mut state = WizardState::new();
+        assert_eq!(state.step_number(), 1);
+        assert_eq!(state.total_steps(), 5);
+
+        state.step = WizardStep::HostSetup;
+        assert_eq!(state.step_number(), 2);
+
+        state.step = WizardStep::BundleSelection;
+        assert_eq!(state.step_number(), 3);
+
+        state.step = WizardStep::ProfileSelection;
+        assert_eq!(state.step_number(), 4);
+
+        state.step = WizardStep::Confirmation;
+        assert_eq!(state.step_number(), 5);
+
+        state.step = WizardStep::Complete;
+        assert_eq!(state.step_number(), 6);
+    }
+
+    // ==========================================================================
+    // WizardState error clearing tests
+    // ==========================================================================
+
+    #[test]
+    fn test_wizard_clears_error_on_step_change() {
+        let mut state = WizardState::new();
+        state.error = Some("Test error".to_string());
+
+        state.next_step();
+        assert!(state.error.is_none());
+
+        state.error = Some("Another error".to_string());
+        state.prev_step();
+        assert!(state.error.is_none());
+    }
+
+    // ==========================================================================
+    // InputMode tests
+    // ==========================================================================
+
+    #[test]
+    fn test_input_mode_default() {
+        let mode = InputMode::default();
+        assert_eq!(mode, InputMode::Normal);
+    }
+
+    #[test]
+    fn test_input_mode_equality() {
+        assert_eq!(InputMode::Normal, InputMode::Normal);
+        assert_eq!(InputMode::Editing, InputMode::Editing);
+        assert_ne!(InputMode::Normal, InputMode::Editing);
+    }
+
+    // ==========================================================================
+    // TextInput tests
+    // ==========================================================================
 
     #[test]
     fn test_text_input() {
@@ -400,5 +638,97 @@ mod tests {
 
         input.insert('H');
         assert_eq!(input.value, "Hhello");
+    }
+
+    #[test]
+    fn test_text_input_default() {
+        let input = TextInput::default();
+        assert_eq!(input.value, "");
+        assert_eq!(input.cursor, 0);
+        assert_eq!(input.mode, InputMode::Normal);
+    }
+
+    #[test]
+    fn test_text_input_edit_mode() {
+        let mut input = TextInput::new("test");
+        assert!(!input.is_editing());
+
+        input.enter_edit_mode();
+        assert!(input.is_editing());
+
+        input.exit_edit_mode();
+        assert!(!input.is_editing());
+    }
+
+    #[test]
+    fn test_text_input_cursor_movement() {
+        let mut input = TextInput::new("hello");
+
+        input.move_start();
+        assert_eq!(input.cursor, 0);
+
+        input.move_right();
+        assert_eq!(input.cursor, 1);
+
+        input.move_end();
+        assert_eq!(input.cursor, 5);
+
+        input.move_left();
+        assert_eq!(input.cursor, 4);
+    }
+
+    #[test]
+    fn test_text_input_cursor_bounds() {
+        let mut input = TextInput::new("hi");
+
+        input.move_start();
+        input.move_left(); // Should not go below 0
+        assert_eq!(input.cursor, 0);
+
+        input.move_end();
+        input.move_right(); // Should not go past length
+        assert_eq!(input.cursor, 2);
+    }
+
+    #[test]
+    fn test_text_input_delete_forward() {
+        let mut input = TextInput::new("hello");
+        input.move_start();
+        input.delete_forward();
+        assert_eq!(input.value, "ello");
+        assert_eq!(input.cursor, 0);
+    }
+
+    #[test]
+    fn test_text_input_delete_at_start() {
+        let mut input = TextInput::new("hello");
+        input.move_start();
+        input.delete(); // Should do nothing at start
+        assert_eq!(input.value, "hello");
+    }
+
+    #[test]
+    fn test_text_input_delete_forward_at_end() {
+        let mut input = TextInput::new("hello");
+        input.move_end();
+        input.delete_forward(); // Should do nothing at end
+        assert_eq!(input.value, "hello");
+    }
+
+    #[test]
+    fn test_text_input_clear() {
+        let mut input = TextInput::new("hello world");
+        input.clear();
+        assert_eq!(input.value, "");
+        assert_eq!(input.cursor, 0);
+    }
+
+    #[test]
+    fn test_text_input_insert_in_middle() {
+        let mut input = TextInput::new("hllo");
+        input.cursor = 1;
+        input.insert('e');
+        assert_eq!(input.value, "hello");
+        assert_eq!(input.cursor, 2);
     }
 }
