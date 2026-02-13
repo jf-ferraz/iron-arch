@@ -110,6 +110,7 @@ impl DefaultModuleService {
     }
 
     /// Execute a hook script
+    #[allow(dead_code)] // Will be used when module hooks are integrated
     fn run_hook(&self, module: &Module, hook_name: &str) -> IronResult<bool> {
         let hook_path = self.module_dir(&module.id).join("hooks").join(hook_name);
 
@@ -155,13 +156,11 @@ impl ModuleService for DefaultModuleService {
         }
 
         for entry in fs::read_dir(&self.modules_dir).into_iter().flatten().flatten() {
-            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                if let Some(id) = entry.file_name().to_str() {
-                    if let Ok(module) = self.load(id) {
+            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false)
+                && let Some(id) = entry.file_name().to_str()
+                    && let Ok(module) = self.load(id) {
                         modules.push(module);
                     }
-                }
-            }
         }
 
         Ok(modules)
@@ -287,14 +286,12 @@ impl ModuleService for DefaultModuleService {
         let mut any_linked = false;
 
         for (source, target) in self.resolve_dotfiles(&module) {
-            if target.is_symlink() {
-                if let Ok(link_target) = fs::read_link(&target) {
-                    if link_target == source {
+            if target.is_symlink()
+                && let Ok(link_target) = fs::read_link(&target)
+                    && link_target == source {
                         any_linked = true;
                         continue;
                     }
-                }
-            }
             all_linked = false;
         }
 

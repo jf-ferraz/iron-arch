@@ -14,6 +14,7 @@ pub mod bundle;
 pub mod error;
 pub mod host;
 pub mod module;
+pub mod packages;
 pub mod profile;
 pub mod services;
 pub mod snapshot;
@@ -39,4 +40,8 @@ pub use validation::{
     check_dotfile_conflicts, check_module_conflicts, expand_home, resolve_dependencies,
     validate_config, validate_id, validate_module, validate_path, validate_path_safe,
     ValidationResult, ValidationWarning, WarningCode, MAX_ID_LENGTH,
+};
+pub use packages::{
+    assess_risk, ArchNewsItem, InstalledPackage, NoopPackageManager, PackageManager, PackageUpdate,
+    RiskLevel, UpdatePreview,
 };

@@ -229,11 +229,10 @@ pub fn validate_path_safe(path: &Path) -> Result<(), ValidationError> {
 /// Expand ~ to home directory
 pub fn expand_home(path: &Path) -> PathBuf {
     let path_str = path.to_string_lossy();
-    if path_str.starts_with('~') {
-        if let Some(home) = dirs::home_dir() {
+    if path_str.starts_with('~')
+        && let Some(home) = dirs::home_dir() {
             return PathBuf::from(path_str.replacen('~', &home.to_string_lossy(), 1));
         }
-    }
     path.to_path_buf()
 }
 

@@ -275,7 +275,7 @@ pub fn enable_services(services: &[&str], scope: ServiceScope) -> IronResult<Vec
     let mut failed = Vec::new();
 
     for service in services {
-        if let Err(_) = manager.enable(service) {
+        if manager.enable(service).is_err() {
             failed.push(service.to_string());
         }
     }
@@ -289,7 +289,7 @@ pub fn disable_services(services: &[&str], scope: ServiceScope) -> IronResult<Ve
     let mut failed = Vec::new();
 
     for service in services {
-        if let Err(_) = manager.disable(service) {
+        if manager.disable(service).is_err() {
             failed.push(service.to_string());
         }
     }

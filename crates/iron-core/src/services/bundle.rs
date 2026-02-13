@@ -74,12 +74,6 @@ impl DefaultBundleService {
         Ok(())
     }
 
-    /// Remove bundle packages (placeholder)
-    fn remove_packages(&self, _bundle: &Bundle) -> IronResult<()> {
-        // TODO: Integrate with iron-pacman PackageManager
-        Ok(())
-    }
-
     /// Link bundle dotfiles
     fn link_dotfiles(&self, bundle: &Bundle) -> IronResult<()> {
         let bundle_dir = self.bundle_dir(&bundle.id);
@@ -178,13 +172,11 @@ impl BundleService for DefaultBundleService {
         }
 
         for entry in fs::read_dir(&self.bundles_dir).into_iter().flatten().flatten() {
-            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                if let Some(id) = entry.file_name().to_str() {
-                    if let Ok(bundle) = self.load(id) {
+            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false)
+                && let Some(id) = entry.file_name().to_str()
+                    && let Ok(bundle) = self.load(id) {
                         bundles.push(bundle);
                     }
-                }
-            }
         }
 
         Ok(bundles)
@@ -285,11 +277,10 @@ impl BundleService for DefaultBundleService {
         let _ = self.load(id)?; // Verify bundle exists
         let host_id = self.current_host()?;
 
-        if let Some(active_id) = self.state_manager.active_bundle(&host_id) {
-            if active_id == id {
+        if let Some(active_id) = self.state_manager.active_bundle(&host_id)
+            && active_id == id {
                 return Ok(BundleState::Active);
             }
-        }
 
         // Check if dotfiles are linked (dormant)
         let bundle_dir = self.bundle_dir(id);
@@ -326,11 +317,10 @@ impl BundleService for DefaultBundleService {
         for other in &bundles {
             if bundle.conflicts.contains(&other.id) {
                 // Check if the conflicting bundle is active
-                if let Ok(state) = self.state(&other.id) {
-                    if state == BundleState::Active {
+                if let Ok(state) = self.state(&other.id)
+                    && state == BundleState::Active {
                         conflicts.push(other.id.clone());
                     }
-                }
             }
         }
 

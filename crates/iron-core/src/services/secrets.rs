@@ -214,8 +214,8 @@ impl SecretsService for DefaultSecretsService {
 
         if let Ok(entries) = std::fs::read_dir(&gpg_dir) {
             for entry in entries.flatten() {
-                if let Some(filename) = entry.file_name().to_str() {
-                    if filename.ends_with(".gpg") {
+                if let Some(filename) = entry.file_name().to_str()
+                    && filename.ends_with(".gpg") {
                         let key_id = filename.trim_end_matches(".gpg").to_string();
                         // Try to get user info from gpg
                         let user_id = Command::new("gpg")
@@ -237,7 +237,6 @@ impl SecretsService for DefaultSecretsService {
                             trust: "unknown".to_string(),
                         });
                     }
-                }
             }
         }
 
@@ -274,11 +273,10 @@ impl SecretsService for DefaultSecretsService {
 
         if let Ok(content) = std::fs::read_to_string(&gitattributes) {
             for line in content.lines() {
-                if line.contains("filter=git-crypt") || line.contains("diff=git-crypt") {
-                    if let Some(pattern) = line.split_whitespace().next() {
+                if (line.contains("filter=git-crypt") || line.contains("diff=git-crypt"))
+                    && let Some(pattern) = line.split_whitespace().next() {
                         encrypted_patterns.push(pattern.to_string());
                     }
-                }
             }
         }
 

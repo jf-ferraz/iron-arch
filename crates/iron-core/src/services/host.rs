@@ -90,7 +90,7 @@ impl HostService for DefaultHostService {
             output
                 .lines()
                 .find(|l| l.contains("VGA") || l.contains("3D"))
-                .and_then(|l| l.split(':').last())
+                .and_then(|l| l.split(':').next_back())
                 .map(|s| s.trim().to_string())
         });
 
@@ -174,20 +174,16 @@ impl HostService for DefaultHostService {
                     if let Some(res) = line.split_whitespace().next() {
                         current_resolution = res.to_string();
                     }
-                    if line.contains("Hz") {
-                        if let Some(hz) = line.split_whitespace().find(|s| s.ends_with("Hz")) {
-                            if let Ok(rate) = hz.trim_end_matches("Hz").parse::<f32>() {
+                    if line.contains("Hz")
+                        && let Some(hz) = line.split_whitespace().find(|s| s.ends_with("Hz"))
+                            && let Ok(rate) = hz.trim_end_matches("Hz").parse::<f32>() {
                                 current_refresh = Some(rate as u32);
                             }
-                        }
-                    }
-                } else if line.starts_with("Scale:") {
-                    if let Some(scale) = line.split(':').nth(1) {
-                        if let Ok(s) = scale.trim().parse() {
+                } else if line.starts_with("Scale:")
+                    && let Some(scale) = line.split(':').nth(1)
+                        && let Ok(s) = scale.trim().parse() {
                             current_scale = Some(s);
                         }
-                    }
-                }
             }
 
             // Save last monitor
@@ -202,8 +198,8 @@ impl HostService for DefaultHostService {
         }
 
         // Fallback to xrandr for X11
-        if monitors.is_empty() {
-            if let Some(output) = self.run_command("xrandr", &["--query"]) {
+        if monitors.is_empty()
+            && let Some(output) = self.run_command("xrandr", &["--query"]) {
                 for line in output.lines() {
                     if line.contains(" connected") {
                         let parts: Vec<&str> = line.split_whitespace().collect();
@@ -226,7 +222,6 @@ impl HostService for DefaultHostService {
                     }
                 }
             }
-        }
 
         Ok(monitors)
     }
@@ -280,13 +275,11 @@ impl HostService for DefaultHostService {
 
         if self.hosts_dir.exists() {
             for entry in fs::read_dir(&self.hosts_dir).into_iter().flatten().flatten() {
-                if entry.path().extension().map(|e| e == "toml").unwrap_or(false) {
-                    if let Some(id) = entry.path().file_stem().and_then(|s| s.to_str()) {
-                        if let Ok(host) = self.load_host(id) {
+                if entry.path().extension().map(|e| e == "toml").unwrap_or(false)
+                    && let Some(id) = entry.path().file_stem().and_then(|s| s.to_str())
+                        && let Ok(host) = self.load_host(id) {
                             hosts.push(host);
                         }
-                    }
-                }
             }
         }
 

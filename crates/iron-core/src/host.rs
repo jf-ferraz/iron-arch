@@ -1,7 +1,7 @@
 //! Host management - Hardware catalog and system configuration
 
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::Path;
 
 /// Represents a physical or virtual machine
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,6 +30,7 @@ pub struct Host {
 
 /// Hardware specifications for a host
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct HardwareSpec {
     /// CPU model/vendor
     pub cpu: Option<String>,
@@ -118,7 +119,7 @@ pub enum BootloaderType {
 
 impl Host {
     /// Load host configuration from a directory
-    pub fn load(path: &PathBuf) -> anyhow::Result<Self> {
+    pub fn load(path: &Path) -> anyhow::Result<Self> {
         let config_path = path.join("host.toml");
         let content = std::fs::read_to_string(&config_path)?;
         let host: Host = toml::from_str(&content)?;
@@ -126,7 +127,7 @@ impl Host {
     }
 
     /// Save host configuration to a directory
-    pub fn save(&self, path: &PathBuf) -> anyhow::Result<()> {
+    pub fn save(&self, path: &Path) -> anyhow::Result<()> {
         let config_path = path.join("host.toml");
         let content = toml::to_string_pretty(self)?;
         std::fs::write(config_path, content)?;
@@ -140,14 +141,3 @@ impl Host {
     }
 }
 
-impl Default for HardwareSpec {
-    fn default() -> Self {
-        Self {
-            cpu: None,
-            gpu: None,
-            ram_mb: None,
-            monitors: Vec::new(),
-            chassis: None,
-        }
-    }
-}

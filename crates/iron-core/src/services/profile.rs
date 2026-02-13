@@ -102,13 +102,11 @@ impl<M: ModuleService> ProfileService for DefaultProfileService<M> {
         }
 
         for entry in fs::read_dir(&self.profiles_dir).into_iter().flatten().flatten() {
-            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                if let Some(id) = entry.file_name().to_str() {
-                    if let Ok(profile) = self.load(id) {
+            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false)
+                && let Some(id) = entry.file_name().to_str()
+                    && let Ok(profile) = self.load(id) {
                         profiles.push(profile);
                     }
-                }
-            }
         }
 
         Ok(profiles)
@@ -151,11 +149,10 @@ impl<M: ModuleService> ProfileService for DefaultProfileService<M> {
         // Enable each module
         for module_id in &modules {
             // Skip if already installed
-            if let Ok(state) = self.module_service.status(module_id) {
-                if state == ModuleState::Installed {
+            if let Ok(state) = self.module_service.status(module_id)
+                && state == ModuleState::Installed {
                     continue;
                 }
-            }
             self.module_service.enable(module_id)?;
         }
 
@@ -173,11 +170,10 @@ impl<M: ModuleService> ProfileService for DefaultProfileService<M> {
 
         // Disable each module (in reverse order)
         for module_id in modules.iter().rev() {
-            if let Ok(state) = self.module_service.status(module_id) {
-                if state == ModuleState::Installed {
+            if let Ok(state) = self.module_service.status(module_id)
+                && state == ModuleState::Installed {
                     self.module_service.disable(module_id)?;
                 }
-            }
         }
 
         // Note: We don't clear active profile here as another profile might be applied
@@ -194,11 +190,10 @@ impl<M: ModuleService> ProfileService for DefaultProfileService<M> {
 
         let mut installed_count = 0;
         for module_id in &modules {
-            if let Ok(state) = self.module_service.status(module_id) {
-                if state == ModuleState::Installed {
+            if let Ok(state) = self.module_service.status(module_id)
+                && state == ModuleState::Installed {
                     installed_count += 1;
                 }
-            }
         }
 
         if installed_count == modules.len() {

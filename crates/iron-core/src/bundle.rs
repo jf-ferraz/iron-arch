@@ -1,7 +1,7 @@
 //! Bundle management - Desktop environment handling
 
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::Path;
 
 /// A bundle represents a complete desktop environment
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,7 +68,7 @@ pub enum BundleState {
 
 impl Bundle {
     /// Load bundle configuration from a directory
-    pub fn load(path: &PathBuf) -> anyhow::Result<Self> {
+    pub fn load(path: &Path) -> anyhow::Result<Self> {
         let config_path = path.join("bundle.toml");
         let content = std::fs::read_to_string(&config_path)?;
         let bundle: Bundle = toml::from_str(&content)?;
@@ -76,7 +76,7 @@ impl Bundle {
     }
 
     /// Save bundle configuration to a directory
-    pub fn save(&self, path: &PathBuf) -> anyhow::Result<()> {
+    pub fn save(&self, path: &Path) -> anyhow::Result<()> {
         std::fs::create_dir_all(path)?;
         let config_path = path.join("bundle.toml");
         let content = toml::to_string_pretty(self)?;

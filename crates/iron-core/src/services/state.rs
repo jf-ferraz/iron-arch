@@ -118,13 +118,11 @@ impl StateManager {
     /// Load audit log from disk
     fn load_audit_log(root: &Path) -> Vec<AuditEntry> {
         let log_path = root.join(AUDIT_LOG_FILE);
-        if log_path.exists() {
-            if let Ok(content) = fs::read_to_string(&log_path) {
-                if let Ok(entries) = serde_json::from_str(&content) {
+        if log_path.exists()
+            && let Ok(content) = fs::read_to_string(&log_path)
+                && let Ok(entries) = serde_json::from_str(&content) {
                     return entries;
                 }
-            }
-        }
         Vec::new()
     }
 

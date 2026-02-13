@@ -1,7 +1,7 @@
 //! Profile management - Dotfile collections
 
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::Path;
 
 /// A profile is a collection of modules (dotfiles)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,7 +46,7 @@ pub enum ProfileState {
 
 impl Profile {
     /// Load profile configuration from a directory
-    pub fn load(path: &PathBuf) -> anyhow::Result<Self> {
+    pub fn load(path: &Path) -> anyhow::Result<Self> {
         let config_path = path.join("profile.toml");
         let content = std::fs::read_to_string(&config_path)?;
         let profile: Profile = toml::from_str(&content)?;
@@ -54,7 +54,7 @@ impl Profile {
     }
 
     /// Save profile configuration to a directory
-    pub fn save(&self, path: &PathBuf) -> anyhow::Result<()> {
+    pub fn save(&self, path: &Path) -> anyhow::Result<()> {
         std::fs::create_dir_all(path)?;
         let config_path = path.join("profile.toml");
         let content = toml::to_string_pretty(self)?;

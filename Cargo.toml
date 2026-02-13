@@ -45,3 +45,8 @@ tracing-subscriber = "0.3"
 
 # Git
 git2 = "0.19"
+
+# Testing
+assert_cmd = "2.0"
+predicates = "3.0"
+tempfile = "3.10"

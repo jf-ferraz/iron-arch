@@ -240,7 +240,7 @@ impl<S: SnapshotManager> RecoveryService for DefaultRecoveryService<S> {
             if options.interactive {
                 script.push_str("fi\n");
             }
-            script.push_str("\n");
+            script.push('\n');
         }
 
         // AUR package installation
@@ -265,7 +265,7 @@ impl<S: SnapshotManager> RecoveryService for DefaultRecoveryService<S> {
             if options.interactive {
                 script.push_str("fi\n");
             }
-            script.push_str("\n");
+            script.push('\n');
         }
 
         // Service enablement
@@ -282,19 +282,18 @@ impl<S: SnapshotManager> RecoveryService for DefaultRecoveryService<S> {
             if options.interactive {
                 script.push_str("fi\n");
             }
-            script.push_str("\n");
+            script.push('\n');
         }
 
         // Iron configuration
         if options.include_bundle || options.include_modules {
             script.push_str("# Iron configuration\n");
 
-            if let Some(bundle) = &export.active_bundle {
-                if options.include_bundle {
+            if let Some(bundle) = &export.active_bundle
+                && options.include_bundle {
                     script.push_str(&format!("# Activate bundle: {}\n", bundle));
                     script.push_str(&format!("iron bundle activate {}\n", bundle));
                 }
-            }
 
             if options.include_modules && !export.active_modules.is_empty() {
                 script.push_str("# Enable modules\n");

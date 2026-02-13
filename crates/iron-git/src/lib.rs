@@ -114,7 +114,7 @@ impl DefaultGitManager {
             .args(args)
             .current_dir(&self.root)
             .output()
-            .map_err(|e| iron_core::IronError::Io(e))?;
+            .map_err(iron_core::IronError::Io)?;
 
         if output.status.success() {
             Ok(String::from_utf8_lossy(&output.stdout).to_string())
@@ -242,7 +242,7 @@ impl SecretsManager for DefaultSecretsManager {
         // Try to read a file in secrets to see if it's decrypted
         if let Ok(entries) = std::fs::read_dir(&secrets_dir) {
             for entry in entries.flatten() {
-                if let Ok(content) = std::fs::read(&entry.path()) {
+                if let Ok(content) = std::fs::read(entry.path()) {
                     // Encrypted files start with specific git-crypt header
                     if content.starts_with(b"\x00GITCRYPT") {
                         return false;
@@ -268,7 +268,7 @@ impl SecretsManager for DefaultSecretsManager {
             .args(&args[1..])
             .current_dir(&self.root)
             .output()
-            .map_err(|e| iron_core::IronError::Io(e))?;
+            .map_err(iron_core::IronError::Io)?;
 
         if output.status.success() {
             Ok(())
@@ -290,7 +290,7 @@ impl SecretsManager for DefaultSecretsManager {
             .args(["lock"])
             .current_dir(&self.root)
             .output()
-            .map_err(|e| iron_core::IronError::Io(e))?;
+            .map_err(iron_core::IronError::Io)?;
 
         if output.status.success() {
             Ok(())
@@ -312,7 +312,7 @@ impl SecretsManager for DefaultSecretsManager {
             .args(["status", "-e"])
             .current_dir(&self.root)
             .output()
-            .map_err(|e| iron_core::IronError::Io(e))?;
+            .map_err(iron_core::IronError::Io)?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let files: Vec<PathBuf> = stdout

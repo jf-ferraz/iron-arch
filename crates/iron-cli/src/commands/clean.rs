@@ -116,13 +116,11 @@ fn clean_symlinks(ctx: &AppContext) -> Result<()> {
     for module in &modules {
         for dotfile in &module.dotfiles {
             let target = expand_home(Path::new(&dotfile.target));
-            if target.is_symlink() {
-                if let Ok(link_target) = std::fs::read_link(&target) {
-                    if !link_target.exists() {
+            if target.is_symlink()
+                && let Ok(link_target) = std::fs::read_link(&target)
+                    && !link_target.exists() {
                         broken.push(target.clone());
                     }
-                }
-            }
         }
     }
 

@@ -109,15 +109,12 @@ impl Output {
         if !self.verbose || self.quiet {
             return;
         }
-        match self.format {
-            OutputFormat::Text => {
-                if self.no_color {
-                    println!("  {}", msg);
-                } else {
-                    println!("  \x1b[90m{}\x1b[0m", msg);
-                }
+        if let OutputFormat::Text = self.format {
+            if self.no_color {
+                println!("  {}", msg);
+            } else {
+                println!("  \x1b[90m{}\x1b[0m", msg);
             }
-            _ => {}
         }
     }
 
@@ -126,16 +123,13 @@ impl Output {
         if self.quiet {
             return;
         }
-        match self.format {
-            OutputFormat::Text => {
-                if self.no_color {
-                    println!("\n{}", title);
-                    println!("{}", "=".repeat(title.len()));
-                } else {
-                    println!("\n\x1b[1;36m{}\x1b[0m", title);
-                }
+        if let OutputFormat::Text = self.format {
+            if self.no_color {
+                println!("\n{}", title);
+                println!("{}", "=".repeat(title.len()));
+            } else {
+                println!("\n\x1b[1;36m{}\x1b[0m", title);
             }
-            _ => {}
         }
     }
 
@@ -144,16 +138,13 @@ impl Output {
         if self.quiet {
             return;
         }
-        match self.format {
-            OutputFormat::Text => {
-                if self.no_color {
-                    println!("\n{}", title);
-                    println!("{}", "-".repeat(title.len()));
-                } else {
-                    println!("\n\x1b[1m{}\x1b[0m", title);
-                }
+        if let OutputFormat::Text = self.format {
+            if self.no_color {
+                println!("\n{}", title);
+                println!("{}", "-".repeat(title.len()));
+            } else {
+                println!("\n\x1b[1m{}\x1b[0m", title);
             }
-            _ => {}
         }
     }
 
@@ -221,14 +212,14 @@ impl Output {
 
     /// Print JSON data
     pub fn json<T: Serialize>(&self, data: &T) {
-        if let OutputFormat::Json = self.format {
-            if let Ok(json) = serde_json::to_string_pretty(data) {
+        if let OutputFormat::Json = self.format
+            && let Ok(json) = serde_json::to_string_pretty(data) {
                 println!("{}", json);
             }
-        }
     }
 
     /// Print a table row
+    #[allow(dead_code)] // Will be used for CLI table output in Phase 6
     pub fn table_row(&self, cols: &[(&str, usize)]) {
         if self.quiet {
             return;

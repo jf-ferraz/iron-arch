@@ -291,13 +291,11 @@ pub mod backup {
         if let Ok(entries) = fs::read_dir(parent) {
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().to_string();
-                if name.starts_with(&prefix) && name.ends_with(&suffix) {
-                    if let Ok(metadata) = entry.metadata() {
-                        if let Ok(modified) = metadata.modified() {
+                if name.starts_with(&prefix) && name.ends_with(&suffix)
+                    && let Ok(metadata) = entry.metadata()
+                        && let Ok(modified) = metadata.modified() {
                             backups.push((entry.path(), modified));
                         }
-                    }
-                }
             }
         }
 
@@ -440,11 +438,10 @@ pub mod path {
             if let Ok(home) = env::var("HOME") {
                 return format!("{}{}", home, &path[1..]);
             }
-        } else if path == "~" {
-            if let Ok(home) = env::var("HOME") {
+        } else if path == "~"
+            && let Ok(home) = env::var("HOME") {
                 return home;
             }
-        }
         path.to_string()
     }
 

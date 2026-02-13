@@ -1,7 +1,7 @@
 //! Module management - Individual configuration components
 
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::Path;
 
 /// A module is the atomic unit of configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -90,7 +90,7 @@ pub enum ModuleState {
 
 impl Module {
     /// Load module configuration from a directory
-    pub fn load(path: &PathBuf) -> anyhow::Result<Self> {
+    pub fn load(path: &Path) -> anyhow::Result<Self> {
         let config_path = path.join("module.toml");
         let content = std::fs::read_to_string(&config_path)?;
         let module: Module = toml::from_str(&content)?;
@@ -98,7 +98,7 @@ impl Module {
     }
 
     /// Save module configuration to a directory
-    pub fn save(&self, path: &PathBuf) -> anyhow::Result<()> {
+    pub fn save(&self, path: &Path) -> anyhow::Result<()> {
         std::fs::create_dir_all(path)?;
         let config_path = path.join("module.toml");
         let content = toml::to_string_pretty(self)?;
