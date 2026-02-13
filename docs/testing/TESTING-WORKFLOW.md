@@ -6,11 +6,11 @@
 
 This document defines a structured, incremental testing workflow for the Iron configuration management system. Tests are categorized by safety level with rollback strategies for each phase.
 
-**Current State (Updated 2025-02-12):**
-- **304 tests passing** across 7 crates (+84% from baseline)
+**Current State (Updated 2025-02-13):**
+- **354 tests passing** across 7 crates (+115% from baseline)
 - **34.51% code coverage** (+1.83% from baseline)
 - 14 CLI command groups implemented
-- 8 TUI views functional
+- 8 TUI views with rendering tests
 - Desktop host: AMD Ryzen 9 7950X, RTX 4080, 64GB RAM
 - Active bundle: hyprland
 - Dormant bundle: niri
@@ -53,7 +53,7 @@ cargo build --release
 
 ### 1.2 Success Criteria
 
-- [x] All 304 tests pass
+- [x] All 354 tests pass
 - [ ] Zero clippy warnings
 - [ ] Release binary builds successfully
 - [ ] `--version` displays correct version
@@ -72,7 +72,7 @@ cargo build --release
 |-------|-------|----------|---------|----------|
 | iron-core | 64 | 46.8% | `cargo test -p iron-core` | CRITICAL |
 | iron-cli | 85 | 0%* | `cargo test -p iron-cli` | HIGH |
-| iron-tui | 63 | 27.4% | `cargo test -p iron-tui` | HIGH |
+| iron-tui | 113 | 52.1% | `cargo test -p iron-tui` | HIGH |
 | iron-systemd | 37 | 37.6% | `cargo test -p iron-systemd` | MEDIUM |
 | iron-git | 34 | 29.3% | `cargo test -p iron-git` | MEDIUM |
 | iron-fs | 12 | 46.2% | `cargo test -p iron-fs` | MEDIUM |
@@ -894,11 +894,12 @@ sudo pacman -U /var/cache/pacman/pkg/<package-version>.pkg.tar.zst
 
 ### Priority 1: High-Impact Coverage Gaps
 
-#### 8.1 TUI Rendering Tests with TestBackend
+#### 8.1 TUI Rendering Tests with TestBackend [COMPLETED]
 
-**Target Coverage Increase:** +15-20%
+**Status:** DONE - 50 new tests added (+50 tests, iron-tui: 63 → 113)
+**Coverage Increase:** +24.7% (iron-tui: 27.4% → 52.1%)
 
-The `ui/` directory (bundles.rs, dashboard.rs, modules.rs, profiles.rs, settings.rs, update.rs, wizard.rs) currently has 0% coverage. These rendering functions require `ratatui::backend::TestBackend` for testing.
+The `ui/` directory now has comprehensive TestBackend rendering tests covering all 8 TUI views: Dashboard, Bundles, BundleDetail, Modules, ModuleDetail, Profiles, ProfileDetail, Settings, Update Preview, and Sync.
 
 **Implementation Pattern:**
 
@@ -947,11 +948,11 @@ fn test_bundles_view_shows_active_indicator() {
 }
 ```
 
-**Files to Create/Modify:**
-- `crates/iron-tui/src/ui/tests.rs` (new)
-- `crates/iron-tui/src/ui/mod.rs` (add `#[cfg(test)] mod tests;`)
+**Files Created:**
+- `crates/iron-tui/src/ui/tests.rs` - 50 comprehensive rendering tests
+- `crates/iron-tui/src/ui/mod.rs` - added `#[cfg(test)] mod tests;`
 
-**Estimated Tests:** 30-40 new tests
+**Tests Added:** 50 tests (exceeds 30-40 estimate)
 
 #### 8.2 iron-core Service Layer Mocking
 
@@ -1341,13 +1342,22 @@ iron recover --export > backup.json
 
 ---
 
-*Document Version: 1.1.0*
-*Last Updated: 2025-02-12*
+*Document Version: 1.2.0*
+*Last Updated: 2025-02-13*
 *Author: Iron Development Team*
 
 ---
 
 ## Changelog
+
+### v1.2.0 (2025-02-13)
+- Updated test counts: 304 → 354 (+115% from baseline)
+- **Completed Phase 8.1:** TUI TestBackend rendering tests
+  - Added 50 new TUI rendering tests in `crates/iron-tui/src/ui/tests.rs`
+  - iron-tui coverage: 27.4% → 52.1% (+24.7%)
+  - Covers all 8 TUI views: Dashboard, Bundles, Modules, Profiles, Settings, Update Preview, Sync
+  - Test helpers for Bundle, Module, Profile, PackageUpdate creation
+- iron-tui total tests: 63 → 113
 
 ### v1.1.0 (2025-02-12)
 - Updated test counts: 165 → 304 (+84%)

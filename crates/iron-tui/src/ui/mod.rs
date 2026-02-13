@@ -67,3 +67,4 @@ pub fn render(frame: &mut Frame, app: &App) {
         render_confirm_dialog(frame, area, app);
     }
 }
+#[cfg(test)] mod tests;
