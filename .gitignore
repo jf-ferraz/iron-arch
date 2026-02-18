@@ -43,3 +43,18 @@ Thumbs.db
 # Test artifacts
 iron-export-*.json
 iron-install.sh
+
+# Coverage reports
+tarpaulin-report.*
+coverage/
+*.profraw
+*.profdata
+
+# Generated index files
+PROJECT_INDEX.*
+
+# Runtime state (root level)
+state.json
+
+# IDE workspace files
+*.code-workspace
