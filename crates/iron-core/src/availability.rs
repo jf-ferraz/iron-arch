@@ -244,4 +244,106 @@ mod tests {
         };
         assert!(some_unavailable.has_warnings());
     }
+
+    // NFR-11: Graceful degradation scenario tests
+
+    #[test]
+    fn degradation_scenario_all_unavailable() {
+        // Simulates a minimal system with no optional services
+        let availability = ServiceAvailability {
+            secrets: AvailabilityStatus::Unavailable("git-crypt not installed".into()),
+            sync: AvailabilityStatus::Unavailable("no remote configured".into()),
+            snapshots: AvailabilityStatus::Unavailable("no snapshot tool".into()),
+            aur: AvailabilityStatus::Unavailable("no AUR helper".into()),
+        };
+
+        // System should still be usable
+        assert!(availability.has_warnings());
+        let warnings = availability.warnings();
+        assert_eq!(warnings.len(), 4);
+
+        // Warnings should be informative
+        assert!(warnings.iter().any(|w| w.contains("git-crypt")));
+        assert!(warnings.iter().any(|w| w.contains("remote")));
+        assert!(warnings.iter().any(|w| w.contains("snapshot")));
+        assert!(warnings.iter().any(|w| w.contains("AUR")));
+    }
+
+    #[test]
+    fn degradation_scenario_fallback_tools() {
+        // Simulates using fallback tools (yay instead of paru, snapper instead of timeshift)
+        let availability = ServiceAvailability {
+            secrets: AvailabilityStatus::Available,
+            sync: AvailabilityStatus::Available,
+            snapshots: AvailabilityStatus::Degraded("using snapper (timeshift preferred)".into()),
+            aur: AvailabilityStatus::Degraded("using yay (paru preferred)".into()),
+        };
+
+        // Degraded services should be usable
+        assert!(availability.snapshots.is_usable());
+        assert!(availability.aur.is_usable());
+
+        // But should report warnings
+        assert!(availability.has_warnings());
+        let warnings = availability.warnings();
+        assert_eq!(warnings.len(), 2);
+    }
+
+    #[test]
+    fn degradation_scenario_partial_availability() {
+        // Simulates typical scenario: git available but secrets/snapshot not configured
+        let availability = ServiceAvailability {
+            secrets: AvailabilityStatus::Unavailable("git-crypt not initialized".into()),
+            sync: AvailabilityStatus::Available,
+            snapshots: AvailabilityStatus::Unavailable("timeshift not installed".into()),
+            aur: AvailabilityStatus::Available,
+        };
+
+        // Should have exactly 2 warnings
+        let warnings = availability.warnings();
+        assert_eq!(warnings.len(), 2);
+
+        // Core operations (sync, AUR) should work
+        assert!(availability.sync.is_available());
+        assert!(availability.aur.is_available());
+    }
+
+    #[test]
+    fn degradation_status_json_serialization_roundtrip() {
+        // Verify degradation status survives JSON serialization
+        let availability = ServiceAvailability {
+            secrets: AvailabilityStatus::Available,
+            sync: AvailabilityStatus::Degraded("offline mode".into()),
+            snapshots: AvailabilityStatus::Unavailable("not installed".into()),
+            aur: AvailabilityStatus::Available,
+        };
+
+        let json = serde_json::to_string(&availability).expect("serialize");
+        let restored: ServiceAvailability = serde_json::from_str(&json).expect("deserialize");
+
+        assert!(restored.secrets.is_available());
+        assert!(restored.sync.is_usable());
+        assert!(!restored.sync.is_available());
+        assert!(!restored.snapshots.is_usable());
+        assert!(restored.aur.is_available());
+    }
+
+    #[test]
+    fn degradation_warning_messages_are_actionable() {
+        // Verify warning messages provide actionable information
+        let availability = ServiceAvailability {
+            secrets: AvailabilityStatus::Unavailable("git-crypt not installed".into()),
+            sync: AvailabilityStatus::Available,
+            snapshots: AvailabilityStatus::Available,
+            aur: AvailabilityStatus::Available,
+        };
+
+        let warnings = availability.warnings();
+        assert_eq!(warnings.len(), 1);
+
+        // Warning should identify the service and include the reason
+        let warning = &warnings[0];
+        assert!(warning.contains("Secrets"), "Should identify service: {}", warning);
+        assert!(warning.contains("git-crypt"), "Should include reason: {}", warning);
+    }
 }
