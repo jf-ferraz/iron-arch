@@ -6,8 +6,10 @@ use crate::context::{AppContext, require_init};
 use crate::output::{StatusBadge, render_risk};
 use anyhow::Result;
 use iron_core::services::update::{UpdateRisk, UpdateService};
+use iron_core::OperationSpan;
 use serde::Serialize;
 use std::io::{self, Write};
+use tracing::info;
 
 #[derive(Serialize)]
 struct UpdatePreview {
@@ -51,6 +53,17 @@ pub fn execute(
     yes: bool,
 ) -> Result<()> {
     require_init(ctx)?;
+
+    // Create operation span for log correlation (NFR-9)
+    let op_span = OperationSpan::new("update").with_component("update_command");
+    let _guard = op_span.enter();
+
+    info!(
+        dry_run = dry_run,
+        force = force,
+        resume = resume,
+        "Starting update operation"
+    );
 
     let output = &ctx.output;
     let update_service = ctx.update_service();

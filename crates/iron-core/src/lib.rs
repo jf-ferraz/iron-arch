@@ -68,3 +68,8 @@ pub use resilience::{
     CircuitBreaker, CircuitBreakerConfig, CircuitBreakerStats, CircuitOpenError, CircuitState,
     CommandConfig, CommandError, CommandExecutor, CommandOutput, RealCommandExecutor,
 };
+
+// Structured logging (NFR-9, NFR-10)
+pub use logging::{
+    generate_correlation_id, init_logging, LogConfig, OperationSpan, DEFAULT_MAX_SIZE_BYTES,
+};
