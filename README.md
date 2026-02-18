@@ -72,13 +72,13 @@ HOST (Hardware + System Config)
 ```
 iron/
 ├── crates/
-│   ├── iron-core/     # Domain models, services, state management (62 tests)
-│   ├── iron-cli/      # CLI application with 11 command groups (54 tests)
-│   ├── iron-tui/      # TUI dashboard with ratatui (22 tests)
-│   ├── iron-fs/       # File system operations (3 tests)
-│   ├── iron-pacman/   # Package management (12 tests)
-│   ├── iron-git/      # Git operations (9 tests)
-│   └── iron-systemd/  # Systemd service management (3 tests)
+│   ├── iron-core/     # Domain models, services, state management (707 tests)
+│   ├── iron-cli/      # CLI application with 11 command groups (88 tests)
+│   ├── iron-tui/      # TUI dashboard with ratatui (239 tests)
+│   ├── iron-fs/       # File system operations (61 tests)
+│   ├── iron-pacman/   # Package management (139 tests)
+│   ├── iron-git/      # Git operations (95 tests)
+│   └── iron-systemd/  # Systemd service management (64 tests)
 ├── bundles/           # Desktop environment bundles
 ├── profiles/          # User profiles
 ├── modules/           # Configuration modules
@@ -135,8 +135,8 @@ iron recover                 # Recovery workflow
 ## Project Status
 
 **Current Version**: 0.1.0
-**Phase**: 6/7 Complete (CLI Integration Tests)
-**Test Coverage**: 165 tests passing
+**Phase**: 8/9 Complete (Production Hardening)
+**Test Coverage**: 1,533 tests passing (64% line coverage)
 
 | Phase | Description | Status |
 |-------|-------------|--------|
@@ -145,8 +145,10 @@ iron recover                 # Recovery workflow
 | 3 | Core Services (8 services implemented) | ✅ Complete |
 | 4 | CLI Implementation (11 command groups) | ✅ Complete |
 | 5 | TUI Implementation (ratatui + crossterm) | ✅ Complete |
-| 6 | CLI Integration Tests (54 tests) | ✅ Complete |
-| 7 | Polish & Release | Pending |
+| 6 | CLI Integration Tests (88 tests) | ✅ Complete |
+| 7 | NFR Implementation (resilience, logging) | ✅ Complete |
+| 8 | Production Hardening (circuit breaker, graceful degradation) | ✅ Complete |
+| 9 | Polish & Release | Pending |
 
 ## Tech Stack
 

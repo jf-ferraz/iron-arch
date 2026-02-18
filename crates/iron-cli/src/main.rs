@@ -70,10 +70,9 @@ fn main() -> Result<()> {
         }) => commands::recover::execute(&ctx, export, import, script),
         Some(Commands::Go) => {
             ctx.output.info("Launching Iron TUI...");
-            ctx.output
-                .warning("TUI not yet implemented. Use CLI commands for now.");
-            ctx.output.info("Run 'iron --help' for available commands.");
-            Ok(())
+            let root = std::path::PathBuf::from(&cli.root);
+            let package_manager = std::sync::Arc::new(iron_pacman::DefaultPackageManager::default());
+            iron_tui::run_with_config(root, package_manager)
         }
         Some(Commands::Completions { shell }) => {
             let mut cmd = Cli::command();
@@ -89,8 +88,7 @@ fn main() -> Result<()> {
             ctx.output.info("Run 'iron --help' for CLI commands");
             ctx.output
                 .info("Run 'iron init' to initialize Iron on this host");
-            ctx.output
-                .info("Run 'iron go' for TUI dashboard (coming soon)");
+            ctx.output.info("Run 'iron go' to launch the TUI dashboard");
             Ok(())
         }
     }
