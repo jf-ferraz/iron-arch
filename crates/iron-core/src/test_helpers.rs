@@ -228,11 +228,7 @@ impl TestModule {
     }
 
     /// Add a dotfile mapping
-    pub fn with_dotfile(
-        mut self,
-        source: impl Into<String>,
-        target: impl Into<String>,
-    ) -> Self {
+    pub fn with_dotfile(mut self, source: impl Into<String>, target: impl Into<String>) -> Self {
         self.dotfiles.push(DotfileMapping {
             source: source.into(),
             target: target.into(),
@@ -467,7 +463,8 @@ impl MockFsBuilder {
             // Write bundle.toml
             let bundle_struct = bundle.to_bundle();
             let toml_content = toml::to_string_pretty(&bundle_struct).unwrap();
-            self.fs.add_file(bundle_dir.join("bundle.toml"), toml_content);
+            self.fs
+                .add_file(bundle_dir.join("bundle.toml"), toml_content);
 
             // Create dotfiles directory and files
             if !bundle.dotfiles.is_empty() {
@@ -488,7 +485,8 @@ impl MockFsBuilder {
             // Write module.toml
             let module_struct = module.to_module();
             let toml_content = toml::to_string_pretty(&module_struct).unwrap();
-            self.fs.add_file(module_dir.join("module.toml"), toml_content);
+            self.fs
+                .add_file(module_dir.join("module.toml"), toml_content);
 
             // Create file contents
             for (path, content) in &module.file_contents {
@@ -504,7 +502,8 @@ impl MockFsBuilder {
             // Write profile.toml
             let profile_struct = profile.to_profile();
             let toml_content = toml::to_string_pretty(&profile_struct).unwrap();
-            self.fs.add_file(profile_dir.join("profile.toml"), toml_content);
+            self.fs
+                .add_file(profile_dir.join("profile.toml"), toml_content);
         }
 
         // Add state.json if specified
@@ -681,13 +680,9 @@ mod tests {
     fn test_mock_fs_builder_with_dotfiles() {
         let fs = MockFsBuilder::new("/iron")
             .add_bundle(
-                TestBundle::new("hyprland")
-                    .with_dotfile("hyprland.conf", "# Hyprland config")
+                TestBundle::new("hyprland").with_dotfile("hyprland.conf", "# Hyprland config"),
             )
-            .add_module(
-                TestModule::new("nvim")
-                    .with_file("config/init.lua", "-- Init")
-            )
+            .add_module(TestModule::new("nvim").with_file("config/init.lua", "-- Init"))
             .build();
 
         // Verify bundle dotfile
@@ -757,7 +752,9 @@ mod tests {
             .build();
 
         // Read and parse the generated TOML
-        let content = fs.read_to_string(Path::new("/iron/bundles/hyprland/bundle.toml")).unwrap();
+        let content = fs
+            .read_to_string(Path::new("/iron/bundles/hyprland/bundle.toml"))
+            .unwrap();
         let parsed: Bundle = toml::from_str(&content).unwrap();
 
         assert_eq!(parsed.id, "hyprland");
@@ -772,7 +769,9 @@ mod tests {
             .build();
 
         // Read and parse the generated TOML
-        let content = fs.read_to_string(Path::new("/iron/modules/nvim-ide/module.toml")).unwrap();
+        let content = fs
+            .read_to_string(Path::new("/iron/modules/nvim-ide/module.toml"))
+            .unwrap();
         let parsed: Module = toml::from_str(&content).unwrap();
 
         assert_eq!(parsed.id, "nvim-ide");
@@ -786,7 +785,9 @@ mod tests {
             .build();
 
         // Read and parse the generated TOML
-        let content = fs.read_to_string(Path::new("/iron/profiles/developer/profile.toml")).unwrap();
+        let content = fs
+            .read_to_string(Path::new("/iron/profiles/developer/profile.toml"))
+            .unwrap();
         let parsed: Profile = toml::from_str(&content).unwrap();
 
         assert_eq!(parsed.id, "developer");

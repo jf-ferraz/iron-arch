@@ -4,6 +4,7 @@
 //!
 //! - **Circuit Breaker**: Prevents cascading failures by failing fast when services are unavailable
 //! - **Command Executor**: Fault-tolerant command execution with timeout and retry logic
+//! - **Mock Executor**: Configurable mock for testing command execution
 //!
 //! # Circuit Breaker Example
 //!
@@ -34,9 +35,22 @@
 //! // Execute a command
 //! let output = executor.execute("pacman", &["-Qi", "linux"]);
 //! ```
+//!
+//! # Mock Executor Example (for testing)
+//!
+//! ```
+//! use iron_core::resilience::{MockCommandExecutor, MockResponse, CommandExecutor};
+//!
+//! let mock = MockCommandExecutor::new();
+//! mock.add_response("pacman", &["-Qi", "linux"], MockResponse::success("Name: linux"));
+//!
+//! let result = mock.execute("pacman", &["-Qi", "linux"]);
+//! assert!(result.is_ok());
+//! ```
 
 mod circuit_breaker;
 mod command_executor;
+mod mock_executor;
 
 pub use circuit_breaker::{
     CircuitBreaker, CircuitBreakerConfig, CircuitBreakerStats, CircuitOpenError, CircuitState,
@@ -44,3 +58,4 @@ pub use circuit_breaker::{
 pub use command_executor::{
     CommandConfig, CommandError, CommandExecutor, CommandOutput, RealCommandExecutor,
 };
+pub use mock_executor::{CallRecord, FailureMode, MockCommandExecutor, MockResponse};
