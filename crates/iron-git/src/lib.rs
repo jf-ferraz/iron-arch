@@ -1053,4 +1053,459 @@ encrypted: secrets/token.txt
         let manager = DefaultSecretsManager::new(root);
         assert!(manager.executor.is_none());
     }
+
+    // ==========================================================================
+    // DefaultGitManager with Mock Executor Integration Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_git_manager_status_with_executor() {
+        use crate::test_fixtures::GitMockBuilder;
+        use std::sync::Arc;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root = temp_dir.path().to_path_buf();
+        std::fs::create_dir_all(root.join(".git")).expect("Failed to create .git");
+
+        let executor = Arc::new(
+            GitMockBuilder::new()
+                .with_branch("develop")
+                .with_modified_files(&["src/main.rs"])
+                .with_ahead_behind(2, 1)
+                .with_repo_root(root.to_str().unwrap())
+                .build(),
+        );
+
+        let manager =
+            DefaultGitManager::with_executor(root, executor).expect("Failed to create manager");
+
+        let status = manager.status().expect("status should succeed");
+        assert_eq!(status.branch, Some("develop".to_string()));
+        assert!(!status.is_clean);
+        assert_eq!(status.ahead, 2);
+        assert_eq!(status.behind, 1);
+    }
+
+    #[test]
+    fn test_git_manager_diff_with_executor() {
+        use crate::test_fixtures::GitMockBuilder;
+        use std::sync::Arc;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root = temp_dir.path().to_path_buf();
+        std::fs::create_dir_all(root.join(".git")).expect("Failed to create .git");
+
+        let diff_content = "+added line\n-removed line";
+        let executor = Arc::new(
+            GitMockBuilder::new()
+                .with_diff(diff_content)
+                .with_repo_root(root.to_str().unwrap())
+                .build(),
+        );
+
+        let manager =
+            DefaultGitManager::with_executor(root, executor).expect("Failed to create manager");
+
+        let diff = manager.diff().expect("diff should succeed");
+        assert_eq!(diff, diff_content);
+    }
+
+    #[test]
+    fn test_git_manager_has_changes_clean() {
+        use crate::test_fixtures::GitMockBuilder;
+        use std::sync::Arc;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root = temp_dir.path().to_path_buf();
+        std::fs::create_dir_all(root.join(".git")).expect("Failed to create .git");
+
+        let executor = Arc::new(
+            GitMockBuilder::new()
+                .with_repo_root(root.to_str().unwrap())
+                .build(),
+        );
+
+        let manager =
+            DefaultGitManager::with_executor(root, executor).expect("Failed to create manager");
+
+        assert!(!manager.has_changes().expect("has_changes should succeed"));
+    }
+
+    #[test]
+    fn test_git_manager_has_changes_dirty() {
+        use crate::test_fixtures::GitMockBuilder;
+        use std::sync::Arc;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root = temp_dir.path().to_path_buf();
+        std::fs::create_dir_all(root.join(".git")).expect("Failed to create .git");
+
+        let executor = Arc::new(
+            GitMockBuilder::new()
+                .with_modified_files(&["file.rs"])
+                .with_repo_root(root.to_str().unwrap())
+                .build(),
+        );
+
+        let manager =
+            DefaultGitManager::with_executor(root, executor).expect("Failed to create manager");
+
+        assert!(manager.has_changes().expect("has_changes should succeed"));
+    }
+
+    #[test]
+    fn test_git_manager_push_success_with_executor() {
+        use crate::test_fixtures::GitMockBuilder;
+        use std::sync::Arc;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root = temp_dir.path().to_path_buf();
+        std::fs::create_dir_all(root.join(".git")).expect("Failed to create .git");
+
+        let executor = Arc::new(
+            GitMockBuilder::new()
+                .push_succeeds(true)
+                .with_repo_root(root.to_str().unwrap())
+                .build(),
+        );
+
+        let manager =
+            DefaultGitManager::with_executor(root, executor).expect("Failed to create manager");
+
+        assert!(manager.push("origin", "main").is_ok());
+    }
+
+    #[test]
+    fn test_git_manager_push_failure_with_executor() {
+        use crate::test_fixtures::GitMockBuilder;
+        use std::sync::Arc;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root = temp_dir.path().to_path_buf();
+        std::fs::create_dir_all(root.join(".git")).expect("Failed to create .git");
+
+        let executor = Arc::new(
+            GitMockBuilder::new()
+                .push_succeeds(false)
+                .with_repo_root(root.to_str().unwrap())
+                .build(),
+        );
+
+        let manager =
+            DefaultGitManager::with_executor(root, executor).expect("Failed to create manager");
+
+        let result = manager.push("origin", "main");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_git_manager_pull_success_with_executor() {
+        use crate::test_fixtures::GitMockBuilder;
+        use std::sync::Arc;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root = temp_dir.path().to_path_buf();
+        std::fs::create_dir_all(root.join(".git")).expect("Failed to create .git");
+
+        let executor = Arc::new(
+            GitMockBuilder::new()
+                .pull_succeeds(true)
+                .with_repo_root(root.to_str().unwrap())
+                .build(),
+        );
+
+        let manager =
+            DefaultGitManager::with_executor(root, executor).expect("Failed to create manager");
+
+        let result = manager.pull("origin", "main").expect("pull should succeed");
+        assert!(result.success);
+        assert!(!result.has_conflicts);
+    }
+
+    #[test]
+    fn test_git_manager_root_accessor() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root = temp_dir.path().to_path_buf();
+        std::fs::create_dir_all(root.join(".git")).expect("Failed to create .git");
+
+        let manager = DefaultGitManager::new(root.clone()).expect("Failed to create manager");
+
+        assert_eq!(manager.root(), root.as_path());
+    }
+
+    #[test]
+    fn test_git_manager_not_a_repository() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root = temp_dir.path().to_path_buf();
+        // No .git directory created
+
+        let result = DefaultGitManager::new(root);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_git_manager_with_executor_not_a_repository() {
+        use iron_core::resilience::RealCommandExecutor;
+        use std::sync::Arc;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root = temp_dir.path().to_path_buf();
+        // No .git directory
+
+        let executor = Arc::new(RealCommandExecutor::with_defaults());
+        let result = DefaultGitManager::with_executor(root, executor);
+        assert!(result.is_err());
+    }
+
+    // ==========================================================================
+    // DefaultSecretsManager Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_secrets_manager_not_initialized() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root = temp_dir.path().to_path_buf();
+        // No .git-crypt directory
+
+        let manager = DefaultSecretsManager::new(root);
+        assert!(!manager.is_initialized());
+    }
+
+    #[test]
+    fn test_secrets_manager_initialized() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root = temp_dir.path().to_path_buf();
+        std::fs::create_dir_all(root.join(".git-crypt")).expect("Failed to create .git-crypt");
+
+        let manager = DefaultSecretsManager::new(root);
+        assert!(manager.is_initialized());
+    }
+
+    #[test]
+    fn test_secrets_manager_is_unlocked_no_gitcrypt() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root = temp_dir.path().to_path_buf();
+        // No .git-crypt = not initialized, so is_unlocked returns true
+
+        let manager = DefaultSecretsManager::new(root);
+        assert!(manager.is_unlocked());
+    }
+
+    #[test]
+    fn test_secrets_manager_is_unlocked_no_secrets_dir() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root = temp_dir.path().to_path_buf();
+        std::fs::create_dir_all(root.join(".git-crypt")).expect("Failed to create .git-crypt");
+        // No secrets directory
+
+        let manager = DefaultSecretsManager::new(root);
+        assert!(manager.is_unlocked());
+    }
+
+    #[test]
+    fn test_secrets_manager_is_unlocked_plaintext_secrets() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root = temp_dir.path().to_path_buf();
+        std::fs::create_dir_all(root.join(".git-crypt")).expect("Failed to create .git-crypt");
+        std::fs::create_dir_all(root.join("secrets")).expect("Failed to create secrets dir");
+        std::fs::write(root.join("secrets/api_key.txt"), "plaintext secret")
+            .expect("Failed to write secret");
+
+        let manager = DefaultSecretsManager::new(root);
+        assert!(manager.is_unlocked());
+    }
+
+    #[test]
+    fn test_secrets_manager_is_unlocked_encrypted_secrets() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root = temp_dir.path().to_path_buf();
+        std::fs::create_dir_all(root.join(".git-crypt")).expect("Failed to create .git-crypt");
+        std::fs::create_dir_all(root.join("secrets")).expect("Failed to create secrets dir");
+        // Write git-crypt encrypted content
+        std::fs::write(
+            root.join("secrets/api_key.txt"),
+            b"\x00GITCRYPT\x00\x10\x00\x00encrypted_data",
+        )
+        .expect("Failed to write secret");
+
+        let manager = DefaultSecretsManager::new(root);
+        assert!(!manager.is_unlocked());
+    }
+
+    #[test]
+    fn test_secrets_manager_unlock_not_initialized() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root = temp_dir.path().to_path_buf();
+        // No .git-crypt directory
+
+        let manager = DefaultSecretsManager::new(root);
+        let result = manager.unlock(None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_secrets_manager_lock_not_initialized() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root = temp_dir.path().to_path_buf();
+        // No .git-crypt = not initialized, lock returns Ok
+
+        let manager = DefaultSecretsManager::new(root);
+        assert!(manager.lock().is_ok());
+    }
+
+    #[test]
+    fn test_secrets_manager_list_encrypted_not_initialized() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let root = temp_dir.path().to_path_buf();
+        // No .git-crypt
+
+        let manager = DefaultSecretsManager::new(root);
+        let files = manager.list_encrypted().expect("list_encrypted should succeed");
+        assert!(files.is_empty());
+    }
+
+    // ==========================================================================
+    // Additional Git Status Parsing Edge Cases
+    // ==========================================================================
+
+    #[test]
+    fn test_parse_status_modified_and_staged() {
+        let output = "## main\nMM both_modified.rs\n";
+        let status = parse_git_status(output);
+        assert!(!status.is_clean);
+        assert_eq!(status.modified.len(), 1);
+        assert!(status.modified.contains(&PathBuf::from("both_modified.rs")));
+    }
+
+    #[test]
+    fn test_parse_status_added_modified() {
+        let output = "## main\nAM new_file.rs\n";
+        let status = parse_git_status(output);
+        assert!(!status.is_clean);
+        assert_eq!(status.staged.len(), 1);
+        assert!(status.staged.contains(&PathBuf::from("new_file.rs")));
+    }
+
+    #[test]
+    fn test_parse_status_deleted_deleted_conflict() {
+        let output = "## main\nDD deleted_both.rs\n";
+        let status = parse_git_status(output);
+        assert!(!status.is_clean);
+        assert_eq!(status.modified.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_status_short_line() {
+        // Line shorter than 3 chars should be ignored
+        let output = "## main\nX\n";
+        let status = parse_git_status(output);
+        assert!(status.is_clean);
+        assert_eq!(status.branch, Some("main".to_string()));
+    }
+
+    #[test]
+    fn test_parse_status_unrecognized_indicator() {
+        let output = "## main\nXX unknown.rs\n";
+        let status = parse_git_status(output);
+        // Unrecognized indicator should be ignored
+        assert!(status.is_clean);
+    }
+
+    #[test]
+    fn test_parse_status_files_with_spaces() {
+        let output = "## main\n M file with spaces.rs\n?? another file.txt\n";
+        let status = parse_git_status(output);
+        assert!(!status.is_clean);
+        assert!(status.modified.contains(&PathBuf::from("file with spaces.rs")));
+        assert!(status.untracked.contains(&PathBuf::from("another file.txt")));
+    }
+
+    #[test]
+    fn test_parse_status_large_ahead_behind() {
+        let output = "## main...origin/main [ahead 100, behind 50]\n";
+        let status = parse_git_status(output);
+        assert_eq!(status.ahead, 100);
+        assert_eq!(status.behind, 50);
+    }
+
+    // ==========================================================================
+    // Additional Encrypted Files Parsing Edge Cases
+    // ==========================================================================
+
+    #[test]
+    fn test_parse_encrypted_files_with_nested_paths() {
+        let output =
+            "encrypted: secrets/prod/api_key.txt\nencrypted: secrets/dev/database/password.env\n";
+        let files = parse_encrypted_files(output);
+        assert_eq!(files.len(), 2);
+        assert!(files.contains(&PathBuf::from("secrets/prod/api_key.txt")));
+        assert!(files.contains(&PathBuf::from("secrets/dev/database/password.env")));
+    }
+
+    #[test]
+    fn test_parse_encrypted_files_with_special_chars() {
+        let output = "encrypted: secrets/key-with-dash.txt\nencrypted: secrets/key_with_underscore.env\n";
+        let files = parse_encrypted_files(output);
+        assert_eq!(files.len(), 2);
+    }
+
+    // ==========================================================================
+    // Git-crypt Encryption Detection Edge Cases
+    // ==========================================================================
+
+    #[test]
+    fn test_is_gitcrypt_encrypted_exact_header() {
+        let content = b"\x00GITCRYPT";
+        assert!(is_gitcrypt_encrypted(content));
+    }
+
+    #[test]
+    fn test_is_gitcrypt_encrypted_longer_content() {
+        let content = b"\x00GITCRYPT\x00\x10\x00\x00this_is_some_encrypted_binary_data_that_goes_on_for_a_while";
+        assert!(is_gitcrypt_encrypted(content));
+    }
+
+    #[test]
+    fn test_is_gitcrypt_encrypted_similar_but_different() {
+        // Similar prefix but not exactly GITCRYPT
+        let content = b"\x00GITCRYP";
+        assert!(!is_gitcrypt_encrypted(content));
+    }
+
+    #[test]
+    fn test_is_gitcrypt_encrypted_null_in_plaintext() {
+        // Content that happens to start with null but isn't gitcrypt
+        let content = b"\x00NOTGITCRYPT";
+        assert!(!is_gitcrypt_encrypted(content));
+    }
 }

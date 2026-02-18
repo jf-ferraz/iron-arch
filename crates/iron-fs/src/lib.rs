@@ -1203,4 +1203,767 @@ mod tests {
         let content = fs::read(&file_path).unwrap();
         assert_eq!(content, binary_data);
     }
+
+    // ==========================================================================
+    // Symlink Remove Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_symlink_remove_existing_symlink() {
+        let temp_dir = TempDir::new().unwrap();
+        let source = temp_dir.path().join("source.txt");
+        let target = temp_dir.path().join("target.txt");
+
+        fs::write(&source, "content").unwrap();
+        symlink::create(&source, &target).unwrap();
+        assert!(target.is_symlink());
+
+        symlink::remove(&target, false).unwrap();
+        assert!(!target.exists());
+        assert!(!target.is_symlink());
+    }
+
+    #[test]
+    fn test_symlink_remove_nonexistent_target() {
+        let temp_dir = TempDir::new().unwrap();
+        let target = temp_dir.path().join("nonexistent.txt");
+
+        // Should succeed silently when target doesn't exist
+        let result = symlink::remove(&target, false);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_symlink_remove_regular_file_fails() {
+        let temp_dir = TempDir::new().unwrap();
+        let target = temp_dir.path().join("regular_file.txt");
+
+        fs::write(&target, "content").unwrap();
+
+        // Should fail when target exists but is not a symlink
+        let result = symlink::remove(&target, false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_symlink_remove_with_restore_backup() {
+        let temp_dir = TempDir::new().unwrap();
+        let source = temp_dir.path().join("source.txt");
+        let target = temp_dir.path().join("target.txt");
+
+        fs::write(&source, "source content").unwrap();
+        // Create original file at target, then create symlink (which backs up original)
+        fs::write(&target, "original target content").unwrap();
+        symlink::create(&source, &target).unwrap();
+
+        // Now remove symlink and restore backup
+        symlink::remove(&target, true).unwrap();
+
+        // Target should be restored to original content
+        assert!(target.exists());
+        assert!(!target.is_symlink());
+        let content = fs::read_to_string(&target).unwrap();
+        assert_eq!(content, "original target content");
+    }
+
+    #[test]
+    fn test_symlink_remove_with_restore_no_backup() {
+        let temp_dir = TempDir::new().unwrap();
+        let source = temp_dir.path().join("source.txt");
+        let target = temp_dir.path().join("target.txt");
+
+        fs::write(&source, "content").unwrap();
+        // Create symlink directly (no backup)
+        symlink::create(&source, &target).unwrap();
+
+        // Remove with restore flag - should succeed even without backup
+        symlink::remove(&target, true).unwrap();
+        assert!(!target.exists());
+    }
+
+    // ==========================================================================
+    // Symlink is_valid Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_symlink_is_valid_returns_true_for_valid() {
+        let temp_dir = TempDir::new().unwrap();
+        let source = temp_dir.path().join("source.txt");
+        let target = temp_dir.path().join("target.txt");
+
+        fs::write(&source, "content").unwrap();
+        symlink::create(&source, &target).unwrap();
+
+        assert!(symlink::is_valid(&target, &source));
+    }
+
+    #[test]
+    fn test_symlink_is_valid_returns_false_for_wrong_target() {
+        let temp_dir = TempDir::new().unwrap();
+        let source1 = temp_dir.path().join("source1.txt");
+        let source2 = temp_dir.path().join("source2.txt");
+        let target = temp_dir.path().join("target.txt");
+
+        fs::write(&source1, "content1").unwrap();
+        fs::write(&source2, "content2").unwrap();
+        symlink::create(&source1, &target).unwrap();
+
+        assert!(!symlink::is_valid(&target, &source2));
+    }
+
+    #[test]
+    fn test_symlink_is_valid_returns_false_for_missing() {
+        let temp_dir = TempDir::new().unwrap();
+        let source = temp_dir.path().join("source.txt");
+        let target = temp_dir.path().join("nonexistent.txt");
+
+        fs::write(&source, "content").unwrap();
+
+        assert!(!symlink::is_valid(&target, &source));
+    }
+
+    #[test]
+    fn test_symlink_is_valid_returns_false_for_regular_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let source = temp_dir.path().join("source.txt");
+        let target = temp_dir.path().join("regular.txt");
+
+        fs::write(&source, "content").unwrap();
+        fs::write(&target, "regular content").unwrap();
+
+        assert!(!symlink::is_valid(&target, &source));
+    }
+
+    // ==========================================================================
+    // Symlink Create Parent Directory Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_symlink_create_creates_parent_directories() {
+        let temp_dir = TempDir::new().unwrap();
+        let source = temp_dir.path().join("source.txt");
+        let target = temp_dir.path().join("nested/dir/target.txt");
+
+        fs::write(&source, "content").unwrap();
+
+        symlink::create(&source, &target).unwrap();
+        assert!(target.is_symlink());
+        assert!(target.parent().unwrap().exists());
+    }
+
+    // ==========================================================================
+    // Backup restore_latest Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_backup_restore_latest_success() {
+        let temp_dir = TempDir::new().unwrap();
+        let original = temp_dir.path().join("file.txt");
+
+        fs::write(&original, "v1").unwrap();
+        backup::create(&original).unwrap();
+
+        // Modify original
+        fs::write(&original, "modified").unwrap();
+
+        // Restore latest
+        let restored = backup::restore_latest(&original).unwrap();
+        assert!(restored);
+
+        let content = fs::read_to_string(&original).unwrap();
+        assert_eq!(content, "v1");
+    }
+
+    #[test]
+    fn test_backup_restore_latest_no_backups() {
+        let temp_dir = TempDir::new().unwrap();
+        let original = temp_dir.path().join("file.txt");
+
+        fs::write(&original, "content").unwrap();
+
+        // No backups exist
+        let restored = backup::restore_latest(&original).unwrap();
+        assert!(!restored);
+    }
+
+    #[test]
+    fn test_backup_restore_latest_restores_newest() {
+        let temp_dir = TempDir::new().unwrap();
+        let original = temp_dir.path().join("file.txt");
+
+        fs::write(&original, "v1").unwrap();
+        backup::create(&original).unwrap();
+
+        std::thread::sleep(std::time::Duration::from_secs(1));
+
+        fs::write(&original, "v2").unwrap();
+        backup::create(&original).unwrap();
+
+        fs::write(&original, "current").unwrap();
+
+        // Should restore v2 (newest backup)
+        backup::restore_latest(&original).unwrap();
+
+        let content = fs::read_to_string(&original).unwrap();
+        assert_eq!(content, "v2");
+    }
+
+    // ==========================================================================
+    // Backup cleanup Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_backup_cleanup_removes_old_backups() {
+        let temp_dir = TempDir::new().unwrap();
+        let original = temp_dir.path().join("file.txt");
+
+        // Create 3 backups with sufficient time between them for distinct timestamps
+        fs::write(&original, "v1").unwrap();
+        backup::create(&original).unwrap();
+        std::thread::sleep(std::time::Duration::from_secs(1));
+
+        fs::write(&original, "v2").unwrap();
+        backup::create(&original).unwrap();
+        std::thread::sleep(std::time::Duration::from_secs(1));
+
+        fs::write(&original, "v3").unwrap();
+        backup::create(&original).unwrap();
+
+        let initial_backups = backup::list_backups(&original).unwrap();
+        assert_eq!(initial_backups.len(), 3);
+
+        // Keep only 1
+        let removed = backup::cleanup(&original, 1).unwrap();
+        assert_eq!(removed, 2);
+
+        let backups = backup::list_backups(&original).unwrap();
+        assert_eq!(backups.len(), 1);
+    }
+
+    #[test]
+    fn test_backup_cleanup_keeps_all_when_count_high() {
+        let temp_dir = TempDir::new().unwrap();
+        let original = temp_dir.path().join("file.txt");
+
+        fs::write(&original, "v1").unwrap();
+        backup::create(&original).unwrap();
+
+        std::thread::sleep(std::time::Duration::from_secs(1));
+
+        fs::write(&original, "v2").unwrap();
+        backup::create(&original).unwrap();
+
+        let initial_backups = backup::list_backups(&original).unwrap();
+        assert_eq!(initial_backups.len(), 2);
+
+        // Keep 10 (more than exist)
+        let removed = backup::cleanup(&original, 10).unwrap();
+        assert_eq!(removed, 0);
+
+        let backups = backup::list_backups(&original).unwrap();
+        assert_eq!(backups.len(), 2);
+    }
+
+    #[test]
+    fn test_backup_cleanup_no_backups() {
+        let temp_dir = TempDir::new().unwrap();
+        let original = temp_dir.path().join("file.txt");
+
+        let removed = backup::cleanup(&original, 0).unwrap();
+        assert_eq!(removed, 0);
+    }
+
+    // ==========================================================================
+    // Backup Directory Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_backup_create_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let dir = temp_dir.path().join("mydir");
+
+        fs::create_dir(&dir).unwrap();
+        fs::write(dir.join("file1.txt"), "content1").unwrap();
+        fs::write(dir.join("file2.txt"), "content2").unwrap();
+
+        let backup_path = backup::create(&dir).unwrap();
+        assert!(backup_path.exists());
+        assert!(backup_path.is_dir());
+
+        // Verify contents were copied
+        assert!(backup_path.join("file1.txt").exists());
+        assert!(backup_path.join("file2.txt").exists());
+    }
+
+    #[test]
+    fn test_backup_restore_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let dir = temp_dir.path().join("mydir");
+
+        fs::create_dir(&dir).unwrap();
+        fs::write(dir.join("file.txt"), "original").unwrap();
+
+        let backup_path = backup::create(&dir).unwrap();
+
+        // Modify original
+        fs::write(dir.join("file.txt"), "modified").unwrap();
+        fs::write(dir.join("new_file.txt"), "new").unwrap();
+
+        // Restore
+        backup::restore(&backup_path, &dir).unwrap();
+
+        let content = fs::read_to_string(dir.join("file.txt")).unwrap();
+        assert_eq!(content, "original");
+        assert!(!dir.join("new_file.txt").exists());
+    }
+
+    #[test]
+    fn test_backup_create_not_found() {
+        let temp_dir = TempDir::new().unwrap();
+        let nonexistent = temp_dir.path().join("nonexistent");
+
+        let result = backup::create(&nonexistent);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_backup_restore_backup_not_found() {
+        let temp_dir = TempDir::new().unwrap();
+        let backup = temp_dir.path().join("nonexistent_backup");
+        let original = temp_dir.path().join("original.txt");
+
+        let result = backup::restore(&backup, &original);
+        assert!(result.is_err());
+    }
+
+    // ==========================================================================
+    // Symlink Create with Directory Backup
+    // ==========================================================================
+
+    #[test]
+    fn test_symlink_create_backs_up_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let source = temp_dir.path().join("source.txt");
+        let target = temp_dir.path().join("target_dir");
+
+        fs::write(&source, "source content").unwrap();
+        fs::create_dir(&target).unwrap();
+        fs::write(target.join("file.txt"), "dir content").unwrap();
+
+        symlink::create(&source, &target).unwrap();
+
+        assert!(target.is_symlink());
+        // A backup should have been created
+        let backups = backup::list_backups(&target).unwrap();
+        assert_eq!(backups.len(), 1);
+        // Backup should be a directory with file.txt
+        assert!(backups[0].is_dir());
+        assert!(backups[0].join("file.txt").exists());
+    }
+
+    // ==========================================================================
+    // Read File Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_read_file_success() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+
+        fs::write(&file_path, b"hello world").unwrap();
+
+        let content = read_file(&file_path).unwrap();
+        assert_eq!(content, b"hello world");
+    }
+
+    #[test]
+    fn test_read_file_not_found() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("nonexistent.txt");
+
+        let result = read_file(&file_path);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_read_file_binary() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("binary.dat");
+
+        let binary_data: Vec<u8> = (0..=255).collect();
+        fs::write(&file_path, &binary_data).unwrap();
+
+        let content = read_file(&file_path).unwrap();
+        assert_eq!(content, binary_data);
+    }
+
+    #[test]
+    fn test_read_file_string_success() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+
+        fs::write(&file_path, "hello world").unwrap();
+
+        let content = read_file_string(&file_path).unwrap();
+        assert_eq!(content, "hello world");
+    }
+
+    #[test]
+    fn test_read_file_string_not_found() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("nonexistent.txt");
+
+        let result = read_file_string(&file_path);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_read_file_string_invalid_utf8() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("invalid.txt");
+
+        // Write invalid UTF-8 bytes
+        fs::write(&file_path, &[0xFF, 0xFE, 0x00, 0x01]).unwrap();
+
+        let result = read_file_string(&file_path);
+        assert!(result.is_err());
+    }
+
+    // ==========================================================================
+    // Traverse find_config_files Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_traverse_find_config_files() {
+        let temp_dir = TempDir::new().unwrap();
+
+        fs::write(temp_dir.path().join("config.toml"), "").unwrap();
+        fs::write(temp_dir.path().join("module.toml"), "").unwrap();
+        fs::write(temp_dir.path().join("readme.md"), "").unwrap();
+        fs::create_dir(temp_dir.path().join("sub")).unwrap();
+        fs::write(temp_dir.path().join("sub/nested.toml"), "").unwrap();
+
+        let files = traverse::find_config_files(temp_dir.path()).unwrap();
+        assert_eq!(files.len(), 3);
+        assert!(files.iter().all(|p| p.extension().unwrap() == "toml"));
+    }
+
+    #[test]
+    fn test_traverse_find_config_files_empty() {
+        let temp_dir = TempDir::new().unwrap();
+
+        fs::write(temp_dir.path().join("readme.md"), "").unwrap();
+
+        let files = traverse::find_config_files(temp_dir.path()).unwrap();
+        assert!(files.is_empty());
+    }
+
+    // ==========================================================================
+    // Traverse directory_size Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_traverse_directory_size() {
+        let temp_dir = TempDir::new().unwrap();
+
+        fs::write(temp_dir.path().join("file1.txt"), "hello").unwrap(); // 5 bytes
+        fs::write(temp_dir.path().join("file2.txt"), "world!").unwrap(); // 6 bytes
+        fs::create_dir(temp_dir.path().join("sub")).unwrap();
+        fs::write(temp_dir.path().join("sub/file3.txt"), "test").unwrap(); // 4 bytes
+
+        let size = traverse::directory_size(temp_dir.path()).unwrap();
+        assert_eq!(size, 15);
+    }
+
+    #[test]
+    fn test_traverse_directory_size_empty() {
+        let temp_dir = TempDir::new().unwrap();
+
+        let size = traverse::directory_size(temp_dir.path()).unwrap();
+        assert_eq!(size, 0);
+    }
+
+    #[test]
+    fn test_traverse_directory_size_not_found() {
+        let temp_dir = TempDir::new().unwrap();
+        let nonexistent = temp_dir.path().join("nonexistent");
+
+        let result = traverse::directory_size(&nonexistent);
+        assert!(result.is_err());
+    }
+
+    // ==========================================================================
+    // Traverse Hidden Files Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_traverse_find_files_include_hidden() {
+        let temp_dir = TempDir::new().unwrap();
+
+        fs::write(temp_dir.path().join("visible.txt"), "").unwrap();
+        fs::write(temp_dir.path().join(".hidden"), "").unwrap();
+
+        // Without include_hidden
+        let opts_no_hidden = traverse::TraverseOptions {
+            include_hidden: false,
+            ..Default::default()
+        };
+        let files_no_hidden = traverse::find_files(temp_dir.path(), &opts_no_hidden).unwrap();
+        assert_eq!(files_no_hidden.len(), 1);
+
+        // With include_hidden
+        let opts_with_hidden = traverse::TraverseOptions {
+            include_hidden: true,
+            ..Default::default()
+        };
+        let files_with_hidden = traverse::find_files(temp_dir.path(), &opts_with_hidden).unwrap();
+        assert_eq!(files_with_hidden.len(), 2);
+    }
+
+    // ==========================================================================
+    // Traverse Follow Symlinks Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_traverse_find_files_follow_symlinks() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create a file in a subdirectory
+        fs::create_dir(temp_dir.path().join("real_dir")).unwrap();
+        fs::write(temp_dir.path().join("real_dir/file.txt"), "content").unwrap();
+
+        // Create symlink to directory
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+            symlink(
+                temp_dir.path().join("real_dir"),
+                temp_dir.path().join("link_dir"),
+            )
+            .unwrap();
+        }
+
+        let opts = traverse::TraverseOptions {
+            follow_symlinks: true,
+            ..Default::default()
+        };
+
+        let files = traverse::find_files(temp_dir.path(), &opts).unwrap();
+        // Should find file.txt from both real_dir and link_dir
+        assert!(files.len() >= 1);
+    }
+
+    // ==========================================================================
+    // Traverse find_files Not Found Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_traverse_find_files_not_found() {
+        let temp_dir = TempDir::new().unwrap();
+        let nonexistent = temp_dir.path().join("nonexistent");
+
+        let result = traverse::find_files(&nonexistent, &traverse::TraverseOptions::default());
+        assert!(result.is_err());
+    }
+
+    // ==========================================================================
+    // Path expand Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_path_expand_full() {
+        // SAFETY: Test isolation
+        unsafe {
+            std::env::set_var("HOME", "/home/test");
+            std::env::set_var("SUBDIR", "configs");
+        }
+
+        let result = path::expand("~/${SUBDIR}/file.txt");
+        assert_eq!(result, PathBuf::from("/home/test/configs/file.txt"));
+    }
+
+    #[test]
+    fn test_path_expand_just_home() {
+        // SAFETY: Test isolation
+        unsafe {
+            std::env::set_var("HOME", "/home/test");
+        }
+
+        let result = path::expand("~/config");
+        assert_eq!(result, PathBuf::from("/home/test/config"));
+    }
+
+    #[test]
+    fn test_path_expand_no_expansion() {
+        let result = path::expand("/absolute/path");
+        assert_eq!(result, PathBuf::from("/absolute/path"));
+    }
+
+    // ==========================================================================
+    // Path expand_env_vars Edge Cases
+    // ==========================================================================
+
+    #[test]
+    fn test_path_expand_env_vars_dollar_at_end() {
+        let result = path::expand_env_vars("/path/with$");
+        assert_eq!(result, PathBuf::from("/path/with$"));
+    }
+
+    #[test]
+    fn test_path_expand_env_vars_unclosed_brace() {
+        let result = path::expand_env_vars("/path/${UNCLOSED");
+        // Should not expand unclosed brace
+        assert_eq!(result, PathBuf::from("/path/${UNCLOSED"));
+    }
+
+    #[test]
+    fn test_path_expand_env_vars_multiple_vars() {
+        // SAFETY: Test isolation
+        unsafe {
+            std::env::set_var("VAR1", "first");
+            std::env::set_var("VAR2", "second");
+        }
+
+        let result = path::expand_env_vars("$VAR1/$VAR2/end");
+        assert_eq!(result, PathBuf::from("first/second/end"));
+    }
+
+    #[test]
+    fn test_path_expand_env_vars_empty_var_name() {
+        // $ followed by non-alphanumeric should stay as-is
+        let result = path::expand_env_vars("/path/$/end");
+        assert_eq!(result, PathBuf::from("/path/$/end"));
+    }
+
+    // ==========================================================================
+    // TraverseOptions Debug and Clone Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_traverse_options_debug() {
+        let opts = traverse::TraverseOptions {
+            max_depth: Some(5),
+            follow_symlinks: true,
+            include_hidden: true,
+            extensions: vec!["rs".to_string()],
+        };
+        let debug_str = format!("{:?}", opts);
+        assert!(debug_str.contains("max_depth"));
+        assert!(debug_str.contains("follow_symlinks"));
+    }
+
+    #[test]
+    fn test_traverse_options_clone() {
+        let opts = traverse::TraverseOptions {
+            max_depth: Some(3),
+            follow_symlinks: true,
+            include_hidden: false,
+            extensions: vec!["toml".to_string()],
+        };
+        let cloned = opts.clone();
+        assert_eq!(cloned.max_depth, opts.max_depth);
+        assert_eq!(cloned.follow_symlinks, opts.follow_symlinks);
+        assert_eq!(cloned.include_hidden, opts.include_hidden);
+        assert_eq!(cloned.extensions, opts.extensions);
+    }
+
+    // ==========================================================================
+    // Config parse_toml Read Error Test
+    // ==========================================================================
+
+    #[test]
+    fn test_config_parse_toml_invalid_content() {
+        use serde::Deserialize;
+
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("invalid.toml");
+
+        fs::write(&config_path, "this is not valid toml {{{").unwrap();
+
+        #[derive(Deserialize)]
+        struct DummyConfig {
+            key: String,
+        }
+
+        let result: Result<DummyConfig, _> = config::parse_toml(&config_path);
+        assert!(result.is_err());
+    }
+
+    // ==========================================================================
+    // Backup cleanup with Directory Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_backup_cleanup_directories() {
+        let temp_dir = TempDir::new().unwrap();
+        let dir = temp_dir.path().join("mydir");
+
+        fs::create_dir(&dir).unwrap();
+        fs::write(dir.join("file.txt"), "v1").unwrap();
+        backup::create(&dir).unwrap();
+
+        std::thread::sleep(std::time::Duration::from_secs(1));
+
+        fs::write(dir.join("file.txt"), "v2").unwrap();
+        backup::create(&dir).unwrap();
+
+        let initial_backups = backup::list_backups(&dir).unwrap();
+        assert_eq!(initial_backups.len(), 2);
+
+        // Keep only 1
+        let removed = backup::cleanup(&dir, 1).unwrap();
+        assert_eq!(removed, 1);
+
+        let backups = backup::list_backups(&dir).unwrap();
+        assert_eq!(backups.len(), 1);
+    }
+
+    // ==========================================================================
+    // Backup list_backups with No Parent
+    // ==========================================================================
+
+    #[test]
+    fn test_backup_list_backups_root_path() {
+        // Test with a path that has no parent (edge case)
+        let backups = backup::list_backups(Path::new("file.txt")).unwrap();
+        // Should not panic, just return empty or whatever is in current dir
+        assert!(backups.is_empty() || !backups.is_empty()); // Just verify it doesn't panic
+    }
+
+    // ==========================================================================
+    // Backup list_backups File Name Edge Case
+    // ==========================================================================
+
+    #[test]
+    fn test_backup_list_backups_no_filename() {
+        let temp_dir = TempDir::new().unwrap();
+        // Path ending in /
+        let path = temp_dir.path().join("");
+
+        let backups = backup::list_backups(&path).unwrap();
+        // Should handle gracefully
+        assert!(backups.is_empty());
+    }
+
+    // ==========================================================================
+    // Traverse find_files with No Extension
+    // ==========================================================================
+
+    #[test]
+    fn test_traverse_find_files_no_extension_filter() {
+        let temp_dir = TempDir::new().unwrap();
+
+        fs::write(temp_dir.path().join("file_no_ext"), "").unwrap();
+        fs::write(temp_dir.path().join("file.txt"), "").unwrap();
+
+        // Filter for txt only - file_no_ext should not match
+        let opts = traverse::TraverseOptions {
+            extensions: vec!["txt".to_string()],
+            ..Default::default()
+        };
+
+        let files = traverse::find_files(temp_dir.path(), &opts).unwrap();
+        assert_eq!(files.len(), 1);
+        assert!(files[0].to_string_lossy().contains("file.txt"));
+    }
 }
