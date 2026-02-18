@@ -480,8 +480,9 @@ mod tests {
     #[test]
     fn test_cli_init_with_options() {
         let cli = Cli::try_parse_from([
-            "iron", "init", "--id", "myhost", "--name", "My Host", "--force"
-        ]).unwrap();
+            "iron", "init", "--id", "myhost", "--name", "My Host", "--force",
+        ])
+        .unwrap();
         if let Some(Commands::Init { id, name, force }) = cli.command {
             assert_eq!(id, Some("myhost".to_string()));
             assert_eq!(name, Some("My Host".to_string()));
@@ -494,7 +495,16 @@ mod tests {
     #[test]
     fn test_cli_update_command() {
         let cli = Cli::try_parse_from(["iron", "update"]).unwrap();
-        if let Some(Commands::Update { dry_run, force, no_snapshot, resume, status, clear_progress, yes }) = cli.command {
+        if let Some(Commands::Update {
+            dry_run,
+            force,
+            no_snapshot,
+            resume,
+            status,
+            clear_progress,
+            yes,
+        }) = cli.command
+        {
             assert!(!dry_run);
             assert!(!force);
             assert!(!no_snapshot);
@@ -560,7 +570,10 @@ mod tests {
     #[test]
     fn test_cli_bundle_list() {
         let cli = Cli::try_parse_from(["iron", "bundle", "list"]).unwrap();
-        if let Some(Commands::Bundle { action: BundleAction::List { all } }) = cli.command {
+        if let Some(Commands::Bundle {
+            action: BundleAction::List { all },
+        }) = cli.command
+        {
             assert!(!all);
         } else {
             panic!("Expected Bundle List command");
@@ -570,7 +583,10 @@ mod tests {
     #[test]
     fn test_cli_bundle_list_all() {
         let cli = Cli::try_parse_from(["iron", "bundle", "list", "--all"]).unwrap();
-        if let Some(Commands::Bundle { action: BundleAction::List { all } }) = cli.command {
+        if let Some(Commands::Bundle {
+            action: BundleAction::List { all },
+        }) = cli.command
+        {
             assert!(all);
         } else {
             panic!("Expected Bundle List command");
@@ -580,7 +596,10 @@ mod tests {
     #[test]
     fn test_cli_bundle_install() {
         let cli = Cli::try_parse_from(["iron", "bundle", "install", "hyprland"]).unwrap();
-        if let Some(Commands::Bundle { action: BundleAction::Install { id, yes } }) = cli.command {
+        if let Some(Commands::Bundle {
+            action: BundleAction::Install { id, yes },
+        }) = cli.command
+        {
             assert_eq!(id, "hyprland");
             assert!(!yes);
         } else {
@@ -591,7 +610,10 @@ mod tests {
     #[test]
     fn test_cli_bundle_switch() {
         let cli = Cli::try_parse_from(["iron", "bundle", "switch", "niri", "--yes"]).unwrap();
-        if let Some(Commands::Bundle { action: BundleAction::Switch { id, yes } }) = cli.command {
+        if let Some(Commands::Bundle {
+            action: BundleAction::Switch { id, yes },
+        }) = cli.command
+        {
             assert_eq!(id, "niri");
             assert!(yes);
         } else {
@@ -602,7 +624,10 @@ mod tests {
     #[test]
     fn test_cli_profile_list() {
         let cli = Cli::try_parse_from(["iron", "profile", "list"]).unwrap();
-        if let Some(Commands::Profile { action: ProfileAction::List { bundle } }) = cli.command {
+        if let Some(Commands::Profile {
+            action: ProfileAction::List { bundle },
+        }) = cli.command
+        {
             assert!(bundle.is_none());
         } else {
             panic!("Expected Profile List command");
@@ -612,7 +637,10 @@ mod tests {
     #[test]
     fn test_cli_profile_select() {
         let cli = Cli::try_parse_from(["iron", "profile", "select", "developer"]).unwrap();
-        if let Some(Commands::Profile { action: ProfileAction::Select { id } }) = cli.command {
+        if let Some(Commands::Profile {
+            action: ProfileAction::Select { id },
+        }) = cli.command
+        {
             assert_eq!(id, "developer");
         } else {
             panic!("Expected Profile Select command");
@@ -622,7 +650,15 @@ mod tests {
     #[test]
     fn test_cli_module_list() {
         let cli = Cli::try_parse_from(["iron", "module", "list"]).unwrap();
-        if let Some(Commands::Module { action: ModuleAction::List { enabled, disabled, kind } }) = cli.command {
+        if let Some(Commands::Module {
+            action:
+                ModuleAction::List {
+                    enabled,
+                    disabled,
+                    kind,
+                },
+        }) = cli.command
+        {
             assert!(!enabled);
             assert!(!disabled);
             assert!(kind.is_none());
@@ -634,7 +670,10 @@ mod tests {
     #[test]
     fn test_cli_module_enable() {
         let cli = Cli::try_parse_from(["iron", "module", "enable", "nvim-ide"]).unwrap();
-        if let Some(Commands::Module { action: ModuleAction::Enable { id, force } }) = cli.command {
+        if let Some(Commands::Module {
+            action: ModuleAction::Enable { id, force },
+        }) = cli.command
+        {
             assert_eq!(id, "nvim-ide");
             assert!(!force);
         } else {
@@ -645,7 +684,10 @@ mod tests {
     #[test]
     fn test_cli_module_disable() {
         let cli = Cli::try_parse_from(["iron", "module", "disable", "nvim-ide", "--yes"]).unwrap();
-        if let Some(Commands::Module { action: ModuleAction::Disable { id, yes } }) = cli.command {
+        if let Some(Commands::Module {
+            action: ModuleAction::Disable { id, yes },
+        }) = cli.command
+        {
             assert_eq!(id, "nvim-ide");
             assert!(yes);
         } else {
@@ -656,25 +698,43 @@ mod tests {
     #[test]
     fn test_cli_host_list() {
         let cli = Cli::try_parse_from(["iron", "host", "list"]).unwrap();
-        assert!(matches!(cli.command, Some(Commands::Host { action: HostAction::List })));
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Host {
+                action: HostAction::List
+            })
+        ));
     }
 
     #[test]
     fn test_cli_host_current() {
         let cli = Cli::try_parse_from(["iron", "host", "current"]).unwrap();
-        assert!(matches!(cli.command, Some(Commands::Host { action: HostAction::Current })));
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Host {
+                action: HostAction::Current
+            })
+        ));
     }
 
     #[test]
     fn test_cli_sync_status() {
         let cli = Cli::try_parse_from(["iron", "sync", "status"]).unwrap();
-        assert!(matches!(cli.command, Some(Commands::Sync { action: SyncAction::Status })));
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Sync {
+                action: SyncAction::Status
+            })
+        ));
     }
 
     #[test]
     fn test_cli_sync_push() {
         let cli = Cli::try_parse_from(["iron", "sync", "push", "-m", "Update config"]).unwrap();
-        if let Some(Commands::Sync { action: SyncAction::Push { message } }) = cli.command {
+        if let Some(Commands::Sync {
+            action: SyncAction::Push { message },
+        }) = cli.command
+        {
             assert_eq!(message, Some("Update config".to_string()));
         } else {
             panic!("Expected Sync Push command");
@@ -684,13 +744,25 @@ mod tests {
     #[test]
     fn test_cli_secrets_status() {
         let cli = Cli::try_parse_from(["iron", "secrets", "status"]).unwrap();
-        assert!(matches!(cli.command, Some(Commands::Secrets { action: SecretsAction::Status })));
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Secrets {
+                action: SecretsAction::Status
+            })
+        ));
     }
 
     #[test]
     fn test_cli_clean_options() {
-        let cli = Cli::try_parse_from(["iron", "clean", "--orphans", "--cache", "--symlinks"]).unwrap();
-        if let Some(Commands::Clean { orphans, cache, symlinks, all }) = cli.command {
+        let cli =
+            Cli::try_parse_from(["iron", "clean", "--orphans", "--cache", "--symlinks"]).unwrap();
+        if let Some(Commands::Clean {
+            orphans,
+            cache,
+            symlinks,
+            all,
+        }) = cli.command
+        {
             assert!(orphans);
             assert!(cache);
             assert!(symlinks);
@@ -713,7 +785,12 @@ mod tests {
     #[test]
     fn test_cli_recover_export() {
         let cli = Cli::try_parse_from(["iron", "recover", "--export"]).unwrap();
-        if let Some(Commands::Recover { export, import, script }) = cli.command {
+        if let Some(Commands::Recover {
+            export,
+            import,
+            script,
+        }) = cli.command
+        {
             assert!(export);
             assert!(import.is_none());
             assert!(!script);
@@ -724,8 +801,14 @@ mod tests {
 
     #[test]
     fn test_cli_recover_import() {
-        let cli = Cli::try_parse_from(["iron", "recover", "--import", "/path/to/backup.json"]).unwrap();
-        if let Some(Commands::Recover { export, import, script }) = cli.command {
+        let cli =
+            Cli::try_parse_from(["iron", "recover", "--import", "/path/to/backup.json"]).unwrap();
+        if let Some(Commands::Recover {
+            export,
+            import,
+            script,
+        }) = cli.command
+        {
             assert!(!export);
             assert_eq!(import, Some("/path/to/backup.json".to_string()));
             assert!(!script);

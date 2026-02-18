@@ -818,4 +818,389 @@ mod tests {
         assert_eq!(config.name, "Test Module");
         assert!(config.enabled);
     }
+
+    // ==========================================================================
+    // SymlinkStatus Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_symlink_status_missing() {
+        let temp_dir = TempDir::new().unwrap();
+        let source = temp_dir.path().join("source.txt");
+        let target = temp_dir.path().join("nonexistent.txt");
+
+        fs::write(&source, "content").unwrap();
+
+        let status = symlink::status(&target, &source);
+        assert_eq!(status, symlink::SymlinkStatus::Missing);
+    }
+
+    #[test]
+    fn test_symlink_status_not_symlink() {
+        let temp_dir = TempDir::new().unwrap();
+        let source = temp_dir.path().join("source.txt");
+        let target = temp_dir.path().join("regular_file.txt");
+
+        fs::write(&source, "content").unwrap();
+        fs::write(&target, "regular content").unwrap();
+
+        let status = symlink::status(&target, &source);
+        assert_eq!(status, symlink::SymlinkStatus::NotSymlink);
+    }
+
+    #[test]
+    fn test_symlink_status_debug() {
+        let statuses = vec![
+            symlink::SymlinkStatus::Valid,
+            symlink::SymlinkStatus::Missing,
+            symlink::SymlinkStatus::NotSymlink,
+            symlink::SymlinkStatus::WrongTarget {
+                actual: PathBuf::from("/test"),
+            },
+        ];
+
+        for status in statuses {
+            let debug_str = format!("{:?}", status);
+            assert!(!debug_str.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_symlink_status_clone() {
+        let status = symlink::SymlinkStatus::WrongTarget {
+            actual: PathBuf::from("/path"),
+        };
+        let cloned = status.clone();
+        assert_eq!(cloned, status);
+    }
+
+    // ==========================================================================
+    // Symlink Edge Cases
+    // ==========================================================================
+
+    #[test]
+    fn test_symlink_create_fails_for_nonexistent_source() {
+        let temp_dir = TempDir::new().unwrap();
+        let source = temp_dir.path().join("nonexistent.txt");
+        let target = temp_dir.path().join("target.txt");
+
+        let result = symlink::create(&source, &target);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_symlink_create_replaces_existing_symlink() {
+        let temp_dir = TempDir::new().unwrap();
+        let source1 = temp_dir.path().join("source1.txt");
+        let source2 = temp_dir.path().join("source2.txt");
+        let target = temp_dir.path().join("target.txt");
+
+        fs::write(&source1, "content1").unwrap();
+        fs::write(&source2, "content2").unwrap();
+
+        // Create first symlink
+        symlink::create(&source1, &target).unwrap();
+        assert!(target.is_symlink());
+
+        // Replace with new symlink
+        symlink::create(&source2, &target).unwrap();
+        assert!(target.is_symlink());
+        assert_eq!(
+            symlink::status(&target, &source2),
+            symlink::SymlinkStatus::Valid
+        );
+    }
+
+    #[test]
+    fn test_symlink_create_backs_up_regular_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let source = temp_dir.path().join("source.txt");
+        let target = temp_dir.path().join("target.txt");
+
+        fs::write(&source, "source content").unwrap();
+        fs::write(&target, "original target content").unwrap();
+
+        symlink::create(&source, &target).unwrap();
+
+        assert!(target.is_symlink());
+        // A backup should have been created
+        let backups = backup::list_backups(&target).unwrap();
+        assert_eq!(backups.len(), 1);
+    }
+
+    // ==========================================================================
+    // Config Module Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_config_parse_toml_not_found() {
+        use serde::Deserialize;
+
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("nonexistent.toml");
+
+        #[derive(Deserialize)]
+        struct DummyConfig {
+            key: String,
+        }
+
+        let result: Result<DummyConfig, _> = config::parse_toml(&config_path);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_config_parse_toml_str() {
+        use serde::Deserialize;
+
+        #[derive(Deserialize)]
+        struct SimpleConfig {
+            key: String,
+        }
+
+        let content = r#"key = "value""#;
+        let config: SimpleConfig = config::parse_toml_str(content, Path::new("test.toml")).unwrap();
+        assert_eq!(config.key, "value");
+    }
+
+    #[test]
+    fn test_config_parse_toml_str_invalid() {
+        use serde::Deserialize;
+
+        #[derive(Deserialize)]
+        struct DummyConfig {
+            key: String,
+        }
+
+        let content = "invalid = {";
+        let result: Result<DummyConfig, _> =
+            config::parse_toml_str(content, Path::new("test.toml"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_config_write_toml() {
+        use serde::Serialize;
+
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("output.toml");
+
+        #[derive(Serialize)]
+        struct WriteConfig {
+            name: String,
+            version: i32,
+        }
+
+        let cfg = WriteConfig {
+            name: "test".to_string(),
+            version: 1,
+        };
+
+        config::write_toml(&config_path, &cfg).unwrap();
+
+        let content = fs::read_to_string(&config_path).unwrap();
+        assert!(content.contains("name = \"test\""));
+        assert!(content.contains("version = 1"));
+    }
+
+    // ==========================================================================
+    // Backup Module Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_backup_list_empty() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("file.txt");
+
+        let backups = backup::list_backups(&file_path).unwrap();
+        assert!(backups.is_empty());
+    }
+
+    #[test]
+    fn test_backup_multiple_backups() {
+        let temp_dir = TempDir::new().unwrap();
+        let original = temp_dir.path().join("file.txt");
+
+        fs::write(&original, "v1").unwrap();
+        let backup1 = backup::create(&original).unwrap();
+
+        // Wait 1 second to ensure different timestamp
+        std::thread::sleep(std::time::Duration::from_secs(1));
+
+        fs::write(&original, "v2").unwrap();
+        let backup2 = backup::create(&original).unwrap();
+
+        // Check that two different backups exist
+        assert!(backup1.exists());
+        assert!(backup2.exists());
+        assert_ne!(backup1, backup2);
+    }
+
+    #[test]
+    fn test_backup_creates_valid_backup() {
+        let temp_dir = TempDir::new().unwrap();
+        let original = temp_dir.path().join("file.txt");
+
+        fs::write(&original, "test content").unwrap();
+        let backup_path = backup::create(&original).unwrap();
+
+        assert!(backup_path.exists());
+        let content = fs::read_to_string(&backup_path).unwrap();
+        assert_eq!(content, "test content");
+    }
+
+    // ==========================================================================
+    // Path Module Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_path_expand_home_no_tilde() {
+        let path = "/absolute/path";
+        assert_eq!(path::expand_home(path), path);
+    }
+
+    #[test]
+    fn test_path_expand_env_vars_no_vars() {
+        let path = "/plain/path";
+        assert_eq!(path::expand_env_vars(path), PathBuf::from("/plain/path"));
+    }
+
+    #[test]
+    fn test_path_expand_env_vars_missing_var() {
+        // SAFETY: Test isolation
+        unsafe {
+            std::env::remove_var("NONEXISTENT_VAR");
+        }
+        let result = path::expand_env_vars("${NONEXISTENT_VAR}/path");
+        // Should keep the var as-is or return empty
+        assert!(!result.to_string_lossy().is_empty());
+    }
+
+    #[test]
+    fn test_path_normalize_absolute() {
+        let path = Path::new("/a/b/c");
+        assert_eq!(path::normalize(path), PathBuf::from("/a/b/c"));
+    }
+
+    #[test]
+    fn test_path_normalize_complex() {
+        let path = Path::new("/a/b/./c/../d");
+        assert_eq!(path::normalize(path), PathBuf::from("/a/b/d"));
+    }
+
+    #[test]
+    fn test_path_is_within_same_path() {
+        let root = Path::new("/home/user");
+        assert!(path::is_within(root, root));
+    }
+
+    // ==========================================================================
+    // Traverse Module Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_traverse_options_default() {
+        let opts = traverse::TraverseOptions::default();
+        assert!(opts.extensions.is_empty());
+        assert!(!opts.include_hidden);
+        assert!(!opts.follow_symlinks);
+    }
+
+    #[test]
+    fn test_traverse_find_files_empty_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        let files =
+            traverse::find_files(temp_dir.path(), &traverse::TraverseOptions::default()).unwrap();
+        assert!(files.is_empty());
+    }
+
+    #[test]
+    fn test_traverse_find_files_with_depth() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create structure:
+        // root/          (walkdir depth 0)
+        //   a.txt        (walkdir depth 1)
+        //   level1/      (walkdir depth 1)
+        //     b.txt      (walkdir depth 2)
+        //     level2/    (walkdir depth 2)
+        //       c.txt    (walkdir depth 3)
+        fs::write(temp_dir.path().join("a.txt"), "").unwrap();
+        fs::create_dir_all(temp_dir.path().join("level1/level2")).unwrap();
+        fs::write(temp_dir.path().join("level1/b.txt"), "").unwrap();
+        fs::write(temp_dir.path().join("level1/level2/c.txt"), "").unwrap();
+
+        // With max_depth=2, should find a.txt and b.txt (not c.txt at depth 3)
+        let opts = traverse::TraverseOptions {
+            max_depth: Some(2),
+            ..Default::default()
+        };
+
+        let files = traverse::find_files(temp_dir.path(), &opts).unwrap();
+        assert_eq!(files.len(), 2);
+
+        // With max_depth=1, should only find a.txt
+        let opts_shallow = traverse::TraverseOptions {
+            max_depth: Some(1),
+            ..Default::default()
+        };
+
+        let files_shallow = traverse::find_files(temp_dir.path(), &opts_shallow).unwrap();
+        assert_eq!(files_shallow.len(), 1);
+    }
+
+    #[test]
+    fn test_traverse_find_files_multiple_extensions() {
+        let temp_dir = TempDir::new().unwrap();
+
+        fs::write(temp_dir.path().join("a.txt"), "").unwrap();
+        fs::write(temp_dir.path().join("b.toml"), "").unwrap();
+        fs::write(temp_dir.path().join("c.rs"), "").unwrap();
+
+        let opts = traverse::TraverseOptions {
+            extensions: vec!["txt".to_string(), "toml".to_string()],
+            ..Default::default()
+        };
+
+        let files = traverse::find_files(temp_dir.path(), &opts).unwrap();
+        assert_eq!(files.len(), 2);
+    }
+
+    // ==========================================================================
+    // Atomic Write Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_atomic_write_overwrites_existing() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+
+        atomic_write(&file_path, b"original").unwrap();
+        atomic_write(&file_path, b"updated").unwrap();
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "updated");
+    }
+
+    #[test]
+    fn test_atomic_write_empty_content() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("empty.txt");
+
+        atomic_write(&file_path, b"").unwrap();
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert!(content.is_empty());
+    }
+
+    #[test]
+    fn test_atomic_write_binary_content() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("binary.dat");
+
+        let binary_data: Vec<u8> = (0..255).collect();
+        atomic_write(&file_path, &binary_data).unwrap();
+
+        let content = fs::read(&file_path).unwrap();
+        assert_eq!(content, binary_data);
+    }
 }

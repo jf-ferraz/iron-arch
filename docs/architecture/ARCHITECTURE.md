@@ -1,10 +1,11 @@
 # Iron Technical Architecture
 
 > **Document Status**: FINAL
-> **Version**: 1.0.0
+> **Version**: 1.1.0
 > **Created**: 2025-02-12
-> **Last Updated**: 2025-02-12
+> **Last Updated**: 2026-02-13
 > **Author**: Architecture Design Session
+> **Reviewed By**: Expert Panel (Fowler, Nygard)
 
 ---
 
@@ -277,9 +278,30 @@ pub trait RecoveryService {
                          │                                      │
                          ▼                                      ▼
                   ┌─────────────┐                        ┌─────────────┐
-     ┌───────────│   DORMANT   │◄───────deactivate()────│   ACTIVE    │───────────┐
-     │           └─────────────┘                        └─────────────┘           │
+     ┌───────────│   DORMANT   │                        │   ACTIVE    │───────────┐
+     │           └──────┬──────┘                        └──────┬──────┘           │
      │                  │                                      │                  │
+     │           activate()                             deactivate()              │
+     │                  │                                      │                  │
+     │                  ▼                                      ▼                  │
+     │           ┌─────────────┐                        ┌─────────────┐           │
+     │           │ ACTIVATING  │                        │DEACTIVATING │           │
+     │           └──────┬──────┘                        └──────┬──────┘           │
+     │                  │                                      │                  │
+     │         success/ │ \fail                       success/ │ \fail            │
+     │                  │  \                                   │  \               │
+     │                  ▼   ▼                                  ▼   ▼              │
+     │           ┌─────────────┐  ┌────────┐           ┌─────────────┐            │
+     │           │   ACTIVE    │  │ FAILED │           │   DORMANT   │            │
+     │           └─────────────┘  └────┬───┘           └─────────────┘            │
+     │                                 │                                          │
+     │                          retry()/rollback()                                │
+     │                                 │                                          │
+     │                                 ▼                                          │
+     │                          ┌─────────────┐                                   │
+     │                          │   DORMANT   │                                   │
+     │                          └─────────────┘                                   │
+     │                                                                            │
      │                  │ uninstall()                          │ uninstall()      │
      │                  ▼                                      ▼                  │
      │           ┌─────────────────┐                   ┌─────────────────┐        │
@@ -289,9 +311,17 @@ pub trait RecoveryService {
      └─────────────────────── switch(other) ──────────────────────────────────────┘
                                     │
                                     ▼
-                             (other becomes ACTIVE,
-                              this becomes DORMANT)
+                             (triggers DEACTIVATING on current,
+                              then ACTIVATING on target)
 ```
+
+**Transitional States:**
+
+| State | Description | Duration | Recovery |
+|-------|-------------|----------|----------|
+| ACTIVATING | Bundle configs being linked, services starting | < 30s | Auto-rollback on failure |
+| DEACTIVATING | Bundle configs being unlinked, services stopping | < 30s | Manual intervention |
+| FAILED | Activation failed mid-process | Until retry/rollback | Rollback to DORMANT or retry |
 
 #### Module State Machine
 
@@ -1007,6 +1037,121 @@ pub trait SecretsManager {
     fn list_secrets(&self) -> Result<Vec<SecretInfo>>;
 }
 ```
+
+### 8.3 Resilience Patterns
+
+#### Circuit Breaker for External Commands
+
+All external command execution (pacman, git, systemctl, timeshift/snapper) uses a circuit breaker pattern to prevent hangs and enable graceful degradation.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        CIRCUIT BREAKER PATTERN                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   ┌──────────────┐                                                          │
+│   │    CLOSED    │ ◄─────────────────────────────────────┐                  │
+│   │  (Normal)    │                                       │                  │
+│   └──────┬───────┘                                       │                  │
+│          │                                               │                  │
+│          │ failure_count >= 3                    success │                  │
+│          │ OR timeout (120s)                             │                  │
+│          ▼                                               │                  │
+│   ┌──────────────┐         timeout (30s)         ┌──────────────┐          │
+│   │     OPEN     │ ─────────────────────────────►│  HALF-OPEN   │          │
+│   │  (Failing)   │                               │   (Testing)  │          │
+│   └──────────────┘                               └──────┬───────┘          │
+│          │                                               │                  │
+│          │                                       failure │                  │
+│          │                                               │                  │
+│          └───────────────────────────────────────────────┘                  │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Implementation:**
+
+```rust
+/// Circuit breaker for external commands
+pub struct CommandCircuitBreaker {
+    state: CircuitState,
+    failure_count: u32,
+    last_failure: Option<Instant>,
+    timeout: Duration,
+    reset_timeout: Duration,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum CircuitState {
+    Closed,    // Normal operation
+    Open,      // Failing fast, not executing commands
+    HalfOpen,  // Testing if service recovered
+}
+
+impl CommandCircuitBreaker {
+    pub fn new() -> Self {
+        Self {
+            state: CircuitState::Closed,
+            failure_count: 0,
+            last_failure: None,
+            timeout: Duration::from_secs(120),      // Command timeout
+            reset_timeout: Duration::from_secs(30), // Wait before retry
+        }
+    }
+
+    pub async fn execute<F, T>(&mut self, command: F) -> Result<T, CommandError>
+    where
+        F: Future<Output = Result<T, CommandError>>,
+    {
+        match self.state {
+            CircuitState::Open => {
+                if self.should_attempt_reset() {
+                    self.state = CircuitState::HalfOpen;
+                } else {
+                    return Err(CommandError::CircuitOpen);
+                }
+            }
+            _ => {}
+        }
+
+        match tokio::time::timeout(self.timeout, command).await {
+            Ok(Ok(result)) => {
+                self.record_success();
+                Ok(result)
+            }
+            Ok(Err(e)) => {
+                self.record_failure();
+                Err(e)
+            }
+            Err(_) => {
+                self.record_failure();
+                Err(CommandError::Timeout)
+            }
+        }
+    }
+}
+```
+
+**Configuration:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `command_timeout` | 120s | Maximum time for single command execution |
+| `failure_threshold` | 3 | Failures before circuit opens |
+| `reset_timeout` | 30s | Wait time before attempting recovery |
+| `half_open_max_calls` | 1 | Calls allowed in half-open state |
+
+#### Graceful Degradation
+
+When external services fail, Iron degrades gracefully:
+
+| Service | Degraded Behavior |
+|---------|-------------------|
+| pacman | Return cached package info, warn user, disable update commands |
+| git | Disable sync commands, local operations continue |
+| timeshift/snapper | Warn user, allow operations without snapshots (with confirmation) |
+| Arch News RSS | Use cached news, show "news unavailable" warning |
+| AUR API | Disable AUR package info, continue with official packages |
 
 ---
 

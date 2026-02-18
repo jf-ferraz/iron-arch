@@ -251,15 +251,19 @@ pub fn execute(
     output.info("Running system update with progress tracking...");
 
     // Use apply_with_progress for FR-5.10 partial update recovery
-    let result = update_service.apply_with_progress(&plan, create_snapshot, Some(&|progress| {
-        // Progress callback - could be used for real-time display
-        let pct = progress.completion_percentage();
-        let completed = progress.completed_packages.len();
-        let total = progress.total_packages;
-        // In a real implementation, we'd update a progress bar here
-        // For now, this runs silently
-        let _ = (pct, completed, total);
-    }));
+    let result = update_service.apply_with_progress(
+        &plan,
+        create_snapshot,
+        Some(&|progress| {
+            // Progress callback - could be used for real-time display
+            let pct = progress.completion_percentage();
+            let completed = progress.completed_packages.len();
+            let total = progress.total_packages;
+            // In a real implementation, we'd update a progress bar here
+            // For now, this runs silently
+            let _ = (pct, completed, total);
+        }),
+    );
 
     match result {
         Ok(()) => {
@@ -313,10 +317,13 @@ fn show_progress_status(ctx: &AppContext, update_service: &impl UpdateService) -
 
         output.header("Update Progress Status");
         output.kv("Session ID", &progress.session_id);
-        output.kv("Started At", &progress.started_at.to_rfc3339());
+        output.kv("Started At", progress.started_at.to_rfc3339());
         output.kv("Phase", &phase);
-        output.kv("Progress", &format!("{}/{} ({:.1}%)", completed, progress.total_packages, pct));
-        output.kv("Remaining", &remaining.to_string());
+        output.kv(
+            "Progress",
+            format!("{}/{} ({:.1}%)", completed, progress.total_packages, pct),
+        );
+        output.kv("Remaining", remaining.to_string());
 
         if let Some(snap_id) = &progress.snapshot_id {
             output.kv("Snapshot", snap_id);
@@ -331,7 +338,10 @@ fn show_progress_status(ctx: &AppContext, update_service: &impl UpdateService) -
         if !progress.completed_packages.is_empty() && output.is_verbose() {
             output.subheader("Completed Packages");
             for pkg in &progress.completed_packages {
-                output.list_item(&format!("{}: {} -> {}", pkg.name, pkg.old_version, pkg.new_version));
+                output.list_item(&format!(
+                    "{}: {} -> {}",
+                    pkg.name, pkg.old_version, pkg.new_version
+                ));
             }
         }
 
@@ -340,7 +350,10 @@ fn show_progress_status(ctx: &AppContext, update_service: &impl UpdateService) -
         if !remaining_pkgs.is_empty() && output.is_verbose() {
             output.subheader("Remaining Packages");
             for pkg in remaining_pkgs {
-                output.list_item(&format!("{}: {} -> {}", pkg.name, pkg.current_version, pkg.new_version));
+                output.list_item(&format!(
+                    "{}: {} -> {}",
+                    pkg.name, pkg.current_version, pkg.new_version
+                ));
             }
         }
     } else {
@@ -387,9 +400,18 @@ fn resume_interrupted_update(ctx: &AppContext, update_service: &impl UpdateServi
 
     if let Some(interrupted) = update_service.check_interrupted() {
         output.header("Resuming Interrupted Update");
-        output.kv("Completed", &format!("{} packages", interrupted.completed_count));
-        output.kv("Remaining", &format!("{} packages", interrupted.remaining_count));
-        output.kv("Elapsed", &format!("{} minutes", interrupted.elapsed.num_minutes()));
+        output.kv(
+            "Completed",
+            format!("{} packages", interrupted.completed_count),
+        );
+        output.kv(
+            "Remaining",
+            format!("{} packages", interrupted.remaining_count),
+        );
+        output.kv(
+            "Elapsed",
+            format!("{} minutes", interrupted.elapsed.num_minutes()),
+        );
 
         output.info("Installing remaining packages...");
         update_service.resume()?;
@@ -412,14 +434,20 @@ fn handle_interrupted_update(
     let output = &ctx.output;
 
     output.warning("Previous update was interrupted!");
-    output.kv("Started", &interrupted.progress.started_at.to_rfc3339());
-    output.kv("Progress", &format!(
-        "{}/{} packages completed ({:.1}%)",
-        interrupted.completed_count,
-        interrupted.progress.total_packages,
-        interrupted.progress.completion_percentage()
-    ));
-    output.kv("Remaining", &format!("{} packages", interrupted.remaining_count));
+    output.kv("Started", interrupted.progress.started_at.to_rfc3339());
+    output.kv(
+        "Progress",
+        format!(
+            "{}/{} packages completed ({:.1}%)",
+            interrupted.completed_count,
+            interrupted.progress.total_packages,
+            interrupted.progress.completion_percentage()
+        ),
+    );
+    output.kv(
+        "Remaining",
+        format!("{} packages", interrupted.remaining_count),
+    );
 
     if let Some(snap_id) = &interrupted.progress.snapshot_id {
         output.kv("Snapshot", snap_id);
@@ -458,7 +486,7 @@ fn handle_interrupted_update(
             update_service.clear_progress()?;
             output.info("Progress cleared. Run 'iron update' for a fresh update.");
         }
-        "a" | _ => {
+        _ => {
             output.info("Update aborted. Progress preserved.");
             output.info("Run 'iron update --resume' to continue later.");
         }

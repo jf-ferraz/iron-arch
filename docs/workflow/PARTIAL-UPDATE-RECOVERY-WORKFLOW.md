@@ -849,3 +849,66 @@ All five phases of FR-5.10 Partial Update Recovery have been implemented:
 |---------|------|--------|---------|
 | 1.0.0 | 2026-02-13 | Workflow Generator | Initial workflow document |
 | 1.1.0 | 2026-02-13 | Implementation | Marked all phases complete |
+
+
+
+🚀 Recommended Next Implementation Tasks
+
+  Priority 1: Complete Health Diagnostics (8.3) - P0, 4h
+
+  Missing FR-10.x checks:
+  - FR-10.3: Package installation verification
+  - FR-10.4: Snapshot backend availability
+  - FR-10.6: Git repository status
+  - FR-10.7: Secrets status check
+  - FR-10.8: Structured JSON output format
+
+  /sc:implement "Complete iron doctor health diagnostics FR-10.3-10.8"
+
+  Priority 2: Graceful Degradation (8.5) - P1, 8h
+
+  Implement fallbacks per degradation matrix:
+  ┌────────────┬─────────────────────────────────┐
+  │  Service   │        Degraded Behavior        │
+  ├────────────┼─────────────────────────────────┤
+  │ Secrets    │ Warn, skip secret operations    │
+  ├────────────┼─────────────────────────────────┤
+  │ Sync       │ Work offline, queue operations  │
+  ├────────────┼─────────────────────────────────┤
+  │ Snapshots  │ Warn, proceed with confirmation │
+  ├────────────┼─────────────────────────────────┤
+  │ AUR Helper │ Fall back to official repos     │
+  └────────────┴─────────────────────────────────┘
+  /sc:implement "Graceful degradation for optional services NFR-11"
+
+  Priority 3: Structured Logging (8.4) - P1, 8h
+
+  - JSON structured format for log entries
+  - Log rotation (10MB/5 files)
+  - Integration with tracing crate
+  - Component-level log filtering
+
+  /sc:implement "Structured JSON logging with rotation NFR-9 NFR-10"
+
+  Priority 4: Acceptance Tests (8.6) - P0, 24h
+
+  Create tests/acceptance/ with Gherkin-style scenarios:
+  - AT-1: First-Time Setup (6 scenarios)
+  - AT-2: Bundle Management (5 scenarios)
+  - AT-3: Profile Management (4 scenarios)
+  - AT-4: Module Operations (4 scenarios)
+  - AT-5: Update Workflow (4 scenarios)
+  - AT-5.5: E2E Bundle Switch (BLOCKING)
+  - AT-6: Recovery Workflow (3 scenarios)
+
+  /sc:implement "Acceptance test suite AT-1 through AT-6"
+
+  Priority 5: Coverage Push to 80% (8.7) - P1, 16h
+
+  Following NEXT-ACTIONS.md priorities:
+  1. Doctests (+20 tests, +3% coverage)
+  2. CLI Output Validation (+25 tests, +5% coverage)
+  3. Coverage Gap Hunting (+30 tests, +10% coverage)
+  4. Integration Tests (+15 tests, +2% coverage)
+
+  ---

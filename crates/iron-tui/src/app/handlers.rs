@@ -277,3 +277,479 @@ impl App {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use iron_core::{Bundle, BundleType, Module, ModuleKind, Profile};
+
+    fn create_key_event(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::empty())
+    }
+
+    fn create_key_event_with_mods(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
+        KeyEvent::new(code, modifiers)
+    }
+
+    fn create_test_bundle(id: &str) -> Bundle {
+        Bundle {
+            id: id.to_string(),
+            name: id.to_string(),
+            description: Some("Test bundle".to_string()),
+            bundle_type: BundleType::WaylandCompositor,
+            packages: vec![],
+            aur_packages: vec![],
+            profiles: vec![],
+            default_profile: None,
+            conflicts: vec![],
+            services: vec![],
+            post_install: None,
+        }
+    }
+
+    fn create_test_module(id: &str) -> Module {
+        Module {
+            id: id.to_string(),
+            name: id.to_string(),
+            description: Some("Test module".to_string()),
+            kind: ModuleKind::AppConfig,
+            packages: vec![],
+            aur_packages: vec![],
+            dotfiles: vec![],
+            conflicts: vec![],
+            depends: vec![],
+            pre_install: None,
+            post_install: None,
+        }
+    }
+
+    fn create_test_profile(id: &str) -> Profile {
+        Profile {
+            id: id.to_string(),
+            name: id.to_string(),
+            description: Some("Test profile".to_string()),
+            modules: vec![],
+            theme: None,
+            shell: None,
+            extends: None,
+            for_bundle: None,
+        }
+    }
+
+    // =============================================================================
+    // Global Shortcut Tests
+    // =============================================================================
+
+    #[test]
+    fn test_ctrl_c_quits() {
+        let mut app = App::default();
+        assert!(!app.should_quit);
+
+        app.handle_key(create_key_event_with_mods(
+            KeyCode::Char('c'),
+            KeyModifiers::CONTROL,
+        ));
+
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn test_ctrl_q_quits() {
+        let mut app = App::default();
+        assert!(!app.should_quit);
+
+        app.handle_key(create_key_event_with_mods(
+            KeyCode::Char('q'),
+            KeyModifiers::CONTROL,
+        ));
+
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn test_q_quits() {
+        let mut app = App::default();
+        assert!(!app.should_quit);
+
+        app.handle_key(create_key_event(KeyCode::Char('q')));
+
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn test_question_mark_shows_help() {
+        let mut app = App::default();
+        assert!(!app.show_help);
+
+        app.handle_key(create_key_event(KeyCode::Char('?')));
+
+        assert!(app.show_help);
+    }
+
+    #[test]
+    fn test_any_key_dismisses_help() {
+        let mut app = App::default();
+        app.show_help = true;
+
+        app.handle_key(create_key_event(KeyCode::Char('x')));
+
+        assert!(!app.show_help);
+    }
+
+    // =============================================================================
+    // View Navigation Tests
+    // =============================================================================
+
+    #[test]
+    fn test_d_navigates_to_dashboard() {
+        let mut app = App::default();
+        app.view = View::Bundles;
+
+        app.handle_key(create_key_event(KeyCode::Char('d')));
+
+        assert_eq!(app.view, View::Dashboard);
+    }
+
+    #[test]
+    fn test_b_navigates_to_bundles() {
+        let mut app = App::default();
+        app.view = View::Dashboard;
+
+        app.handle_key(create_key_event(KeyCode::Char('b')));
+
+        assert_eq!(app.view, View::Bundles);
+    }
+
+    #[test]
+    fn test_p_navigates_to_profiles() {
+        let mut app = App::default();
+        app.view = View::Dashboard;
+
+        app.handle_key(create_key_event(KeyCode::Char('p')));
+
+        assert_eq!(app.view, View::Profiles);
+    }
+
+    #[test]
+    fn test_m_navigates_to_modules() {
+        let mut app = App::default();
+        app.view = View::Dashboard;
+
+        app.handle_key(create_key_event(KeyCode::Char('m')));
+
+        assert_eq!(app.view, View::Modules);
+    }
+
+    #[test]
+    fn test_u_navigates_to_update_preview() {
+        let mut app = App::default();
+        app.view = View::Dashboard;
+
+        app.handle_key(create_key_event(KeyCode::Char('u')));
+
+        assert_eq!(app.view, View::UpdatePreview);
+    }
+
+    #[test]
+    fn test_s_navigates_to_settings() {
+        let mut app = App::default();
+        app.view = View::Dashboard;
+
+        app.handle_key(create_key_event(KeyCode::Char('s')));
+
+        assert_eq!(app.view, View::Settings);
+    }
+
+    #[test]
+    fn test_tab_cycles_views_forward() {
+        let mut app = App::default();
+        app.view = View::Dashboard;
+
+        app.handle_key(create_key_event(KeyCode::Tab));
+        assert_eq!(app.view, View::Bundles);
+
+        app.handle_key(create_key_event(KeyCode::Tab));
+        assert_eq!(app.view, View::Profiles);
+
+        app.handle_key(create_key_event(KeyCode::Tab));
+        assert_eq!(app.view, View::Modules);
+
+        // Modules -> UpdatePreview (skips ModuleDetail)
+        app.handle_key(create_key_event(KeyCode::Tab));
+        assert_eq!(app.view, View::UpdatePreview);
+        // Note: UpdatePreview has special key handling that doesn't pass Tab through
+    }
+
+    #[test]
+    fn test_tab_from_settings_to_dashboard() {
+        let mut app = App::default();
+        app.view = View::Settings;
+
+        app.handle_key(create_key_event(KeyCode::Tab));
+
+        assert_eq!(app.view, View::Dashboard);
+    }
+
+    #[test]
+    fn test_backtab_cycles_views_backward() {
+        let mut app = App::default();
+        app.view = View::Dashboard;
+
+        app.handle_key(create_key_event(KeyCode::BackTab));
+        assert_eq!(app.view, View::Settings);
+
+        app.handle_key(create_key_event(KeyCode::BackTab));
+        assert_eq!(app.view, View::UpdatePreview);
+    }
+
+    #[test]
+    fn test_escape_goes_back() {
+        let mut app = App::default();
+        app.view = View::Bundles;
+        app.previous_view = Some(View::Dashboard);
+
+        app.handle_key(create_key_event(KeyCode::Esc));
+
+        assert_eq!(app.view, View::Dashboard);
+    }
+
+    // =============================================================================
+    // List Navigation Tests
+    // =============================================================================
+
+    #[test]
+    fn test_j_selects_next() {
+        let mut app = App::default();
+        app.view = View::Bundles;
+        app.bundles = vec![
+            create_test_bundle("bundle1"),
+            create_test_bundle("bundle2"),
+            create_test_bundle("bundle3"),
+        ];
+        app.selected_index = 0;
+
+        app.handle_key(create_key_event(KeyCode::Char('j')));
+        assert_eq!(app.selected_index, 1);
+
+        app.handle_key(create_key_event(KeyCode::Char('j')));
+        assert_eq!(app.selected_index, 2);
+    }
+
+    #[test]
+    fn test_k_selects_previous() {
+        let mut app = App::default();
+        app.view = View::Bundles;
+        app.bundles = vec![create_test_bundle("bundle1"), create_test_bundle("bundle2")];
+        app.selected_index = 1;
+
+        app.handle_key(create_key_event(KeyCode::Char('k')));
+        assert_eq!(app.selected_index, 0);
+    }
+
+    #[test]
+    fn test_down_arrow_selects_next() {
+        let mut app = App::default();
+        app.view = View::Modules;
+        app.modules = vec![create_test_module("mod1"), create_test_module("mod2")];
+        app.selected_index = 0;
+
+        app.handle_key(create_key_event(KeyCode::Down));
+        assert_eq!(app.selected_index, 1);
+    }
+
+    #[test]
+    fn test_up_arrow_selects_previous() {
+        let mut app = App::default();
+        app.view = View::Modules;
+        app.modules = vec![create_test_module("mod1"), create_test_module("mod2")];
+        app.selected_index = 1;
+
+        app.handle_key(create_key_event(KeyCode::Up));
+        assert_eq!(app.selected_index, 0);
+    }
+
+    #[test]
+    fn test_home_selects_first() {
+        let mut app = App::default();
+        app.view = View::Profiles;
+        app.profiles = vec![
+            create_test_profile("profile1"),
+            create_test_profile("profile2"),
+            create_test_profile("profile3"),
+        ];
+        app.selected_index = 2;
+
+        app.handle_key(create_key_event(KeyCode::Home));
+        assert_eq!(app.selected_index, 0);
+    }
+
+    #[test]
+    fn test_end_selects_last() {
+        let mut app = App::default();
+        app.view = View::Profiles;
+        app.profiles = vec![
+            create_test_profile("profile1"),
+            create_test_profile("profile2"),
+            create_test_profile("profile3"),
+        ];
+        app.selected_index = 0;
+
+        app.handle_key(create_key_event(KeyCode::End));
+        assert_eq!(app.selected_index, 2);
+    }
+
+    #[test]
+    fn test_select_next_bounds_check() {
+        let mut app = App::default();
+        app.view = View::Bundles;
+        app.bundles = vec![create_test_bundle("only-one")];
+        app.selected_index = 0;
+
+        // Try to go past the end
+        app.handle_key(create_key_event(KeyCode::Char('j')));
+        assert_eq!(app.selected_index, 0);
+    }
+
+    #[test]
+    fn test_select_previous_bounds_check() {
+        let mut app = App::default();
+        app.view = View::Bundles;
+        app.bundles = vec![create_test_bundle("only-one")];
+        app.selected_index = 0;
+
+        // Try to go before start
+        app.handle_key(create_key_event(KeyCode::Char('k')));
+        assert_eq!(app.selected_index, 0);
+    }
+
+    // =============================================================================
+    // Detail View Navigation Tests
+    // =============================================================================
+
+    #[test]
+    fn test_enter_opens_bundle_detail() {
+        let mut app = App::default();
+        app.view = View::Bundles;
+        app.bundles = vec![create_test_bundle("hyprland")];
+        app.selected_index = 0;
+
+        app.handle_key(create_key_event(KeyCode::Enter));
+
+        assert_eq!(app.view, View::BundleDetail);
+    }
+
+    #[test]
+    fn test_enter_opens_profile_detail() {
+        let mut app = App::default();
+        app.view = View::Profiles;
+        app.profiles = vec![create_test_profile("developer")];
+        app.selected_index = 0;
+
+        app.handle_key(create_key_event(KeyCode::Enter));
+
+        assert_eq!(app.view, View::ProfileDetail);
+    }
+
+    #[test]
+    fn test_enter_opens_module_detail() {
+        let mut app = App::default();
+        app.view = View::Modules;
+        app.modules = vec![create_test_module("nvim-ide")];
+        app.selected_index = 0;
+
+        app.handle_key(create_key_event(KeyCode::Enter));
+
+        assert_eq!(app.view, View::ModuleDetail);
+    }
+
+    #[test]
+    fn test_enter_no_op_on_empty_list() {
+        let mut app = App::default();
+        app.view = View::Bundles;
+        app.bundles = vec![];
+
+        app.handle_key(create_key_event(KeyCode::Enter));
+
+        // Should stay on Bundles view
+        assert_eq!(app.view, View::Bundles);
+    }
+
+    // =============================================================================
+    // Confirm Dialog Tests
+    // =============================================================================
+
+    #[test]
+    fn test_confirm_dialog_y_executes() {
+        let mut app = App::default();
+        app.show_confirm = true;
+        app.confirm_action = Some(ConfirmAction::Quit);
+
+        app.handle_key(create_key_event(KeyCode::Char('y')));
+
+        assert!(!app.show_confirm);
+        assert!(app.confirm_action.is_none());
+    }
+
+    #[test]
+    fn test_confirm_dialog_enter_executes() {
+        let mut app = App::default();
+        app.show_confirm = true;
+        app.confirm_action = Some(ConfirmAction::Quit);
+
+        app.handle_key(create_key_event(KeyCode::Enter));
+
+        assert!(!app.show_confirm);
+        assert!(app.confirm_action.is_none());
+    }
+
+    #[test]
+    fn test_confirm_dialog_n_cancels() {
+        let mut app = App::default();
+        app.show_confirm = true;
+        app.confirm_action = Some(ConfirmAction::Quit);
+
+        app.handle_key(create_key_event(KeyCode::Char('n')));
+
+        assert!(!app.show_confirm);
+        assert!(app.confirm_action.is_none());
+    }
+
+    #[test]
+    fn test_confirm_dialog_escape_cancels() {
+        let mut app = App::default();
+        app.show_confirm = true;
+        app.confirm_action = Some(ConfirmAction::Quit);
+
+        app.handle_key(create_key_event(KeyCode::Esc));
+
+        assert!(!app.show_confirm);
+        assert!(app.confirm_action.is_none());
+    }
+
+    // =============================================================================
+    // View-Specific Tests
+    // =============================================================================
+
+    #[test]
+    fn test_update_preview_escape_goes_back() {
+        let mut app = App::default();
+        app.view = View::UpdatePreview;
+        app.previous_view = Some(View::Dashboard);
+
+        app.handle_key(create_key_event(KeyCode::Esc));
+
+        assert_eq!(app.view, View::Dashboard);
+    }
+
+    #[test]
+    fn test_profile_detail_escape_goes_back() {
+        let mut app = App::default();
+        app.view = View::ProfileDetail;
+        app.previous_view = Some(View::Profiles);
+
+        app.handle_key(create_key_event(KeyCode::Esc));
+
+        assert_eq!(app.view, View::Profiles);
+    }
+}

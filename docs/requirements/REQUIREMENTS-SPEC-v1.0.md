@@ -1,9 +1,11 @@
 # Iron Project - Requirements Specification v1.0
 
 > **Document Status**: APPROVED
+> **Version**: 1.1.0
 > **Created**: 2025-02-12
-> **Last Updated**: 2025-02-12
+> **Last Updated**: 2026-02-13
 > **Author**: Requirements Discovery Session
+> **Reviewed By**: Expert Panel (Wiegers, Fowler, Nygard, Crispin)
 
 ---
 
@@ -113,11 +115,14 @@ DORMANT: Configs stored in iron/dormant/ (unlinked)
 | FR-5.1 | Arch News integration | HIGH | Fetch and display relevant news before update |
 | FR-5.2 | AUR flagged packages | HIGH | Warn if installed AUR packages are flagged |
 | FR-5.3 | Dependency conflict detection | HIGH | Predict conflicts before pacman runs |
-| FR-5.4 | Risk score calculation | HIGH | Display LOW/MEDIUM/HIGH based on changes |
-| FR-5.5 | Approval workflow | HIGH | MEDIUM/HIGH risk requires explicit confirmation |
+| FR-5.4 | Risk score calculation | HIGH | Display LOW/MEDIUM/HIGH/CRITICAL based on changes |
+| FR-5.4.1 | Risk threshold definitions | HIGH | LOW: 0-2 minor changes, MEDIUM: 3-5 changes or config updates, HIGH: 6-10 changes or driver updates, CRITICAL: kernel/bootloader/glibc changes |
+| FR-5.5 | Approval workflow | HIGH | MEDIUM/HIGH risk requires explicit confirmation, CRITICAL requires typed confirmation |
 | FR-5.6 | Auto-snapshot | HIGH | Timeshift/snapper snapshot before any update |
-| FR-5.7 | Pacnew handling | MEDIUM | Detect, diff, and merge .pacnew files |
+| FR-5.7 | Pacnew handling | MEDIUM | Detect, diff, and merge .pacnew files with options: keep-new, keep-old, interactive |
 | FR-5.8 | Update preview | HIGH | Show what will change before proceeding |
+| FR-5.9 | External command timeout | HIGH | All external commands (pacman, git, systemctl) SHALL timeout after 120s with RetryableError |
+| FR-5.10 | Partial update recovery | HIGH | Track update progress; if interrupted, resume from last successful package on next run |
 
 ### FR-6: Recovery
 
@@ -163,6 +168,19 @@ DORMANT: Configs stored in iron/dormant/ (unlinked)
 | FR-9.7 | Newcomer accessible | HIGH | 5-minute learning curve |
 | FR-9.8 | Pre-update screen | HIGH | Risk score + changes + approval buttons |
 
+### FR-10: Health Check & Diagnostics
+
+| ID | Requirement | Priority | Acceptance Criteria |
+|----|-------------|----------|---------------------|
+| FR-10.1 | State file validation | HIGH | `iron doctor` validates state.json is parseable and schema-compliant |
+| FR-10.2 | Symlink integrity check | HIGH | Verify all active bundle/profile symlinks point to valid targets |
+| FR-10.3 | Package installation check | HIGH | Verify all required packages from active bundle/profile are installed |
+| FR-10.4 | Snapshot backend check | HIGH | Verify timeshift/snapper is available and configured |
+| FR-10.5 | Config directory check | HIGH | Verify bundles/, profiles/, modules/, hosts/ directories exist |
+| FR-10.6 | Git repository check | MEDIUM | Verify .git exists and repo is clean or warn of uncommitted changes |
+| FR-10.7 | Secrets status check | MEDIUM | Verify git-crypt/age status and warn if secrets are locked |
+| FR-10.8 | Health report format | HIGH | Output structured JSON with pass/warn/fail status per check |
+
 ---
 
 ## Non-Functional Requirements
@@ -176,6 +194,10 @@ DORMANT: Configs stored in iron/dormant/ (unlinked)
 | NFR-5 | Offline capability | Full | All features except git sync work offline |
 | NFR-6 | Learning curve | 5 min | Time for newcomer to perform basic tasks |
 | NFR-7 | Recovery time | < 30 min | Full system restore from scratch |
+| NFR-8 | Command timeout | 120s | External command execution timeout with circuit breaker |
+| NFR-9 | Structured logging | JSON | Logs in JSON format with timestamp, level, component, message |
+| NFR-10 | Log rotation | 10MB/5 files | Automatic log rotation when file exceeds 10MB, keep 5 files |
+| NFR-11 | Graceful degradation | Required | System remains usable when optional components fail (secrets, sync) |
 
 ---
 

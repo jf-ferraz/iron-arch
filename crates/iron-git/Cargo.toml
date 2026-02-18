@@ -8,3 +8,6 @@ description = "Git operations for Iron"
 iron-core = { path = "../iron-core" }
 thiserror.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

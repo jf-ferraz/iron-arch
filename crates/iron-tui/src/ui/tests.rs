@@ -4,8 +4,10 @@
 
 use super::*;
 use crate::app::{App, View};
-use iron_core::{Bundle, BundleType, DotfileMapping, Module, ModuleKind, PackageUpdate, Profile, RiskLevel};
-use ratatui::{backend::TestBackend, Terminal};
+use iron_core::{
+    Bundle, BundleType, DotfileMapping, Module, ModuleKind, PackageUpdate, Profile, RiskLevel,
+};
+use ratatui::{Terminal, backend::TestBackend};
 
 // =============================================================================
 // Test Helpers
@@ -77,7 +79,11 @@ fn create_test_update(name: &str, is_aur: bool) -> PackageUpdate {
         new_version: "1.1.0".to_string(),
         is_aur,
         is_flagged: false,
-        repository: if is_aur { "aur".to_string() } else { "extra".to_string() },
+        repository: if is_aur {
+            "aur".to_string()
+        } else {
+            "extra".to_string()
+        },
     }
 }
 
@@ -95,7 +101,11 @@ fn create_app_with_bundles() -> App {
 fn create_app_with_modules() -> App {
     let mut app = App::default();
     app.modules = vec![
-        create_test_module("nvim-ide", "Neovim IDE configuration", vec!["neovim", "ripgrep"]),
+        create_test_module(
+            "nvim-ide",
+            "Neovim IDE configuration",
+            vec!["neovim", "ripgrep"],
+        ),
         create_test_module("kitty-dev", "Kitty terminal config", vec!["kitty"]),
     ];
     app.active_modules = vec!["nvim-ide".to_string()];
@@ -106,7 +116,11 @@ fn create_app_with_modules() -> App {
 fn create_app_with_profiles() -> App {
     let mut app = App::default();
     app.profiles = vec![
-        create_test_profile("developer", "Developer workstation", vec!["nvim-ide", "kitty-dev"]),
+        create_test_profile(
+            "developer",
+            "Developer workstation",
+            vec!["nvim-ide", "kitty-dev"],
+        ),
         create_test_profile("minimal", "Minimal setup", vec!["kitty-dev"]),
     ];
     app.active_profile = Some("developer".to_string());
@@ -952,4 +966,307 @@ fn test_bundles_renders_at_various_sizes() {
         // Should always show the title
         assert!(buffer_contains(&terminal, "Bundles"));
     }
+}
+
+// =============================================================================
+// Wizard UI Rendering Tests
+// =============================================================================
+
+/// Create an App in wizard mode
+fn create_app_with_wizard() -> App {
+    let mut app = App::default();
+    app.view = View::SetupWizard;
+    app.wizard = crate::wizard::WizardState::new();
+    app.wizard.available_bundles = vec![
+        "hyprland".to_string(),
+        "niri".to_string(),
+        "sway".to_string(),
+    ];
+    app.wizard.available_profiles = vec!["developer".to_string(), "minimal".to_string()];
+    app.wizard.host_id = "desktop".to_string();
+    app.host_input = crate::wizard::TextInput::new("desktop");
+    app
+}
+
+#[test]
+fn test_wizard_renders_welcome_step() {
+    let mut terminal = create_test_terminal(80, 24);
+    let app = create_app_with_wizard();
+
+    terminal
+        .draw(|f| {
+            super::wizard::render_setup_wizard(f, f.area(), &app);
+        })
+        .unwrap();
+
+    assert!(buffer_contains(&terminal, "Welcome to Iron"));
+    assert!(buffer_contains(&terminal, "First-Time Setup"));
+    assert!(buffer_contains(&terminal, "Press Enter to begin"));
+}
+
+#[test]
+fn test_wizard_renders_progress_indicator() {
+    let mut terminal = create_test_terminal(80, 24);
+    let app = create_app_with_wizard();
+
+    terminal
+        .draw(|f| {
+            super::wizard::render_setup_wizard(f, f.area(), &app);
+        })
+        .unwrap();
+
+    assert!(buffer_contains(&terminal, "Step 1 of 5"));
+}
+
+#[test]
+fn test_wizard_renders_host_setup_step() {
+    let mut terminal = create_test_terminal(80, 24);
+    let mut app = create_app_with_wizard();
+    app.wizard.step = crate::wizard::WizardStep::HostSetup;
+
+    terminal
+        .draw(|f| {
+            super::wizard::render_setup_wizard(f, f.area(), &app);
+        })
+        .unwrap();
+
+    assert!(buffer_contains(&terminal, "Host Setup"));
+    assert!(buffer_contains(&terminal, "desktop"));
+    assert!(buffer_contains(&terminal, "Host ID"));
+}
+
+#[test]
+fn test_wizard_renders_host_setup_editing_mode() {
+    let mut terminal = create_test_terminal(80, 24);
+    let mut app = create_app_with_wizard();
+    app.wizard.step = crate::wizard::WizardStep::HostSetup;
+    app.host_input.enter_edit_mode();
+
+    terminal
+        .draw(|f| {
+            super::wizard::render_setup_wizard(f, f.area(), &app);
+        })
+        .unwrap();
+
+    assert!(buffer_contains(&terminal, "Press Enter to confirm"));
+}
+
+#[test]
+fn test_wizard_renders_bundle_selection_step() {
+    let mut terminal = create_test_terminal(80, 24);
+    let mut app = create_app_with_wizard();
+    app.wizard.step = crate::wizard::WizardStep::BundleSelection;
+
+    terminal
+        .draw(|f| {
+            super::wizard::render_setup_wizard(f, f.area(), &app);
+        })
+        .unwrap();
+
+    assert!(buffer_contains(&terminal, "Bundle Selection"));
+    assert!(buffer_contains(&terminal, "hyprland"));
+    assert!(buffer_contains(&terminal, "niri"));
+    assert!(buffer_contains(&terminal, "sway"));
+}
+
+#[test]
+fn test_wizard_renders_bundle_selection_indicator() {
+    let mut terminal = create_test_terminal(80, 24);
+    let mut app = create_app_with_wizard();
+    app.wizard.step = crate::wizard::WizardStep::BundleSelection;
+    app.wizard.selected_bundle_index = 0;
+
+    terminal
+        .draw(|f| {
+            super::wizard::render_setup_wizard(f, f.area(), &app);
+        })
+        .unwrap();
+
+    // Selected bundle should have filled circle
+    assert!(buffer_contains(&terminal, "●"));
+    // Other bundles have empty circles
+    assert!(buffer_contains(&terminal, "○"));
+}
+
+#[test]
+fn test_wizard_renders_empty_bundles() {
+    let mut terminal = create_test_terminal(80, 24);
+    let mut app = create_app_with_wizard();
+    app.wizard.step = crate::wizard::WizardStep::BundleSelection;
+    app.wizard.available_bundles.clear();
+
+    terminal
+        .draw(|f| {
+            super::wizard::render_setup_wizard(f, f.area(), &app);
+        })
+        .unwrap();
+
+    assert!(buffer_contains(&terminal, "No bundles found"));
+}
+
+#[test]
+fn test_wizard_renders_profile_selection_step() {
+    let mut terminal = create_test_terminal(80, 24);
+    let mut app = create_app_with_wizard();
+    app.wizard.step = crate::wizard::WizardStep::ProfileSelection;
+
+    terminal
+        .draw(|f| {
+            super::wizard::render_setup_wizard(f, f.area(), &app);
+        })
+        .unwrap();
+
+    assert!(buffer_contains(&terminal, "Profile Selection"));
+    assert!(buffer_contains(&terminal, "developer"));
+    assert!(buffer_contains(&terminal, "minimal"));
+}
+
+#[test]
+fn test_wizard_renders_empty_profiles() {
+    let mut terminal = create_test_terminal(80, 24);
+    let mut app = create_app_with_wizard();
+    app.wizard.step = crate::wizard::WizardStep::ProfileSelection;
+    app.wizard.available_profiles.clear();
+
+    terminal
+        .draw(|f| {
+            super::wizard::render_setup_wizard(f, f.area(), &app);
+        })
+        .unwrap();
+
+    assert!(buffer_contains(&terminal, "No profiles found"));
+}
+
+#[test]
+fn test_wizard_renders_confirmation_step() {
+    let mut terminal = create_test_terminal(80, 24);
+    let mut app = create_app_with_wizard();
+    app.wizard.step = crate::wizard::WizardStep::Confirmation;
+    app.wizard.host_id = "myhost".to_string();
+
+    terminal
+        .draw(|f| {
+            super::wizard::render_setup_wizard(f, f.area(), &app);
+        })
+        .unwrap();
+
+    assert!(buffer_contains(&terminal, "Confirmation"));
+    assert!(buffer_contains(&terminal, "Host ID"));
+    assert!(buffer_contains(&terminal, "myhost"));
+    assert!(buffer_contains(&terminal, "Bundle"));
+    assert!(buffer_contains(&terminal, "Profile"));
+}
+
+#[test]
+fn test_wizard_renders_confirmation_with_error() {
+    let mut terminal = create_test_terminal(80, 24);
+    let mut app = create_app_with_wizard();
+    app.wizard.step = crate::wizard::WizardStep::Confirmation;
+    app.wizard.error = Some("Test error message".to_string());
+
+    terminal
+        .draw(|f| {
+            super::wizard::render_setup_wizard(f, f.area(), &app);
+        })
+        .unwrap();
+
+    assert!(buffer_contains(&terminal, "Error"));
+    assert!(buffer_contains(&terminal, "Test error message"));
+}
+
+#[test]
+fn test_wizard_renders_complete_step() {
+    let mut terminal = create_test_terminal(80, 24);
+    let mut app = create_app_with_wizard();
+    app.wizard.step = crate::wizard::WizardStep::Complete;
+
+    terminal
+        .draw(|f| {
+            super::wizard::render_setup_wizard(f, f.area(), &app);
+        })
+        .unwrap();
+
+    assert!(buffer_contains(&terminal, "Setup Complete"));
+    assert!(buffer_contains(
+        &terminal,
+        "Press Enter to go to the Dashboard"
+    ));
+}
+
+#[test]
+fn test_wizard_renders_navigation_hints() {
+    let mut terminal = create_test_terminal(80, 24);
+    let mut app = create_app_with_wizard();
+    app.wizard.step = crate::wizard::WizardStep::BundleSelection;
+
+    terminal
+        .draw(|f| {
+            super::wizard::render_setup_wizard(f, f.area(), &app);
+        })
+        .unwrap();
+
+    // Should show back and continue hints
+    assert!(buffer_contains(&terminal, "Backspace"));
+    assert!(buffer_contains(&terminal, "Back"));
+    assert!(buffer_contains(&terminal, "Enter"));
+    assert!(buffer_contains(&terminal, "Continue"));
+    assert!(buffer_contains(&terminal, "[q]"));
+    assert!(buffer_contains(&terminal, "Quit"));
+}
+
+#[test]
+fn test_wizard_progress_updates_per_step() {
+    for (step, expected_num) in [
+        (crate::wizard::WizardStep::Welcome, 1),
+        (crate::wizard::WizardStep::HostSetup, 2),
+        (crate::wizard::WizardStep::BundleSelection, 3),
+        (crate::wizard::WizardStep::ProfileSelection, 4),
+        (crate::wizard::WizardStep::Confirmation, 5),
+    ] {
+        let mut terminal = create_test_terminal(80, 24);
+        let mut app = create_app_with_wizard();
+        app.wizard.step = step.clone();
+
+        terminal
+            .draw(|f| {
+                super::wizard::render_setup_wizard(f, f.area(), &app);
+            })
+            .unwrap();
+
+        assert!(
+            buffer_contains(&terminal, &format!("Step {} of 5", expected_num)),
+            "Expected Step {} of 5 for {:?}",
+            expected_num,
+            step.clone()
+        );
+    }
+}
+
+#[test]
+fn test_wizard_renders_at_various_sizes() {
+    for (width, height) in [(40, 12), (80, 24), (120, 40)] {
+        let mut terminal = create_test_terminal(width, height);
+        let app = create_app_with_wizard();
+
+        // Should not panic at any size
+        terminal
+            .draw(|f| {
+                super::wizard::render_setup_wizard(f, f.area(), &app);
+            })
+            .unwrap();
+    }
+}
+
+#[test]
+fn test_render_dispatches_to_wizard() {
+    let mut terminal = create_test_terminal(80, 24);
+    let app = create_app_with_wizard();
+
+    terminal
+        .draw(|f| {
+            render(f, &app);
+        })
+        .unwrap();
+
+    assert!(buffer_contains(&terminal, "Welcome to Iron"));
 }

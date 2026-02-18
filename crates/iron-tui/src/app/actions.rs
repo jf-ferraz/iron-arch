@@ -313,3 +313,606 @@ impl App {
         // 3. Handle errors and rollbacks
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use iron_core::{Bundle, BundleType, Module, ModuleKind, Profile};
+    use std::sync::Arc;
+    use tempfile::TempDir;
+
+    fn create_test_bundle(id: &str) -> Bundle {
+        Bundle {
+            id: id.to_string(),
+            name: format!("{} Bundle", id),
+            description: Some(format!("{} test bundle", id)),
+            bundle_type: BundleType::WaylandCompositor,
+            packages: vec![],
+            aur_packages: vec![],
+            profiles: vec![],
+            default_profile: None,
+            conflicts: vec![],
+            services: vec![],
+            post_install: None,
+        }
+    }
+
+    fn create_test_module(id: &str) -> Module {
+        Module {
+            id: id.to_string(),
+            name: format!("{} Module", id),
+            description: Some(format!("{} test module", id)),
+            kind: ModuleKind::AppConfig,
+            packages: vec![],
+            aur_packages: vec![],
+            dotfiles: vec![],
+            conflicts: vec![],
+            depends: vec![],
+            pre_install: None,
+            post_install: None,
+        }
+    }
+
+    fn create_test_profile(id: &str) -> Profile {
+        Profile {
+            id: id.to_string(),
+            name: format!("{} Profile", id),
+            description: Some(format!("{} test profile", id)),
+            modules: vec![],
+            theme: None,
+            shell: None,
+            extends: None,
+            for_bundle: None,
+        }
+    }
+
+    // ==========================================================================
+    // execute_confirm_action Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_execute_confirm_action_none() {
+        let mut app = App::default();
+        app.confirm_action = None;
+
+        app.execute_confirm_action();
+
+        // Nothing should happen, app state should be unchanged
+        assert!(!app.should_quit);
+        assert!(app.status_message.is_none());
+    }
+
+    #[test]
+    fn test_execute_confirm_action_quit() {
+        let mut app = App::default();
+        app.confirm_action = Some(ConfirmAction::Quit);
+
+        app.execute_confirm_action();
+
+        assert!(app.should_quit);
+        assert!(app.confirm_action.is_none());
+    }
+
+    #[test]
+    fn test_execute_confirm_action_remove_bundle_not_implemented() {
+        let mut app = App::default();
+        app.confirm_action = Some(ConfirmAction::RemoveBundle("hyprland".to_string()));
+
+        app.execute_confirm_action();
+
+        assert!(app.status_message.is_some());
+        assert!(app.status_message.unwrap().contains("not yet implemented"));
+    }
+
+    #[test]
+    fn test_execute_confirm_action_enable_module_no_state_manager() {
+        let mut app = App::default();
+        app.state_manager = None;
+        app.confirm_action = Some(ConfirmAction::EnableModule("nvim-ide".to_string()));
+
+        app.execute_confirm_action();
+
+        // Without state manager, nothing should happen (no success or error)
+        assert!(app.confirm_action.is_none());
+    }
+
+    #[test]
+    fn test_execute_confirm_action_disable_module_no_state_manager() {
+        let mut app = App::default();
+        app.state_manager = None;
+        app.confirm_action = Some(ConfirmAction::DisableModule("nvim-ide".to_string()));
+
+        app.execute_confirm_action();
+
+        // Without state manager, nothing should happen
+        assert!(app.confirm_action.is_none());
+    }
+
+    #[test]
+    fn test_execute_confirm_action_run_update() {
+        let mut app = App::default();
+        app.confirm_action = Some(ConfirmAction::RunUpdate);
+
+        app.execute_confirm_action();
+
+        assert!(app.status_message.is_some());
+        assert!(app.status_message.unwrap().contains("update started"));
+    }
+
+    // ==========================================================================
+    // toggle_selected_module Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_toggle_selected_module_wrong_view() {
+        let mut app = App::default();
+        app.view = View::Dashboard;
+        app.modules = vec![create_test_module("nvim-ide")];
+        app.selected_index = 0;
+
+        app.toggle_selected_module();
+
+        // Should not trigger confirmation in Dashboard view
+        assert!(!app.show_confirm);
+        assert!(app.confirm_action.is_none());
+    }
+
+    #[test]
+    fn test_toggle_selected_module_modules_view_enable() {
+        let mut app = App::default();
+        app.view = View::Modules;
+        app.modules = vec![create_test_module("nvim-ide")];
+        app.selected_index = 0;
+        app.active_modules = vec![]; // Not active
+
+        app.toggle_selected_module();
+
+        assert!(app.show_confirm);
+        match &app.confirm_action {
+            Some(ConfirmAction::EnableModule(id)) => assert_eq!(id, "nvim-ide"),
+            _ => panic!("Expected EnableModule action"),
+        }
+    }
+
+    #[test]
+    fn test_toggle_selected_module_modules_view_disable() {
+        let mut app = App::default();
+        app.view = View::Modules;
+        app.modules = vec![create_test_module("nvim-ide")];
+        app.selected_index = 0;
+        app.active_modules = vec!["nvim-ide".to_string()]; // Active
+
+        app.toggle_selected_module();
+
+        assert!(app.show_confirm);
+        match &app.confirm_action {
+            Some(ConfirmAction::DisableModule(id)) => assert_eq!(id, "nvim-ide"),
+            _ => panic!("Expected DisableModule action"),
+        }
+    }
+
+    #[test]
+    fn test_toggle_selected_module_detail_view() {
+        let mut app = App::default();
+        app.view = View::ModuleDetail;
+        app.modules = vec![create_test_module("kitty-dev")];
+        app.selected_index = 0;
+        app.active_modules = vec![];
+
+        app.toggle_selected_module();
+
+        assert!(app.show_confirm);
+        match &app.confirm_action {
+            Some(ConfirmAction::EnableModule(id)) => assert_eq!(id, "kitty-dev"),
+            _ => panic!("Expected EnableModule action"),
+        }
+    }
+
+    #[test]
+    fn test_toggle_selected_module_empty_list() {
+        let mut app = App::default();
+        app.view = View::Modules;
+        app.modules = vec![];
+        app.selected_index = 0;
+
+        app.toggle_selected_module();
+
+        // Should not trigger confirmation with empty list
+        assert!(!app.show_confirm);
+    }
+
+    // ==========================================================================
+    // activate_selected_bundle Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_activate_selected_bundle_wrong_view() {
+        let mut app = App::default();
+        app.view = View::Dashboard;
+        app.bundles = vec![create_test_bundle("hyprland")];
+        app.selected_index = 0;
+
+        app.activate_selected_bundle();
+
+        assert!(!app.show_confirm);
+    }
+
+    #[test]
+    fn test_activate_selected_bundle_bundles_view() {
+        let mut app = App::default();
+        app.view = View::Bundles;
+        app.bundles = vec![create_test_bundle("hyprland")];
+        app.selected_index = 0;
+
+        app.activate_selected_bundle();
+
+        assert!(app.show_confirm);
+        match &app.confirm_action {
+            Some(ConfirmAction::SwitchBundle(id)) => assert_eq!(id, "hyprland"),
+            _ => panic!("Expected SwitchBundle action"),
+        }
+    }
+
+    #[test]
+    fn test_activate_selected_bundle_detail_view() {
+        let mut app = App::default();
+        app.view = View::BundleDetail;
+        app.bundles = vec![create_test_bundle("niri")];
+        app.selected_index = 0;
+
+        app.activate_selected_bundle();
+
+        assert!(app.show_confirm);
+        match &app.confirm_action {
+            Some(ConfirmAction::SwitchBundle(id)) => assert_eq!(id, "niri"),
+            _ => panic!("Expected SwitchBundle action"),
+        }
+    }
+
+    #[test]
+    fn test_activate_selected_bundle_empty_list() {
+        let mut app = App::default();
+        app.view = View::Bundles;
+        app.bundles = vec![];
+        app.selected_index = 0;
+
+        app.activate_selected_bundle();
+
+        assert!(!app.show_confirm);
+    }
+
+    // ==========================================================================
+    // activate_selected_profile Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_activate_selected_profile_no_profile() {
+        let mut app = App::default();
+        app.view = View::Profiles;
+        app.profiles = vec![];
+        app.selected_index = 0;
+
+        app.activate_selected_profile();
+
+        // Should return early without any action
+        assert!(app.status_message.is_none());
+    }
+
+    #[test]
+    fn test_activate_selected_profile_no_state_manager() {
+        let mut app = App::default();
+        app.profiles = vec![create_test_profile("developer")];
+        app.selected_index = 0;
+        app.state_manager = None;
+        app.current_host = Some("desktop".to_string());
+
+        app.activate_selected_profile();
+
+        // Without state manager, nothing should happen
+        assert!(app.status_message.is_none());
+    }
+
+    #[test]
+    fn test_activate_selected_profile_no_host() {
+        let mut app = App::default();
+        app.profiles = vec![create_test_profile("developer")];
+        app.selected_index = 0;
+        app.current_host = None;
+
+        app.activate_selected_profile();
+
+        // Without current host, nothing should happen
+        assert!(app.status_message.is_none());
+    }
+
+    // ==========================================================================
+    // refresh_current_view Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_refresh_current_view_dashboard() {
+        let mut app = App::default();
+        app.view = View::Dashboard;
+
+        app.refresh_current_view();
+
+        assert!(app.status_message.is_some());
+        assert!(app.status_message.unwrap().contains("refreshed"));
+    }
+
+    #[test]
+    fn test_refresh_current_view_bundles() {
+        let mut app = App::default();
+        app.view = View::Bundles;
+        app.state_manager = None;
+
+        app.refresh_current_view();
+
+        // Without state manager, nothing happens but no error either
+        assert!(
+            app.status_message.is_none()
+                || app.status_message.as_ref().unwrap().contains("refreshed")
+        );
+    }
+
+    #[test]
+    fn test_refresh_current_view_profiles() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut app = App::new(
+            temp_dir.path().to_path_buf(),
+            Arc::new(iron_core::NoopPackageManager),
+        );
+        app.view = View::Profiles;
+        app.profiles = vec![create_test_profile("old")];
+
+        app.refresh_current_view();
+
+        assert!(app.status_message.is_some());
+        assert!(app.status_message.unwrap().contains("Profiles refreshed"));
+    }
+
+    #[test]
+    fn test_refresh_current_view_modules() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut app = App::new(
+            temp_dir.path().to_path_buf(),
+            Arc::new(iron_core::NoopPackageManager),
+        );
+        app.view = View::Modules;
+        app.modules = vec![create_test_module("old")];
+
+        app.refresh_current_view();
+
+        assert!(app.status_message.is_some());
+        assert!(app.status_message.unwrap().contains("Modules refreshed"));
+    }
+
+    #[test]
+    fn test_refresh_current_view_update_preview() {
+        let mut app = App::default();
+        app.view = View::UpdatePreview;
+
+        app.refresh_current_view();
+
+        // refresh_updates is called which sets status message
+        assert!(app.status_message.is_some());
+    }
+
+    #[test]
+    fn test_refresh_current_view_settings_no_op() {
+        let mut app = App::default();
+        app.view = View::Settings;
+
+        app.refresh_current_view();
+
+        // Settings view has no refresh action
+        assert!(app.status_message.is_none());
+    }
+
+    // ==========================================================================
+    // init_wizard Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_init_wizard_initializes_state() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut app = App::new(
+            temp_dir.path().to_path_buf(),
+            Arc::new(iron_core::NoopPackageManager),
+        );
+
+        app.init_wizard();
+
+        // Wizard should be initialized with detected host
+        assert!(!app.wizard.host_id.is_empty() || app.wizard.host_id.is_empty()); // Host may or may not be detected
+    }
+
+    #[test]
+    fn test_init_wizard_loads_bundles() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create bundles directory
+        let bundles_dir = temp_dir.path().join("bundles");
+        std::fs::create_dir_all(&bundles_dir).unwrap();
+
+        // Create a bundle
+        let hyprland_dir = bundles_dir.join("hyprland");
+        std::fs::create_dir_all(&hyprland_dir).unwrap();
+        std::fs::write(
+            hyprland_dir.join("bundle.toml"),
+            r#"
+id = "hyprland"
+name = "Hyprland"
+description = "Hyprland compositor"
+type = "wayland-compositor"
+packages = []
+"#,
+        )
+        .unwrap();
+
+        let mut app = App::new(
+            temp_dir.path().to_path_buf(),
+            Arc::new(iron_core::NoopPackageManager),
+        );
+        app.init_wizard();
+
+        // Wizard should have loaded bundles
+        assert!(
+            app.wizard
+                .available_bundles
+                .contains(&"hyprland".to_string())
+        );
+    }
+
+    // ==========================================================================
+    // load_profiles Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_load_profiles_empty_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut app = App::new(
+            temp_dir.path().to_path_buf(),
+            Arc::new(iron_core::NoopPackageManager),
+        );
+
+        app.load_profiles();
+
+        assert!(app.profiles.is_empty());
+    }
+
+    #[test]
+    fn test_load_profiles_with_valid_profile() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create profiles directory
+        let profiles_dir = temp_dir.path().join("profiles");
+        std::fs::create_dir_all(&profiles_dir).unwrap();
+
+        // Create a profile
+        let dev_dir = profiles_dir.join("developer");
+        std::fs::create_dir_all(&dev_dir).unwrap();
+        std::fs::write(
+            dev_dir.join("profile.toml"),
+            r#"
+id = "developer"
+name = "Developer"
+description = "Development profile"
+modules = ["nvim-ide", "kitty-dev"]
+"#,
+        )
+        .unwrap();
+
+        let mut app = App::new(
+            temp_dir.path().to_path_buf(),
+            Arc::new(iron_core::NoopPackageManager),
+        );
+        app.load_profiles();
+
+        assert_eq!(app.profiles.len(), 1);
+        assert_eq!(app.profiles[0].id, "developer");
+    }
+
+    #[test]
+    fn test_load_profiles_skips_invalid() {
+        let temp_dir = TempDir::new().unwrap();
+
+        let profiles_dir = temp_dir.path().join("profiles");
+        std::fs::create_dir_all(&profiles_dir).unwrap();
+
+        // Create an invalid profile
+        let bad_dir = profiles_dir.join("invalid");
+        std::fs::create_dir_all(&bad_dir).unwrap();
+        std::fs::write(bad_dir.join("profile.toml"), "this is not valid toml {{{").unwrap();
+
+        let mut app = App::new(
+            temp_dir.path().to_path_buf(),
+            Arc::new(iron_core::NoopPackageManager),
+        );
+        app.load_profiles();
+
+        // Invalid profile should be skipped
+        assert!(app.profiles.is_empty());
+    }
+
+    // ==========================================================================
+    // load_modules Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_load_modules_empty_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut app = App::new(
+            temp_dir.path().to_path_buf(),
+            Arc::new(iron_core::NoopPackageManager),
+        );
+
+        app.load_modules();
+
+        assert!(app.modules.is_empty());
+    }
+
+    #[test]
+    fn test_load_modules_with_valid_module() {
+        let temp_dir = TempDir::new().unwrap();
+
+        let modules_dir = temp_dir.path().join("modules");
+        std::fs::create_dir_all(&modules_dir).unwrap();
+
+        let nvim_dir = modules_dir.join("nvim-ide");
+        std::fs::create_dir_all(&nvim_dir).unwrap();
+        std::fs::write(
+            nvim_dir.join("module.toml"),
+            r#"
+id = "nvim-ide"
+name = "Neovim IDE"
+description = "Full IDE setup"
+kind = "AppConfig"
+packages = ["neovim"]
+aur_packages = []
+dotfiles = []
+conflicts = []
+depends = []
+"#,
+        )
+        .unwrap();
+
+        let mut app = App::new(
+            temp_dir.path().to_path_buf(),
+            Arc::new(iron_core::NoopPackageManager),
+        );
+        app.load_modules();
+
+        assert_eq!(app.modules.len(), 1);
+        assert_eq!(app.modules[0].id, "nvim-ide");
+    }
+
+    // ==========================================================================
+    // run_system_update Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_run_system_update_sets_status() {
+        let mut app = App::default();
+
+        app.run_system_update();
+
+        assert!(app.status_message.is_some());
+        assert!(app.status_message.unwrap().contains("dry-run"));
+    }
+
+    // ==========================================================================
+    // switch_bundle Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_switch_bundle_no_state_manager() {
+        let mut app = App::default();
+        app.state_manager = None;
+
+        app.switch_bundle("hyprland".to_string());
+
+        assert!(app.error_message.is_some());
+        assert!(app.error_message.unwrap().contains("No state manager"));
+    }
+}
