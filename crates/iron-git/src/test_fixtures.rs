@@ -20,8 +20,6 @@
 //! ```
 
 use iron_core::resilience::{MockCommandExecutor, MockResponse};
-use std::collections::HashSet;
-use std::path::PathBuf;
 
 /// Builder for creating configured `MockCommandExecutor` with git-specific responses.
 ///

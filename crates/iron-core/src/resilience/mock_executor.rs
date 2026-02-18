@@ -178,6 +178,7 @@ impl CommandKey {
         }
     }
 
+    #[allow(dead_code)]
     fn command_only(command: &str) -> Self {
         Self {
             command: command.to_string(),
