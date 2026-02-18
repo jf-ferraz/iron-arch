@@ -28,6 +28,10 @@ pub mod validation;
 #[cfg(test)]
 pub mod test_helpers;
 
+/// Test fixtures for snapshot tool mocking (timeshift/snapper)
+#[cfg(test)]
+pub mod snapshot_fixtures;
+
 // Re-exports for convenience
 pub use bundle::{Bundle, BundleState, BundleType};
 pub use error::{
@@ -46,7 +50,10 @@ pub use snapshot::{
     TimeshiftManager, create_manager as create_snapshot_manager,
     detect_backend as detect_snapshot_backend,
 };
-pub use state::{IronState, MaintenanceState, OperationRecord, OperationStatus};
+pub use state::{
+    CompletedPackage, IronState, MaintenanceState, OperationRecord, OperationStatus, SavedPackage,
+    SavedUpdatePlan, UpdatePhase, UpdateProgress,
+};
 pub use validation::{
     MAX_ID_LENGTH, ValidationResult, ValidationWarning, WarningCode, check_dotfile_conflicts,
     check_module_conflicts, expand_home, resolve_dependencies, validate_config, validate_id,

@@ -358,6 +358,222 @@ mod tests {
             .unwrap();
     }
 
+    // ==========================================================================
+    // SyncStatus Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_sync_status_equality() {
+        assert_eq!(SyncStatus::UpToDate, SyncStatus::UpToDate);
+        assert_eq!(SyncStatus::Ahead, SyncStatus::Ahead);
+        assert_eq!(SyncStatus::Behind, SyncStatus::Behind);
+        assert_eq!(SyncStatus::Diverged, SyncStatus::Diverged);
+        assert_eq!(SyncStatus::Dirty, SyncStatus::Dirty);
+        assert_eq!(SyncStatus::NotARepo, SyncStatus::NotARepo);
+    }
+
+    #[test]
+    fn test_sync_status_inequality() {
+        assert_ne!(SyncStatus::UpToDate, SyncStatus::Ahead);
+        assert_ne!(SyncStatus::Behind, SyncStatus::Diverged);
+        assert_ne!(SyncStatus::Dirty, SyncStatus::NotARepo);
+    }
+
+    #[test]
+    fn test_sync_status_clone() {
+        let status = SyncStatus::Diverged;
+        let cloned = status.clone();
+        assert_eq!(status, cloned);
+    }
+
+    #[test]
+    fn test_sync_status_copy() {
+        let status = SyncStatus::Behind;
+        let copied = status;
+        assert_eq!(status, copied);
+    }
+
+    #[test]
+    fn test_sync_status_debug() {
+        let statuses = vec![
+            SyncStatus::UpToDate,
+            SyncStatus::Ahead,
+            SyncStatus::Behind,
+            SyncStatus::Diverged,
+            SyncStatus::Dirty,
+            SyncStatus::NotARepo,
+        ];
+
+        for status in statuses {
+            let debug_str = format!("{:?}", status);
+            assert!(!debug_str.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_sync_status_serialization() {
+        let statuses = vec![
+            SyncStatus::UpToDate,
+            SyncStatus::Ahead,
+            SyncStatus::Behind,
+            SyncStatus::Diverged,
+            SyncStatus::Dirty,
+            SyncStatus::NotARepo,
+        ];
+
+        for status in statuses {
+            let json = serde_json::to_string(&status).unwrap();
+            let deserialized: SyncStatus = serde_json::from_str(&json).unwrap();
+            assert_eq!(status, deserialized);
+        }
+    }
+
+    // ==========================================================================
+    // SyncInfo Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_sync_info_creation() {
+        let info = SyncInfo {
+            status: SyncStatus::UpToDate,
+            branch: Some("main".to_string()),
+            remote_branch: Some("origin/main".to_string()),
+            commits_ahead: 0,
+            commits_behind: 0,
+            dirty_files: 0,
+            last_sync: None,
+        };
+
+        assert_eq!(info.status, SyncStatus::UpToDate);
+        assert_eq!(info.branch, Some("main".to_string()));
+        assert_eq!(info.commits_ahead, 0);
+    }
+
+    #[test]
+    fn test_sync_info_ahead() {
+        let info = SyncInfo {
+            status: SyncStatus::Ahead,
+            branch: Some("feature".to_string()),
+            remote_branch: Some("origin/feature".to_string()),
+            commits_ahead: 5,
+            commits_behind: 0,
+            dirty_files: 0,
+            last_sync: None,
+        };
+
+        assert_eq!(info.status, SyncStatus::Ahead);
+        assert_eq!(info.commits_ahead, 5);
+        assert_eq!(info.commits_behind, 0);
+    }
+
+    #[test]
+    fn test_sync_info_diverged() {
+        let info = SyncInfo {
+            status: SyncStatus::Diverged,
+            branch: Some("develop".to_string()),
+            remote_branch: Some("origin/develop".to_string()),
+            commits_ahead: 3,
+            commits_behind: 2,
+            dirty_files: 0,
+            last_sync: None,
+        };
+
+        assert_eq!(info.status, SyncStatus::Diverged);
+        assert_eq!(info.commits_ahead, 3);
+        assert_eq!(info.commits_behind, 2);
+    }
+
+    #[test]
+    fn test_sync_info_dirty() {
+        let info = SyncInfo {
+            status: SyncStatus::Dirty,
+            branch: Some("main".to_string()),
+            remote_branch: None,
+            commits_ahead: 0,
+            commits_behind: 0,
+            dirty_files: 5,
+            last_sync: None,
+        };
+
+        assert_eq!(info.status, SyncStatus::Dirty);
+        assert_eq!(info.dirty_files, 5);
+    }
+
+    #[test]
+    fn test_sync_info_clone() {
+        let info = SyncInfo {
+            status: SyncStatus::UpToDate,
+            branch: Some("main".to_string()),
+            remote_branch: None,
+            commits_ahead: 1,
+            commits_behind: 1,
+            dirty_files: 2,
+            last_sync: Some(Utc::now()),
+        };
+
+        let cloned = info.clone();
+        assert_eq!(cloned.status, SyncStatus::UpToDate);
+        assert_eq!(cloned.branch, Some("main".to_string()));
+        assert_eq!(cloned.commits_ahead, 1);
+    }
+
+    #[test]
+    fn test_sync_info_debug() {
+        let info = SyncInfo {
+            status: SyncStatus::Behind,
+            branch: Some("test".to_string()),
+            remote_branch: Some("origin/test".to_string()),
+            commits_ahead: 0,
+            commits_behind: 3,
+            dirty_files: 0,
+            last_sync: None,
+        };
+
+        let debug_str = format!("{:?}", info);
+        assert!(debug_str.contains("Behind"));
+        assert!(debug_str.contains("test"));
+    }
+
+    #[test]
+    fn test_sync_info_serialization() {
+        let info = SyncInfo {
+            status: SyncStatus::Ahead,
+            branch: Some("serial-test".to_string()),
+            remote_branch: Some("origin/serial-test".to_string()),
+            commits_ahead: 2,
+            commits_behind: 1,
+            dirty_files: 3,
+            last_sync: Some(Utc::now()),
+        };
+
+        let json = serde_json::to_string(&info).unwrap();
+        let deserialized: SyncInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.status, SyncStatus::Ahead);
+        assert_eq!(deserialized.branch, Some("serial-test".to_string()));
+        assert_eq!(deserialized.commits_ahead, 2);
+    }
+
+    #[test]
+    fn test_sync_info_no_branch() {
+        let info = SyncInfo {
+            status: SyncStatus::NotARepo,
+            branch: None,
+            remote_branch: None,
+            commits_ahead: 0,
+            commits_behind: 0,
+            dirty_files: 0,
+            last_sync: None,
+        };
+
+        assert!(info.branch.is_none());
+        assert!(info.remote_branch.is_none());
+        assert!(info.last_sync.is_none());
+    }
+
+    // ==========================================================================
+    // DefaultSyncService Tests
+    // ==========================================================================
+
     #[test]
     fn test_status_not_a_repo() {
         let (service, _temp) = create_test_service();
@@ -402,6 +618,21 @@ mod tests {
     }
 
     #[test]
+    fn test_status_multiple_dirty_files() {
+        let (service, temp_dir) = create_test_service();
+        init_git_repo(temp_dir.path());
+
+        // Create multiple uncommitted files
+        std::fs::write(temp_dir.path().join("file1.txt"), "content1").unwrap();
+        std::fs::write(temp_dir.path().join("file2.txt"), "content2").unwrap();
+        std::fs::write(temp_dir.path().join("file3.txt"), "content3").unwrap();
+
+        let info = service.status().unwrap();
+        assert_eq!(info.status, SyncStatus::Dirty);
+        assert_eq!(info.dirty_files, 3);
+    }
+
+    #[test]
     fn test_is_repo() {
         let (service, temp_dir) = create_test_service();
 
@@ -410,5 +641,76 @@ mod tests {
         init_git_repo(temp_dir.path());
 
         assert!(service.is_repo());
+    }
+
+    #[test]
+    fn test_commit_in_git_repo() {
+        let (service, temp_dir) = create_test_service();
+        init_git_repo(temp_dir.path());
+
+        // Create a file and commit it
+        std::fs::write(temp_dir.path().join("test.txt"), "test content").unwrap();
+        Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+
+        let result = service.commit("Test commit");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_check_conflicts_empty() {
+        let (service, temp_dir) = create_test_service();
+        init_git_repo(temp_dir.path());
+
+        let conflicts = service.check_conflicts().unwrap();
+        assert!(conflicts.is_empty());
+    }
+
+    #[test]
+    fn test_stash_clean_repo() {
+        let (service, temp_dir) = create_test_service();
+        init_git_repo(temp_dir.path());
+
+        // Create initial commit
+        std::fs::write(temp_dir.path().join("test.txt"), "test").unwrap();
+        Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+
+        // Stash on clean repo should work (no-op)
+        let result = service.stash();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_status_has_branch() {
+        let (service, temp_dir) = create_test_service();
+        init_git_repo(temp_dir.path());
+
+        // Create initial commit
+        std::fs::write(temp_dir.path().join("test.txt"), "test").unwrap();
+        Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "initial"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+
+        let info = service.status().unwrap();
+        assert!(info.branch.is_some());
     }
 }

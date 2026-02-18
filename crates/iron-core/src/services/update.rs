@@ -25,16 +25,16 @@ static PACKAGES_COUNT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)(?:Packages?|Pakete?)\s*\((\d+)\)").unwrap());
 
 /// Matches "(X/N) upgrading package..." or "(X/N) reinstalling package..."
-static UPGRADING: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\((\d+)/(\d+)\)\s+(upgrading|reinstalling)\s+([^\s.]+)").unwrap());
+static UPGRADING: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\((\d+)/(\d+)\)\s+(upgrading|reinstalling)\s+([^\s.]+)").unwrap()
+});
 
 /// Matches "(X/N) installing package..."
 static INSTALLING: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\((\d+)/(\d+)\)\s+installing\s+([^\s.]+)").unwrap());
 
 /// Matches "error:" lines
-static ERROR_LINE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^error:\s*(.+)$").unwrap());
+static ERROR_LINE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^error:\s*(.+)$").unwrap());
 
 /// Events parsed from pacman output
 #[derive(Debug, Clone, PartialEq)]
@@ -82,20 +82,22 @@ impl PacmanOutputParser {
         }
 
         // Check for package count
-        if let Some(caps) = PACKAGES_COUNT.captures(line) {
-            if let Ok(count) = caps[1].parse::<usize>() {
+        if let Some(caps) = PACKAGES_COUNT.captures(line)
+            && let Ok(count) = caps[1].parse::<usize>() {
                 self.total_packages = Some(count);
                 return Some(PacmanEvent::PackageCount(count));
             }
-        }
 
         // Check for upgrade/reinstall progress
-        if let Some(caps) = UPGRADING.captures(line) {
-            if let (Ok(current), Ok(total)) = (caps[1].parse::<usize>(), caps[2].parse::<usize>()) {
+        if let Some(caps) = UPGRADING.captures(line)
+            && let (Ok(current), Ok(total)) = (caps[1].parse::<usize>(), caps[2].parse::<usize>()) {
                 let package = caps[4].to_string();
 
                 // If we have a previous package, it completed
-                let completed_event = self.last_started_package.take().map(|p| PacmanEvent::PackageCompleted { package: p });
+                let completed_event = self
+                    .last_started_package
+                    .take()
+                    .map(|p| PacmanEvent::PackageCompleted { package: p });
 
                 self.current_package = Some(package.clone());
                 self.last_started_package = Some(package.clone());
@@ -111,11 +113,10 @@ impl PacmanOutputParser {
                     total,
                 });
             }
-        }
 
         // Check for install progress
-        if let Some(caps) = INSTALLING.captures(line) {
-            if let (Ok(current), Ok(total)) = (caps[1].parse::<usize>(), caps[2].parse::<usize>()) {
+        if let Some(caps) = INSTALLING.captures(line)
+            && let (Ok(current), Ok(total)) = (caps[1].parse::<usize>(), caps[2].parse::<usize>()) {
                 let package = caps[3].to_string();
 
                 self.current_package = Some(package.clone());
@@ -127,14 +128,15 @@ impl PacmanOutputParser {
                     total,
                 });
             }
-        }
 
         None
     }
 
     /// Mark the last package as completed (call at end of successful update)
     pub fn finalize(&mut self) -> Option<PacmanEvent> {
-        self.last_started_package.take().map(|p| PacmanEvent::PackageCompleted { package: p })
+        self.last_started_package
+            .take()
+            .map(|p| PacmanEvent::PackageCompleted { package: p })
     }
 }
 
@@ -398,7 +400,8 @@ impl<S: SnapshotManager> DefaultUpdateService<S> {
 
     /// Persist progress state atomically
     fn persist_progress(&self, progress: &UpdateProgress) -> IronResult<()> {
-        self.state_manager.set_update_progress(Some(progress.clone()))
+        self.state_manager
+            .set_update_progress(Some(progress.clone()))
     }
 
     /// Run pacman with streaming output and progress callback
@@ -418,9 +421,12 @@ impl<S: SnapshotManager> DefaultUpdateService<S> {
                 message: format!("Failed to spawn pacman: {}", e),
             })?;
 
-        let stdout = child.stdout.take().ok_or_else(|| PackageError::PacmanFailed {
-            message: "Failed to capture stdout".to_string(),
-        })?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| PackageError::PacmanFailed {
+                message: "Failed to capture stdout".to_string(),
+            })?;
 
         let mut parser = PacmanOutputParser::new();
         let reader = BufReader::new(stdout);
@@ -430,7 +436,12 @@ impl<S: SnapshotManager> DefaultUpdateService<S> {
             .plan
             .packages
             .iter()
-            .map(|p| (p.name.clone(), (p.current_version.clone(), p.new_version.clone())))
+            .map(|p| {
+                (
+                    p.name.clone(),
+                    (p.current_version.clone(), p.new_version.clone()),
+                )
+            })
             .collect();
 
         for line in reader.lines() {
@@ -445,9 +456,14 @@ impl<S: SnapshotManager> DefaultUpdateService<S> {
                         progress.phase = UpdatePhase::Installing;
 
                         // Check if we're transitioning from a previous package
-                        if let Some(prev_pkg) = &progress.plan.packages.iter()
-                            .find(|p| progress.completed_packages.iter().all(|c| c.name != p.name)
-                                && p.name != package)
+                        if let Some(prev_pkg) = &progress
+                            .plan
+                            .packages
+                            .iter()
+                            .find(|p| {
+                                progress.completed_packages.iter().all(|c| c.name != p.name)
+                                    && p.name != package
+                            })
                             .map(|p| p.name.clone())
                         {
                             // The previous package in the stream completed
@@ -489,7 +505,12 @@ impl<S: SnapshotManager> DefaultUpdateService<S> {
                 .plan
                 .packages
                 .iter()
-                .filter(|pkg| progress.completed_packages.iter().all(|c| c.name != pkg.name))
+                .filter(|pkg| {
+                    progress
+                        .completed_packages
+                        .iter()
+                        .all(|c| c.name != pkg.name)
+                })
                 .map(|pkg| pkg.name.clone())
                 .collect();
 
@@ -738,7 +759,7 @@ impl<S: SnapshotManager> UpdateService for DefaultUpdateService<S> {
     fn resume(&self) -> IronResult<()> {
         let progress = self
             .get_progress()
-            .ok_or_else(|| crate::StateError::NoActiveUpdate)?;
+            .ok_or(crate::StateError::NoActiveUpdate)?;
 
         // Get remaining packages
         let remaining: Vec<String> = progress
@@ -964,15 +985,13 @@ mod tests {
 
     #[test]
     fn test_update_plan_with_packages() {
-        let packages = vec![
-            PackageUpdate {
-                name: "firefox".to_string(),
-                current_version: "120.0".to_string(),
-                new_version: "121.0".to_string(),
-                risk: UpdateRisk::Low,
-                risk_reason: None,
-            },
-        ];
+        let packages = vec![PackageUpdate {
+            name: "firefox".to_string(),
+            current_version: "120.0".to_string(),
+            new_version: "121.0".to_string(),
+            risk: UpdateRisk::Low,
+            risk_reason: None,
+        }];
 
         let plan = UpdatePlan {
             packages,
@@ -1132,7 +1151,8 @@ mod tests {
     fn test_parse_updates_multiple_packages() {
         let (service, _temp) = create_test_service();
 
-        let output = "firefox 120.0-1 -> 121.0-1\nchromium 119.0-1 -> 120.0-1\nneovim 0.9.4-1 -> 0.9.5-1";
+        let output =
+            "firefox 120.0-1 -> 121.0-1\nchromium 119.0-1 -> 120.0-1\nneovim 0.9.4-1 -> 0.9.5-1";
         let updates = service.parse_updates(output);
 
         assert_eq!(updates.len(), 3);
@@ -1175,15 +1195,13 @@ mod tests {
     fn test_calculate_overall_risk_single_low() {
         let (service, _temp) = create_test_service();
 
-        let packages = vec![
-            PackageUpdate {
-                name: "firefox".to_string(),
-                current_version: "120.0".to_string(),
-                new_version: "121.0".to_string(),
-                risk: UpdateRisk::Low,
-                risk_reason: None,
-            },
-        ];
+        let packages = vec![PackageUpdate {
+            name: "firefox".to_string(),
+            current_version: "120.0".to_string(),
+            new_version: "121.0".to_string(),
+            risk: UpdateRisk::Low,
+            risk_reason: None,
+        }];
 
         let overall = service.calculate_overall_risk(&packages);
         assert_eq!(overall, UpdateRisk::Low);
@@ -1285,7 +1303,11 @@ mod tests {
 
         let event = parser.parse_line("(1/5) upgrading firefox...");
         match event {
-            Some(PacmanEvent::PackageStarted { package, current, total }) => {
+            Some(PacmanEvent::PackageStarted {
+                package,
+                current,
+                total,
+            }) => {
                 assert_eq!(package, "firefox");
                 assert_eq!(current, 1);
                 assert_eq!(total, 5);
@@ -1301,7 +1323,11 @@ mod tests {
 
         let event = parser.parse_line("(3/10) reinstalling glibc...");
         match event {
-            Some(PacmanEvent::PackageStarted { package, current, total }) => {
+            Some(PacmanEvent::PackageStarted {
+                package,
+                current,
+                total,
+            }) => {
                 assert_eq!(package, "glibc");
                 assert_eq!(current, 3);
                 assert_eq!(total, 10);
@@ -1316,7 +1342,11 @@ mod tests {
 
         let event = parser.parse_line("(2/8) installing new-package...");
         match event {
-            Some(PacmanEvent::PackageStarted { package, current, total }) => {
+            Some(PacmanEvent::PackageStarted {
+                package,
+                current,
+                total,
+            }) => {
                 assert_eq!(package, "new-package");
                 assert_eq!(current, 2);
                 assert_eq!(total, 8);
@@ -1382,7 +1412,7 @@ mod tests {
 
     #[test]
     fn test_interrupted_update_struct() {
-        use crate::state::{SavedPackage, SavedUpdatePlan, UpdateProgress, UpdatePhase};
+        use crate::state::{SavedPackage, SavedUpdatePlan, UpdatePhase, UpdateProgress};
 
         let plan = SavedUpdatePlan {
             packages: vec![
@@ -1440,7 +1470,9 @@ mod tests {
 
     #[test]
     fn test_check_interrupted_completed_progress() {
-        use crate::state::{SavedPackage, SavedUpdatePlan, UpdateProgress, UpdatePhase, CompletedPackage};
+        use crate::state::{
+            CompletedPackage, SavedPackage, SavedUpdatePlan, UpdatePhase, UpdateProgress,
+        };
 
         let (service, _temp) = create_test_service();
 
@@ -1464,7 +1496,10 @@ mod tests {
             completed_at: Utc::now(),
         });
 
-        service.state_manager.set_update_progress(Some(progress)).unwrap();
+        service
+            .state_manager
+            .set_update_progress(Some(progress))
+            .unwrap();
 
         // Completed progress should not be considered interrupted
         let result = service.check_interrupted();
@@ -1473,16 +1508,20 @@ mod tests {
 
     #[test]
     fn test_check_interrupted_with_interrupted_progress() {
-        use crate::state::{SavedPackage, SavedUpdatePlan, UpdateProgress, UpdatePhase, CompletedPackage};
+        use crate::state::{
+            CompletedPackage, SavedPackage, SavedUpdatePlan, UpdatePhase, UpdateProgress,
+        };
 
         let (service, _temp) = create_test_service();
 
         // Set up interrupted progress (5/10 packages)
-        let packages: Vec<SavedPackage> = (1..=10).map(|i| SavedPackage {
-            name: format!("pkg{}", i),
-            current_version: "1.0".to_string(),
-            new_version: "2.0".to_string(),
-        }).collect();
+        let packages: Vec<SavedPackage> = (1..=10)
+            .map(|i| SavedPackage {
+                name: format!("pkg{}", i),
+                current_version: "1.0".to_string(),
+                new_version: "2.0".to_string(),
+            })
+            .collect();
 
         let plan = SavedUpdatePlan {
             packages,
@@ -1503,7 +1542,10 @@ mod tests {
             });
         }
 
-        service.state_manager.set_update_progress(Some(progress)).unwrap();
+        service
+            .state_manager
+            .set_update_progress(Some(progress))
+            .unwrap();
 
         let result = service.check_interrupted();
         assert!(result.is_some());
@@ -1512,12 +1554,15 @@ mod tests {
         assert_eq!(interrupted.completed_count, 5);
         assert_eq!(interrupted.remaining_count, 5);
         assert!(interrupted.progress.snapshot_created);
-        assert_eq!(interrupted.progress.snapshot_id, Some("snap-456".to_string()));
+        assert_eq!(
+            interrupted.progress.snapshot_id,
+            Some("snap-456".to_string())
+        );
     }
 
     #[test]
     fn test_check_interrupted_installing_phase() {
-        use crate::state::{SavedPackage, SavedUpdatePlan, UpdateProgress, UpdatePhase};
+        use crate::state::{SavedPackage, SavedUpdatePlan, UpdatePhase, UpdateProgress};
 
         let (service, _temp) = create_test_service();
 
@@ -1541,7 +1586,10 @@ mod tests {
         let mut progress = UpdateProgress::new(plan, None);
         progress.phase = UpdatePhase::Installing; // Mid-install
 
-        service.state_manager.set_update_progress(Some(progress)).unwrap();
+        service
+            .state_manager
+            .set_update_progress(Some(progress))
+            .unwrap();
 
         // Installing phase with incomplete packages is considered interrupted
         let result = service.check_interrupted();
@@ -1576,7 +1624,10 @@ mod tests {
         };
 
         let progress = UpdateProgress::new(plan, None);
-        service.state_manager.set_update_progress(Some(progress.clone())).unwrap();
+        service
+            .state_manager
+            .set_update_progress(Some(progress.clone()))
+            .unwrap();
 
         let result = service.get_progress();
         assert!(result.is_some());
@@ -1596,7 +1647,10 @@ mod tests {
         // Set some progress
         let plan = SavedUpdatePlan::default();
         let progress = UpdateProgress::new(plan, None);
-        service.state_manager.set_update_progress(Some(progress)).unwrap();
+        service
+            .state_manager
+            .set_update_progress(Some(progress))
+            .unwrap();
 
         // Verify it's set
         assert!(service.get_progress().is_some());
@@ -1623,19 +1677,19 @@ mod tests {
 
     #[test]
     fn test_interrupted_update_all_packages_completed() {
-        use crate::state::{SavedPackage, SavedUpdatePlan, UpdateProgress, UpdatePhase, CompletedPackage};
+        use crate::state::{
+            CompletedPackage, SavedPackage, SavedUpdatePlan, UpdatePhase, UpdateProgress,
+        };
 
         let (service, _temp) = create_test_service();
 
         // Create progress where all packages are completed but phase is stuck on Interrupted
         let plan = SavedUpdatePlan {
-            packages: vec![
-                SavedPackage {
-                    name: "pkg1".to_string(),
-                    current_version: "1.0".to_string(),
-                    new_version: "2.0".to_string(),
-                },
-            ],
+            packages: vec![SavedPackage {
+                name: "pkg1".to_string(),
+                current_version: "1.0".to_string(),
+                new_version: "2.0".to_string(),
+            }],
             snapshot_recommended: false,
             created_at: Utc::now(),
         };
@@ -1649,7 +1703,10 @@ mod tests {
             completed_at: Utc::now(),
         });
 
-        service.state_manager.set_update_progress(Some(progress)).unwrap();
+        service
+            .state_manager
+            .set_update_progress(Some(progress))
+            .unwrap();
 
         // All completed but phase is Interrupted - is_incomplete should return false
         // because completed_packages.len() == total_packages
@@ -1659,7 +1716,7 @@ mod tests {
 
     #[test]
     fn test_interrupted_update_zero_packages() {
-        use crate::state::{SavedUpdatePlan, UpdateProgress, UpdatePhase};
+        use crate::state::{SavedUpdatePlan, UpdatePhase, UpdateProgress};
 
         let (service, _temp) = create_test_service();
 
@@ -1673,7 +1730,10 @@ mod tests {
         let mut progress = UpdateProgress::new(plan, None);
         progress.phase = UpdatePhase::Installing;
 
-        service.state_manager.set_update_progress(Some(progress)).unwrap();
+        service
+            .state_manager
+            .set_update_progress(Some(progress))
+            .unwrap();
 
         // Zero packages - should not be considered incomplete
         let result = service.check_interrupted();
@@ -1682,13 +1742,15 @@ mod tests {
 
     #[test]
     fn test_progress_completion_percentage() {
-        use crate::state::{SavedPackage, SavedUpdatePlan, UpdateProgress, CompletedPackage};
+        use crate::state::{CompletedPackage, SavedPackage, SavedUpdatePlan, UpdateProgress};
 
-        let packages: Vec<SavedPackage> = (1..=4).map(|i| SavedPackage {
-            name: format!("pkg{}", i),
-            current_version: "1.0".to_string(),
-            new_version: "2.0".to_string(),
-        }).collect();
+        let packages: Vec<SavedPackage> = (1..=4)
+            .map(|i| SavedPackage {
+                name: format!("pkg{}", i),
+                current_version: "1.0".to_string(),
+                new_version: "2.0".to_string(),
+            })
+            .collect();
 
         let plan = SavedUpdatePlan {
             packages,
@@ -1735,13 +1797,15 @@ mod tests {
 
     #[test]
     fn test_progress_remaining_packages() {
-        use crate::state::{SavedPackage, SavedUpdatePlan, UpdateProgress, CompletedPackage};
+        use crate::state::{CompletedPackage, SavedPackage, SavedUpdatePlan, UpdateProgress};
 
-        let packages: Vec<SavedPackage> = (1..=3).map(|i| SavedPackage {
-            name: format!("pkg{}", i),
-            current_version: "1.0".to_string(),
-            new_version: "2.0".to_string(),
-        }).collect();
+        let packages: Vec<SavedPackage> = (1..=3)
+            .map(|i| SavedPackage {
+                name: format!("pkg{}", i),
+                current_version: "1.0".to_string(),
+                new_version: "2.0".to_string(),
+            })
+            .collect();
 
         let plan = SavedUpdatePlan {
             packages,
@@ -1772,7 +1836,7 @@ mod tests {
 
     #[test]
     fn test_progress_is_incomplete_phases() {
-        use crate::state::{SavedPackage, SavedUpdatePlan, UpdateProgress, UpdatePhase};
+        use crate::state::{SavedPackage, SavedUpdatePlan, UpdatePhase, UpdateProgress};
 
         let plan = SavedUpdatePlan {
             packages: vec![SavedPackage {

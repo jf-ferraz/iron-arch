@@ -27,8 +27,8 @@
 //! }
 //! ```
 
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::RwLock;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// Circuit breaker state

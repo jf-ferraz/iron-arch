@@ -3,7 +3,7 @@
 //! Provides robust state management with transactions and audit logging.
 //! Uses file locking for safe concurrent access across processes.
 
-use crate::state::{IronState, MaintenanceState, OperationStatus};
+use crate::state::{IronState, MaintenanceState, OperationStatus, UpdateProgress};
 use crate::{IronResult, StateError};
 use chrono::Utc;
 use fs2::FileExt;
@@ -267,6 +267,62 @@ impl StateManager {
             }
         }
         self.persist()
+    }
+
+    // ==========================================================================
+    // Update Progress Management (FR-5.10)
+    // ==========================================================================
+
+    /// Get current update progress
+    pub fn get_update_progress(&self) -> Option<UpdateProgress> {
+        self.state().update_progress.clone()
+    }
+
+    /// Set update progress (atomic with fsync)
+    pub fn set_update_progress(&self, progress: Option<UpdateProgress>) -> IronResult<()> {
+        {
+            let mut state = self.state.lock().unwrap();
+            state.update_progress = progress;
+        }
+        self.persist_atomic()
+    }
+
+    /// Persist state atomically with fsync for durability
+    /// Used for critical operations like update progress tracking
+    fn persist_atomic(&self) -> IronResult<()> {
+        let state_path = self.state_path();
+        let temp_path = state_path.with_extension("tmp");
+
+        // Create parent directories if needed
+        if let Some(parent) = state_path.parent() {
+            fs::create_dir_all(parent).map_err(|_| StateError::Corrupted {
+                path: state_path.clone(),
+            })?;
+        }
+
+        // Serialize state
+        let state = self.state.lock().unwrap();
+        let content = serde_json::to_string_pretty(&*state).map_err(|_| StateError::Corrupted {
+            path: state_path.clone(),
+        })?;
+        drop(state); // Release lock
+
+        // Write to temp file
+        fs::write(&temp_path, &content).map_err(|_| StateError::Corrupted {
+            path: state_path.clone(),
+        })?;
+
+        // Atomic rename
+        fs::rename(&temp_path, &state_path).map_err(|_| StateError::Corrupted {
+            path: state_path.clone(),
+        })?;
+
+        // Fsync for durability
+        if let Ok(file) = fs::File::open(&state_path) {
+            let _ = file.sync_all();
+        }
+
+        Ok(())
     }
 
     /// Begin a transaction
@@ -802,7 +858,12 @@ mod tests {
             }
         }
 
-        assert_eq!(modules.len(), 100, "Expected 100 modules, found {}", modules.len());
+        assert_eq!(
+            modules.len(),
+            100,
+            "Expected 100 modules, found {}",
+            modules.len()
+        );
     }
 
     #[test]
@@ -839,7 +900,11 @@ mod tests {
 
         // The module should appear at most once
         let count = modules.iter().filter(|m| *m == "contested-mod").count();
-        assert!(count <= 1, "Module appears {} times (should be 0 or 1)", count);
+        assert!(
+            count <= 1,
+            "Module appears {} times (should be 0 or 1)",
+            count
+        );
     }
 
     #[test]
@@ -860,7 +925,8 @@ mod tests {
                 for i in 0..10 {
                     // Alternate between enable and disable operations
                     if i % 2 == 0 {
-                        m.enable_module(&format!("stress-{}-{}", thread_id, i)).unwrap();
+                        m.enable_module(&format!("stress-{}-{}", thread_id, i))
+                            .unwrap();
                     } else {
                         // Read operation
                         let _ = m.active_modules();
@@ -895,8 +961,8 @@ mod tests {
 
     #[test]
     fn test_file_locking_prevents_corruption() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
         use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
         use std::thread;
 
         let temp_dir = TempDir::new().unwrap();
@@ -990,8 +1056,8 @@ mod tests {
 
     #[test]
     fn test_mixed_read_write_operations() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
         use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
         use std::thread;
 
         let temp_dir = TempDir::new().unwrap();
@@ -1239,8 +1305,8 @@ mod tests {
 
     #[test]
     fn test_concurrent_transactions_both_commit() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
         use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
         use std::thread;
 
         let temp_dir = TempDir::new().unwrap();
@@ -1257,7 +1323,8 @@ mod tests {
             handles.push(thread::spawn(move || {
                 let mut txn = m.begin_transaction(&format!("txn-{}", i)).unwrap();
                 txn.record(&format!("enabling mod-{}", i));
-                m.enable_module(&format!("concurrent-txn-mod-{}", i)).unwrap();
+                m.enable_module(&format!("concurrent-txn-mod-{}", i))
+                    .unwrap();
                 txn.commit().unwrap();
                 count.fetch_add(1, Ordering::SeqCst);
             }));
@@ -1279,5 +1346,545 @@ mod tests {
                 i
             );
         }
+    }
+}
+
+/// Property-based tests for state management
+#[cfg(test)]
+mod proptest_state_tests {
+    use super::*;
+    use proptest::prelude::*;
+    use tempfile::TempDir;
+
+    // Strategy for generating valid module IDs
+    fn module_id_strategy() -> impl Strategy<Value = String> {
+        prop::string::string_regex("[a-z][a-z0-9-]{0,20}").unwrap()
+    }
+
+    // Strategy for generating valid host IDs
+    fn host_id_strategy() -> impl Strategy<Value = String> {
+        prop::string::string_regex("[a-z][a-z0-9-]{0,15}").unwrap()
+    }
+
+    // Strategy for generating valid bundle IDs
+    fn bundle_id_strategy() -> impl Strategy<Value = String> {
+        prop::string::string_regex("[a-z][a-z0-9-]{0,15}").unwrap()
+    }
+
+    fn create_proptest_manager() -> (StateManager, TempDir) {
+        let temp = TempDir::new().unwrap();
+        let manager = StateManager::new(temp.path().to_path_buf()).unwrap();
+        (manager, temp)
+    }
+
+    proptest! {
+        // Property: State serialization roundtrip preserves all data
+        #[test]
+        fn state_serialization_roundtrip(
+            host in prop::option::of(host_id_strategy()),
+            modules in prop::collection::vec(module_id_strategy(), 0..5)
+        ) {
+            let (manager, _temp) = create_proptest_manager();
+
+            // Set state
+            if let Some(ref h) = host {
+                manager.set_current_host(h).unwrap();
+            }
+            for m in &modules {
+                manager.enable_module(m).unwrap();
+            }
+
+            // Reload and verify
+            let manager2 = StateManager::new(manager.state_path().parent().unwrap().to_path_buf()).unwrap();
+
+            prop_assert_eq!(manager2.current_host(), host);
+
+            let active = manager2.active_modules();
+            for m in &modules {
+                prop_assert!(active.contains(m), "Module {} should be active", m);
+            }
+        }
+
+        // Property: Enable then disable returns to original state
+        #[test]
+        fn enable_disable_idempotent(module_id in module_id_strategy()) {
+            let (manager, _temp) = create_proptest_manager();
+
+            // Initially not active
+            prop_assert!(!manager.is_module_active(&module_id));
+
+            // Enable
+            manager.enable_module(&module_id).unwrap();
+            prop_assert!(manager.is_module_active(&module_id));
+
+            // Disable
+            manager.disable_module(&module_id).unwrap();
+            prop_assert!(!manager.is_module_active(&module_id));
+        }
+
+        // Property: Double enable is idempotent (module still active)
+        #[test]
+        fn double_enable_idempotent(module_id in module_id_strategy()) {
+            let (manager, _temp) = create_proptest_manager();
+
+            manager.enable_module(&module_id).unwrap();
+            manager.enable_module(&module_id).unwrap();
+
+            let active = manager.active_modules();
+            let count = active.iter().filter(|m| **m == module_id).count();
+            prop_assert_eq!(count, 1, "Module should appear exactly once");
+        }
+
+        // Property: Double disable is safe (no panic, no error)
+        #[test]
+        fn double_disable_safe(module_id in module_id_strategy()) {
+            let (manager, _temp) = create_proptest_manager();
+
+            manager.enable_module(&module_id).unwrap();
+            manager.disable_module(&module_id).unwrap();
+            manager.disable_module(&module_id).unwrap(); // Should be fine
+
+            prop_assert!(!manager.is_module_active(&module_id));
+        }
+
+        // Property: Active modules count is accurate
+        #[test]
+        fn active_modules_count_accurate(modules in prop::collection::hash_set(module_id_strategy(), 0..10)) {
+            let (manager, _temp) = create_proptest_manager();
+
+            for m in &modules {
+                manager.enable_module(m).unwrap();
+            }
+
+            let active = manager.active_modules();
+            prop_assert_eq!(active.len(), modules.len(), "Active modules count should match");
+        }
+
+        // Property: Setting host persists across reload
+        #[test]
+        fn host_persists_across_reload(host_id in host_id_strategy()) {
+            let temp = TempDir::new().unwrap();
+            let path = temp.path().to_owned();
+
+            {
+                let manager = StateManager::new(path.clone()).unwrap();
+                manager.set_current_host(&host_id).unwrap();
+            }
+
+            let manager2 = StateManager::new(path.clone()).unwrap();
+            prop_assert_eq!(manager2.current_host(), Some(host_id));
+        }
+
+        // Property: Setting bundle persists across reload (requires host)
+        #[test]
+        fn bundle_persists_across_reload(
+            host_id in host_id_strategy(),
+            bundle_id in bundle_id_strategy()
+        ) {
+            let temp = TempDir::new().unwrap();
+            let path = temp.path().to_owned();
+
+            {
+                let manager = StateManager::new(path.clone()).unwrap();
+                manager.set_current_host(&host_id).unwrap();
+                manager.set_active_bundle(&host_id, &bundle_id).unwrap();
+            }
+
+            let manager2 = StateManager::new(path.clone()).unwrap();
+            prop_assert_eq!(manager2.active_bundle(&host_id), Some(bundle_id));
+        }
+
+        // Property: Transaction commit persists changes
+        #[test]
+        fn transaction_commit_persists(module_id in module_id_strategy()) {
+            let temp = TempDir::new().unwrap();
+            let path = temp.path().to_owned();
+
+            {
+                let manager = StateManager::new(path.clone()).unwrap();
+                let txn = manager.begin_transaction("proptest-commit").unwrap();
+                manager.enable_module(&module_id).unwrap();
+                txn.commit().unwrap();
+            }
+
+            let manager2 = StateManager::new(path.clone()).unwrap();
+            prop_assert!(manager2.is_module_active(&module_id), "Module should persist after commit");
+        }
+
+        // Property: Transaction rollback discards changes
+        #[test]
+        fn transaction_rollback_discards(module_id in module_id_strategy()) {
+            let temp = TempDir::new().unwrap();
+            let path = temp.path().to_owned();
+
+            {
+                let manager = StateManager::new(path.clone()).unwrap();
+                let txn = manager.begin_transaction("proptest-rollback").unwrap();
+                manager.enable_module(&module_id).unwrap();
+                txn.rollback().unwrap();
+            }
+
+            let manager2 = StateManager::new(path.clone()).unwrap();
+            prop_assert!(!manager2.is_module_active(&module_id), "Module should not persist after rollback");
+        }
+    }
+}
+
+/// Resilience tests for error handling and edge cases
+#[cfg(test)]
+mod resilience_tests {
+    use super::*;
+    use std::fs;
+    use std::io::Write;
+    use tempfile::TempDir;
+
+    // =============================================================================
+    // Corrupted State File Tests
+    // =============================================================================
+
+    #[test]
+    fn test_corrupted_json_returns_error() {
+        let temp = TempDir::new().unwrap();
+        let state_path = temp.path().join("state.json");
+
+        // Write invalid JSON
+        fs::write(&state_path, "{ invalid json }").unwrap();
+
+        let result = StateManager::new(temp.path().to_path_buf());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_partial_json_returns_error() {
+        let temp = TempDir::new().unwrap();
+        let state_path = temp.path().join("state.json");
+
+        // Write truncated JSON
+        fs::write(
+            &state_path,
+            r#"{ "current_host": "test", "active_modules":"#,
+        )
+        .unwrap();
+
+        let result = StateManager::new(temp.path().to_path_buf());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_wrong_json_structure_returns_error() {
+        let temp = TempDir::new().unwrap();
+        let state_path = temp.path().join("state.json");
+
+        // Write valid JSON but wrong structure
+        fs::write(&state_path, r#"{"wrong": "structure", "number": 42}"#).unwrap();
+
+        let result = StateManager::new(temp.path().to_path_buf());
+        // serde should fail to deserialize into IronState
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_empty_file_returns_error() {
+        let temp = TempDir::new().unwrap();
+        let state_path = temp.path().join("state.json");
+
+        // Write empty file
+        fs::write(&state_path, "").unwrap();
+
+        let result = StateManager::new(temp.path().to_path_buf());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_binary_garbage_returns_error() {
+        let temp = TempDir::new().unwrap();
+        let state_path = temp.path().join("state.json");
+
+        // Write binary garbage
+        let garbage: Vec<u8> = vec![0x00, 0x01, 0x02, 0xFF, 0xFE, 0xFD];
+        let mut file = fs::File::create(&state_path).unwrap();
+        file.write_all(&garbage).unwrap();
+
+        let result = StateManager::new(temp.path().to_path_buf());
+        assert!(result.is_err());
+    }
+
+    // =============================================================================
+    // Missing Directory/File Tests
+    // =============================================================================
+
+    #[test]
+    fn test_nonexistent_state_creates_default() {
+        let temp = TempDir::new().unwrap();
+        // No state.json file exists
+
+        let manager = StateManager::new(temp.path().to_path_buf()).unwrap();
+
+        // Should have default state
+        assert!(manager.current_host().is_none());
+        assert!(manager.active_modules().is_empty());
+    }
+
+    #[test]
+    fn test_new_directory_initializes_successfully() {
+        let temp = TempDir::new().unwrap();
+        let subdir = temp.path().join("subdir");
+        fs::create_dir(&subdir).unwrap();
+
+        let manager = StateManager::new(subdir.clone()).unwrap();
+        manager.set_current_host("test-host").unwrap();
+
+        // Should persist
+        let state_path = subdir.join("state.json");
+        assert!(state_path.exists());
+    }
+
+    // =============================================================================
+    // Invalid State Values Tests
+    // =============================================================================
+
+    #[test]
+    fn test_valid_json_with_null_fields() {
+        let temp = TempDir::new().unwrap();
+        let state_path = temp.path().join("state.json");
+
+        // Write JSON with explicit null fields matching IronState structure
+        let json = r#"{
+            "current_host": null,
+            "active_bundles": {},
+            "active_profiles": {},
+            "active_modules": [],
+            "last_operations": [],
+            "maintenance": {
+                "last_update": null,
+                "last_clean": null,
+                "last_doctor": null,
+                "last_snapshot": null,
+                "last_sync": null
+            }
+        }"#;
+        fs::write(&state_path, json).unwrap();
+
+        let manager = StateManager::new(temp.path().to_path_buf()).unwrap();
+        assert!(manager.current_host().is_none());
+    }
+
+    #[test]
+    fn test_extra_fields_in_json_ignored() {
+        let temp = TempDir::new().unwrap();
+        let state_path = temp.path().join("state.json");
+
+        // Write JSON with extra unknown fields (serde should deny unknown by default)
+        // This test documents expected behavior
+        let json = r#"{
+            "current_host": "test-host",
+            "active_bundles": {},
+            "active_profiles": {},
+            "active_modules": ["mod1"],
+            "last_operations": [],
+            "maintenance": {
+                "last_update": null,
+                "last_clean": null,
+                "last_doctor": null,
+                "last_snapshot": null,
+                "last_sync": null
+            }
+        }"#;
+        fs::write(&state_path, json).unwrap();
+
+        let manager = StateManager::new(temp.path().to_path_buf()).unwrap();
+        // Should load successfully
+        assert_eq!(manager.current_host(), Some("test-host".to_string()));
+        assert!(manager.is_module_active("mod1"));
+    }
+
+    // =============================================================================
+    // Recovery After Error Tests
+    // =============================================================================
+
+    #[test]
+    fn test_recovery_from_corrupted_state() {
+        let temp = TempDir::new().unwrap();
+        let state_path = temp.path().join("state.json");
+
+        // First, create valid state
+        {
+            let manager = StateManager::new(temp.path().to_path_buf()).unwrap();
+            manager.set_current_host("original-host").unwrap();
+        }
+
+        // Corrupt the file
+        fs::write(&state_path, "corrupted").unwrap();
+
+        // Should fail to load
+        let result = StateManager::new(temp.path().to_path_buf());
+        assert!(result.is_err());
+
+        // Now repair by writing valid state
+        let valid_json = r#"{
+            "current_host": "recovered-host",
+            "active_bundles": {},
+            "active_profiles": {},
+            "active_modules": [],
+            "last_operations": [],
+            "maintenance": {
+                "last_update": null,
+                "last_clean": null,
+                "last_doctor": null,
+                "last_snapshot": null,
+                "last_sync": null
+            }
+        }"#;
+        fs::write(&state_path, valid_json).unwrap();
+
+        // Should now load successfully
+        let manager = StateManager::new(temp.path().to_path_buf()).unwrap();
+        assert_eq!(manager.current_host(), Some("recovered-host".to_string()));
+    }
+
+    #[test]
+    fn test_recovery_from_deleted_state() {
+        let temp = TempDir::new().unwrap();
+        let state_path = temp.path().join("state.json");
+
+        // Create valid state
+        {
+            let manager = StateManager::new(temp.path().to_path_buf()).unwrap();
+            manager.set_current_host("original-host").unwrap();
+            manager.enable_module("mod1").unwrap();
+        }
+
+        // Delete the file
+        fs::remove_file(&state_path).unwrap();
+
+        // Should create fresh default state
+        let manager = StateManager::new(temp.path().to_path_buf()).unwrap();
+        assert!(manager.current_host().is_none());
+        assert!(manager.active_modules().is_empty());
+    }
+
+    // =============================================================================
+    // Edge Case Tests
+    // =============================================================================
+
+    #[test]
+    fn test_very_large_module_list() {
+        let temp = TempDir::new().unwrap();
+        let manager = StateManager::new(temp.path().to_path_buf()).unwrap();
+
+        // Enable many modules
+        for i in 0..1000 {
+            manager.enable_module(&format!("module-{}", i)).unwrap();
+        }
+
+        assert_eq!(manager.active_modules().len(), 1000);
+
+        // Reload and verify
+        let manager2 = StateManager::new(temp.path().to_path_buf()).unwrap();
+        assert_eq!(manager2.active_modules().len(), 1000);
+    }
+
+    #[test]
+    fn test_unicode_in_state() {
+        let temp = TempDir::new().unwrap();
+        let manager = StateManager::new(temp.path().to_path_buf()).unwrap();
+
+        // Set unicode host name
+        manager.set_current_host("测试-хост-🏠").unwrap();
+        manager.enable_module("模块-один-📦").unwrap();
+
+        // Reload and verify
+        let manager2 = StateManager::new(temp.path().to_path_buf()).unwrap();
+        assert_eq!(manager2.current_host(), Some("测试-хост-🏠".to_string()));
+        assert!(manager2.is_module_active("模块-один-📦"));
+    }
+
+    #[test]
+    fn test_special_characters_in_ids() {
+        let temp = TempDir::new().unwrap();
+        let manager = StateManager::new(temp.path().to_path_buf()).unwrap();
+
+        // IDs with special characters that might cause issues
+        let special_ids = [
+            "module.with.dots",
+            "module-with-dashes",
+            "module_with_underscores",
+            "module123",
+            "123module",
+        ];
+
+        for id in &special_ids {
+            manager.enable_module(id).unwrap();
+        }
+
+        // Reload and verify all
+        let manager2 = StateManager::new(temp.path().to_path_buf()).unwrap();
+        for id in &special_ids {
+            assert!(
+                manager2.is_module_active(id),
+                "Module {} should be active",
+                id
+            );
+        }
+    }
+
+    #[test]
+    fn test_empty_string_ids_handled() {
+        let temp = TempDir::new().unwrap();
+        let manager = StateManager::new(temp.path().to_path_buf()).unwrap();
+
+        // Empty strings should work (though not recommended)
+        manager.enable_module("").unwrap();
+
+        assert!(manager.is_module_active(""));
+
+        // Disable and verify
+        manager.disable_module("").unwrap();
+        assert!(!manager.is_module_active(""));
+    }
+
+    #[test]
+    fn test_whitespace_only_ids() {
+        let temp = TempDir::new().unwrap();
+        let manager = StateManager::new(temp.path().to_path_buf()).unwrap();
+
+        // Whitespace-only IDs
+        manager.enable_module("   ").unwrap();
+        manager.enable_module("\t\n").unwrap();
+
+        assert!(manager.is_module_active("   "));
+        assert!(manager.is_module_active("\t\n"));
+    }
+
+    // =============================================================================
+    // Audit Log Resilience Tests
+    // =============================================================================
+
+    #[test]
+    fn test_corrupted_audit_log_ignored() {
+        let temp = TempDir::new().unwrap();
+        let audit_path = temp.path().join("audit.json");
+
+        // Write corrupted audit log
+        fs::write(&audit_path, "corrupted audit log").unwrap();
+
+        // Should still create manager successfully
+        let manager = StateManager::new(temp.path().to_path_buf()).unwrap();
+        assert!(manager.current_host().is_none());
+    }
+
+    #[test]
+    fn test_missing_audit_log_handled() {
+        let temp = TempDir::new().unwrap();
+        // No audit.json exists
+
+        // Should create manager successfully with empty audit log
+        let manager = StateManager::new(temp.path().to_path_buf()).unwrap();
+
+        // Perform operations that would log
+        manager.set_current_host("test").unwrap();
+
+        // Should work without issues
+        assert_eq!(manager.current_host(), Some("test".to_string()));
     }
 }

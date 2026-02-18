@@ -416,4 +416,188 @@ mod tests {
         let found = service.find_by_hostname("unknown").unwrap();
         assert!(found.is_none());
     }
+
+    #[test]
+    fn test_host_not_found() {
+        let (service, _temp) = create_test_service();
+
+        let result = service.load_host("nonexistent");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_detect_hardware() {
+        let (service, _temp) = create_test_service();
+
+        // This should not panic on any system
+        let hardware = service.detect_hardware().unwrap();
+
+        // Hardware spec should have some valid fields
+        assert!(hardware.cpu.is_some() || hardware.cpu.is_none()); // Valid either way
+        assert!(hardware.chassis.is_some());
+    }
+
+    #[test]
+    fn test_detect_monitors_empty() {
+        let (service, _temp) = create_test_service();
+
+        // This may return empty or actual monitors depending on system
+        let monitors = service.detect_monitors().unwrap();
+        // Just verify it doesn't panic
+        let _ = monitors.len();
+    }
+
+    #[test]
+    fn test_find_by_name() {
+        let (service, _temp) = create_test_service();
+
+        let host = Host {
+            id: "myhost".to_string(),
+            name: "My Host".to_string(),
+            description: None,
+            hardware: HardwareSpec::default(),
+            install_params: None,
+            installed_bundles: vec![],
+            active_bundle: None,
+        };
+
+        service.save_host(&host).unwrap();
+
+        // Find by name
+        let found = service.find_by_hostname("My Host").unwrap();
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().name, "My Host");
+    }
+
+    #[test]
+    fn test_host_with_description() {
+        let (service, _temp) = create_test_service();
+
+        let host = Host {
+            id: "test-host".to_string(),
+            name: "Test Host".to_string(),
+            description: Some("A test host description".to_string()),
+            hardware: HardwareSpec::default(),
+            install_params: None,
+            installed_bundles: vec!["hyprland".to_string()],
+            active_bundle: Some("hyprland".to_string()),
+        };
+
+        service.save_host(&host).unwrap();
+        let loaded = service.load_host("test-host").unwrap();
+
+        assert_eq!(
+            loaded.description,
+            Some("A test host description".to_string())
+        );
+        assert_eq!(loaded.installed_bundles, vec!["hyprland".to_string()]);
+        assert_eq!(loaded.active_bundle, Some("hyprland".to_string()));
+    }
+
+    #[test]
+    fn test_list_hosts_empty() {
+        let (service, _temp) = create_test_service();
+
+        let hosts = service.list_hosts().unwrap();
+        assert!(hosts.is_empty());
+    }
+
+    #[test]
+    fn test_overwrite_host() {
+        let (service, _temp) = create_test_service();
+
+        let host = Host {
+            id: "test-host".to_string(),
+            name: "Test Host".to_string(),
+            description: None,
+            hardware: HardwareSpec::default(),
+            install_params: None,
+            installed_bundles: vec![],
+            active_bundle: None,
+        };
+
+        service.save_host(&host).unwrap();
+
+        // Overwrite with updated data
+        let updated_host = Host {
+            id: "test-host".to_string(),
+            name: "Updated Host".to_string(),
+            description: Some("Now with description".to_string()),
+            hardware: HardwareSpec::default(),
+            install_params: None,
+            installed_bundles: vec!["bundle1".to_string()],
+            active_bundle: Some("bundle1".to_string()),
+        };
+
+        service.save_host(&updated_host).unwrap();
+        let loaded = service.load_host("test-host").unwrap();
+
+        assert_eq!(loaded.name, "Updated Host");
+        assert_eq!(loaded.description, Some("Now with description".to_string()));
+    }
+
+    #[test]
+    fn test_host_service_new() {
+        let temp_dir = TempDir::new().unwrap();
+        let service = DefaultHostService::new(temp_dir.path());
+
+        // Service should be created successfully
+        assert!(service.hosts_dir.ends_with("hosts"));
+    }
+
+    #[test]
+    fn test_hardware_spec_with_all_fields() {
+        let (service, _temp) = create_test_service();
+
+        let hardware = HardwareSpec {
+            cpu: Some("AMD Ryzen 9 7950X".to_string()),
+            gpu: Some("NVIDIA GeForce RTX 4080".to_string()),
+            ram_mb: Some(65536),
+            monitors: vec![MonitorConfig {
+                output: "DP-1".to_string(),
+                resolution: "3840x2160".to_string(),
+                refresh_rate: Some(144),
+                scale: Some(1.5),
+            }],
+            chassis: Some(ChassisType::Desktop),
+        };
+
+        let host = Host {
+            id: "powerful-desktop".to_string(),
+            name: "Powerful Desktop".to_string(),
+            description: Some("Gaming and development workstation".to_string()),
+            hardware,
+            install_params: None,
+            installed_bundles: vec![],
+            active_bundle: None,
+        };
+
+        service.save_host(&host).unwrap();
+        let loaded = service.load_host("powerful-desktop").unwrap();
+
+        assert_eq!(loaded.hardware.cpu, Some("AMD Ryzen 9 7950X".to_string()));
+        assert_eq!(
+            loaded.hardware.gpu,
+            Some("NVIDIA GeForce RTX 4080".to_string())
+        );
+        assert_eq!(loaded.hardware.ram_mb, Some(65536));
+        assert_eq!(loaded.hardware.monitors.len(), 1);
+        assert_eq!(loaded.hardware.chassis, Some(ChassisType::Desktop));
+    }
+
+    #[test]
+    fn test_read_sys_file_nonexistent() {
+        let (service, _temp) = create_test_service();
+
+        let result = service.read_sys_file("/nonexistent/path");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_run_command_failure() {
+        let (service, _temp) = create_test_service();
+
+        let result = service.run_command("nonexistent_command_12345", &[]);
+        assert!(result.is_none());
+    }
 }

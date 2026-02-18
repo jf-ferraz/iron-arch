@@ -437,4 +437,223 @@ mod tests {
         let status = service.status("test-mod").unwrap();
         assert_eq!(status, ModuleState::NotInstalled);
     }
+
+    fn create_module_without_dotfiles(dir: &Path, id: &str) {
+        let module_dir = dir.join("modules").join(id);
+        fs::create_dir_all(&module_dir).unwrap();
+
+        let module = Module {
+            id: id.to_string(),
+            name: format!("Test Module {}", id),
+            description: Some("A test module without dotfiles".to_string()),
+            kind: ModuleKind::AppConfig,
+            packages: vec![],
+            aur_packages: vec![],
+            dotfiles: vec![], // No dotfiles to avoid symlink issues
+            conflicts: vec![],
+            depends: vec![],
+            pre_install: None,
+            post_install: None,
+        };
+
+        let config_path = module_dir.join("module.toml");
+        let content = toml::to_string_pretty(&module).unwrap();
+        fs::write(config_path, content).unwrap();
+    }
+
+    #[test]
+    fn test_enable_module() {
+        let (service, temp_dir) = create_test_service();
+
+        // Use module without dotfiles to avoid symlink permission issues
+        create_module_without_dotfiles(temp_dir.path(), "test-mod");
+
+        service.enable("test-mod").unwrap();
+
+        // Should be in active modules
+        let enabled = service.list_enabled().unwrap();
+        assert_eq!(enabled.len(), 1);
+        assert_eq!(enabled[0].id, "test-mod");
+    }
+
+    #[test]
+    fn test_disable_module() {
+        let (service, temp_dir) = create_test_service();
+
+        // Use module without dotfiles to avoid symlink permission issues
+        create_module_without_dotfiles(temp_dir.path(), "test-mod");
+
+        service.enable("test-mod").unwrap();
+        service.disable("test-mod").unwrap();
+
+        let enabled = service.list_enabled().unwrap();
+        assert!(enabled.is_empty());
+    }
+
+    #[test]
+    fn test_list_enabled_empty() {
+        let (service, _temp) = create_test_service();
+
+        let enabled = service.list_enabled().unwrap();
+        assert!(enabled.is_empty());
+    }
+
+    #[test]
+    fn test_discover_empty_dir() {
+        let (service, _temp) = create_test_service();
+
+        let modules = service.discover().unwrap();
+        assert!(modules.is_empty());
+    }
+
+    fn create_conflicting_module(dir: &Path, id: &str, conflicts_with: Vec<&str>) {
+        let module_dir = dir.join("modules").join(id);
+        fs::create_dir_all(&module_dir).unwrap();
+
+        let module = Module {
+            id: id.to_string(),
+            name: format!("Test Module {}", id),
+            description: Some("A test module".to_string()),
+            kind: ModuleKind::AppConfig,
+            packages: vec![],
+            aur_packages: vec![],
+            dotfiles: vec![],
+            conflicts: conflicts_with.iter().map(|s| s.to_string()).collect(),
+            depends: vec![],
+            pre_install: None,
+            post_install: None,
+        };
+
+        let config_path = module_dir.join("module.toml");
+        let content = toml::to_string_pretty(&module).unwrap();
+        fs::write(config_path, content).unwrap();
+    }
+
+    #[test]
+    fn test_check_conflicts_with_enabled() {
+        let (service, temp_dir) = create_test_service();
+
+        // Create mod1 that conflicts with mod2 (both without dotfiles)
+        create_conflicting_module(temp_dir.path(), "mod1", vec!["mod2"]);
+        create_module_without_dotfiles(temp_dir.path(), "mod2");
+
+        // Enable mod2
+        service.enable("mod2").unwrap();
+
+        // Check if mod1 conflicts
+        let conflicts = service.check_conflicts("mod1").unwrap();
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0], "mod2");
+    }
+
+    #[test]
+    fn test_enable_conflicting_module_fails() {
+        let (service, temp_dir) = create_test_service();
+
+        // Create mod1 that conflicts with mod2 (both without dotfiles)
+        create_conflicting_module(temp_dir.path(), "mod1", vec!["mod2"]);
+        create_module_without_dotfiles(temp_dir.path(), "mod2");
+
+        // Enable mod2 first
+        service.enable("mod2").unwrap();
+
+        // Trying to enable mod1 should fail
+        let result = service.enable("mod1");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_effective_modules_with_profile() {
+        let (service, temp_dir) = create_test_service();
+
+        // Use modules without dotfiles
+        create_module_without_dotfiles(temp_dir.path(), "mod1");
+        create_module_without_dotfiles(temp_dir.path(), "mod2");
+        create_module_without_dotfiles(temp_dir.path(), "mod3");
+
+        // Enable mod1 explicitly
+        service.enable("mod1").unwrap();
+
+        // Get effective modules with profile containing mod2
+        let profile_modules = vec!["mod2".to_string()];
+        let effective = service.effective_modules(&profile_modules).unwrap();
+
+        // Should have mod2 (from profile) and mod1 (explicitly enabled)
+        assert_eq!(effective.len(), 2);
+        let ids: Vec<&str> = effective.iter().map(|m| m.id.as_str()).collect();
+        assert!(ids.contains(&"mod1"));
+        assert!(ids.contains(&"mod2"));
+    }
+
+    #[test]
+    fn test_module_service_new() {
+        let temp_dir = TempDir::new().unwrap();
+        let state_manager = StateManager::new(temp_dir.path().to_path_buf()).unwrap();
+        let service = DefaultModuleService::new(temp_dir.path(), state_manager);
+
+        assert!(service.modules_dir.ends_with("modules"));
+    }
+
+    #[test]
+    fn test_enable_nonexistent_module() {
+        let (service, _temp) = create_test_service();
+
+        let result = service.enable("nonexistent");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_disable_nonexistent_module() {
+        let (service, _temp) = create_test_service();
+
+        let result = service.disable("nonexistent");
+        assert!(result.is_err());
+    }
+
+    fn create_module_with_dotfiles(dir: &Path, id: &str, dotfile_targets: Vec<&str>) {
+        let module_dir = dir.join("modules").join(id);
+        fs::create_dir_all(&module_dir).unwrap();
+
+        let module = Module {
+            id: id.to_string(),
+            name: format!("Test Module {}", id),
+            description: Some("A test module".to_string()),
+            kind: ModuleKind::AppConfig,
+            packages: vec![],
+            aur_packages: vec![],
+            dotfiles: dotfile_targets
+                .iter()
+                .map(|t| DotfileMapping {
+                    source: "config".to_string(),
+                    target: t.to_string(),
+                    link: true,
+                })
+                .collect(),
+            conflicts: vec![],
+            depends: vec![],
+            pre_install: None,
+            post_install: None,
+        };
+
+        let config_path = module_dir.join("module.toml");
+        let content = toml::to_string_pretty(&module).unwrap();
+        fs::write(config_path, content).unwrap();
+    }
+
+    #[test]
+    fn test_check_dotfile_target_conflicts() {
+        let (service, temp_dir) = create_test_service();
+
+        // Create two modules that target the same dotfile
+        create_module_with_dotfiles(temp_dir.path(), "mod1", vec!["~/.config/shared"]);
+        create_module_with_dotfiles(temp_dir.path(), "mod2", vec!["~/.config/shared"]);
+
+        // Enable mod2 first
+        service.enable("mod2").unwrap();
+
+        // Check conflicts for mod1 - should conflict on dotfile target
+        let conflicts = service.check_conflicts("mod1").unwrap();
+        assert!(!conflicts.is_empty());
+        assert!(conflicts.iter().any(|c| c.contains("shared")));
+    }
 }

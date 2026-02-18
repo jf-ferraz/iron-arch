@@ -133,6 +133,14 @@ pub enum StateError {
     /// Transaction failure
     #[error("Transaction failed: {message}")]
     TransactionFailed { message: String },
+
+    /// No active update to resume (FR-5.10)
+    #[error("No active or interrupted update to resume")]
+    NoActiveUpdate,
+
+    /// Failed to save state (FR-5.10)
+    #[error("Failed to save state: {0}")]
+    SaveFailed(String),
 }
 
 /// Package management errors
@@ -470,6 +478,10 @@ impl Recoverable for IronError {
 mod tests {
     use super::*;
 
+    // ==========================================================================
+    // IronError Tests
+    // ==========================================================================
+
     #[test]
     fn test_iron_error_display() {
         let err = IronError::Config(ConfigError::NotFound {
@@ -477,6 +489,24 @@ mod tests {
         });
         assert!(err.to_string().contains("/test/path"));
     }
+
+    #[test]
+    fn test_iron_error_cancelled() {
+        let err = IronError::Cancelled;
+        assert_eq!(err.to_string(), "Operation cancelled by user");
+    }
+
+    #[test]
+    fn test_iron_error_operation_failed() {
+        let err = IronError::OperationFailed {
+            message: "Something went wrong".to_string(),
+        };
+        assert!(err.to_string().contains("Something went wrong"));
+    }
+
+    // ==========================================================================
+    // Error Conversion Tests
+    // ==========================================================================
 
     #[test]
     fn test_error_conversion() {
@@ -488,11 +518,292 @@ mod tests {
     }
 
     #[test]
-    fn test_recoverable_trait() {
-        let err = IronError::State(StateError::NoActiveHost);
-        assert!(err.auto_recovery().is_some());
-        assert!(!err.manual_recovery_steps().is_empty());
+    fn test_state_error_conversion() {
+        let state_err = StateError::NoActiveHost;
+        let iron_err: IronError = state_err.into();
+        assert!(matches!(iron_err, IronError::State(_)));
     }
+
+    #[test]
+    fn test_package_error_conversion() {
+        let pkg_err = PackageError::NotFound {
+            name: "test-pkg".to_string(),
+        };
+        let iron_err: IronError = pkg_err.into();
+        assert!(matches!(iron_err, IronError::Package(_)));
+    }
+
+    #[test]
+    fn test_git_error_conversion() {
+        let git_err = GitError::UncommittedChanges;
+        let iron_err: IronError = git_err.into();
+        assert!(matches!(iron_err, IronError::Git(_)));
+    }
+
+    #[test]
+    fn test_fs_error_conversion() {
+        let fs_err = FsError::NotFound {
+            path: PathBuf::from("/test"),
+        };
+        let iron_err: IronError = fs_err.into();
+        assert!(matches!(iron_err, IronError::Filesystem(_)));
+    }
+
+    #[test]
+    fn test_validation_error_conversion() {
+        let val_err = ValidationError::InvalidIdFormat {
+            id: "bad".to_string(),
+        };
+        let iron_err: IronError = val_err.into();
+        assert!(matches!(iron_err, IronError::Validation(_)));
+    }
+
+    #[test]
+    fn test_service_error_conversion() {
+        let svc_err = ServiceError::SystemctlNotFound;
+        let iron_err: IronError = svc_err.into();
+        assert!(matches!(iron_err, IronError::Service(_)));
+    }
+
+    #[test]
+    fn test_snapshot_error_conversion() {
+        let snap_err = SnapshotError::NoSnapshotTool;
+        let iron_err: IronError = snap_err.into();
+        assert!(matches!(iron_err, IronError::Snapshot(_)));
+    }
+
+    // ==========================================================================
+    // ConfigError Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_config_error_not_found() {
+        let err = ConfigError::NotFound {
+            path: PathBuf::from("/etc/config.toml"),
+        };
+        assert!(err.to_string().contains("/etc/config.toml"));
+    }
+
+    #[test]
+    fn test_config_error_parse_error() {
+        let err = ConfigError::ParseError {
+            path: PathBuf::from("/test.toml"),
+            message: "invalid syntax".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("/test.toml"));
+        assert!(msg.contains("invalid syntax"));
+    }
+
+    #[test]
+    fn test_config_error_invalid_value() {
+        let err = ConfigError::InvalidValue {
+            field: "port".to_string(),
+            message: "must be positive".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("port"));
+        assert!(msg.contains("must be positive"));
+    }
+
+    #[test]
+    fn test_config_error_duplicate_id() {
+        let err = ConfigError::DuplicateId {
+            id: "nvim".to_string(),
+            path: PathBuf::from("/modules"),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("nvim"));
+        assert!(msg.contains("/modules"));
+    }
+
+    // ==========================================================================
+    // StateError Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_state_error_variants() {
+        let errors = vec![
+            StateError::NoActiveHost,
+            StateError::HostNotFound {
+                id: "laptop".to_string(),
+            },
+            StateError::NoActiveBundle {
+                host: "desktop".to_string(),
+            },
+            StateError::BundleNotFound {
+                id: "hyprland".to_string(),
+            },
+            StateError::BundleAlreadyActive {
+                id: "hyprland".to_string(),
+            },
+            StateError::BundleNotInstalled {
+                id: "niri".to_string(),
+            },
+            StateError::ProfileNotFound {
+                id: "developer".to_string(),
+            },
+            StateError::ModuleNotFound {
+                id: "nvim-ide".to_string(),
+            },
+            StateError::ModuleAlreadyEnabled {
+                id: "fish".to_string(),
+            },
+            StateError::Conflict {
+                message: "test conflict".to_string(),
+            },
+            StateError::Corrupted {
+                path: PathBuf::from("/state.json"),
+            },
+            StateError::TransactionFailed {
+                message: "rollback needed".to_string(),
+            },
+        ];
+
+        for err in errors {
+            let msg = err.to_string();
+            assert!(!msg.is_empty());
+        }
+    }
+
+    // ==========================================================================
+    // PackageError Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_package_error_variants() {
+        let errors = vec![
+            PackageError::NotFound {
+                name: "missing-pkg".to_string(),
+            },
+            PackageError::InstallFailed {
+                message: "disk full".to_string(),
+            },
+            PackageError::RemoveFailed {
+                message: "dependency".to_string(),
+            },
+            PackageError::UpdateFailed {
+                message: "network".to_string(),
+            },
+            PackageError::DependencyConflict {
+                message: "version mismatch".to_string(),
+            },
+            PackageError::NoAurHelper,
+            PackageError::AurFlagged {
+                name: "outdated-pkg".to_string(),
+            },
+            PackageError::PacmanError {
+                message: "lock file".to_string(),
+            },
+            PackageError::PacmanFailed {
+                message: "exit 1".to_string(),
+            },
+        ];
+
+        for err in errors {
+            let msg = err.to_string();
+            assert!(!msg.is_empty());
+        }
+    }
+
+    // ==========================================================================
+    // GitError Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_git_error_variants() {
+        let errors = vec![
+            GitError::NotARepository {
+                path: PathBuf::from("/tmp"),
+            },
+            GitError::NoRemote {
+                name: "origin".to_string(),
+            },
+            GitError::UncommittedChanges,
+            GitError::MergeConflict {
+                files: vec!["file1.rs".to_string(), "file2.rs".to_string()],
+            },
+            GitError::PushFailed {
+                message: "rejected".to_string(),
+            },
+            GitError::PullFailed {
+                message: "network".to_string(),
+            },
+            GitError::GitCryptNotInitialized,
+            GitError::SecretsLocked,
+            GitError::CloneFailed {
+                message: "timeout".to_string(),
+            },
+            GitError::CommandFailed {
+                message: "exit 128".to_string(),
+            },
+        ];
+
+        for err in errors {
+            let msg = err.to_string();
+            assert!(!msg.is_empty());
+        }
+    }
+
+    // ==========================================================================
+    // FsError Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_fs_error_clone() {
+        let err = FsError::NotFound {
+            path: PathBuf::from("/test/path"),
+        };
+        let cloned = err.clone();
+        assert_eq!(err.to_string(), cloned.to_string());
+    }
+
+    #[test]
+    fn test_fs_error_variants() {
+        let errors = vec![
+            FsError::NotFound {
+                path: PathBuf::from("/missing"),
+            },
+            FsError::PermissionDenied {
+                path: PathBuf::from("/root"),
+            },
+            FsError::AlreadyExists {
+                path: PathBuf::from("/exists"),
+            },
+            FsError::IoError {
+                message: "disk error".to_string(),
+            },
+            FsError::SymlinkExists {
+                path: PathBuf::from("/link"),
+            },
+            FsError::SymlinkConflict {
+                target: PathBuf::from("/target"),
+            },
+            FsError::NotASymlink {
+                path: PathBuf::from("/regular"),
+            },
+            FsError::BackupFailed {
+                path: PathBuf::from("/backup"),
+                message: "no space".to_string(),
+            },
+            FsError::RestoreFailed {
+                path: PathBuf::from("/restore"),
+                message: "corrupted".to_string(),
+            },
+            FsError::PathEscapesRoot {
+                path: PathBuf::from("../../../etc"),
+            },
+        ];
+
+        for err in errors {
+            let msg = err.to_string();
+            assert!(!msg.is_empty());
+        }
+    }
+
+    // ==========================================================================
+    // ValidationError Tests
+    // ==========================================================================
 
     #[test]
     fn test_validation_error_display() {
@@ -503,5 +814,268 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("nvim-ide"));
         assert!(msg.contains("vim-minimal"));
+    }
+
+    #[test]
+    fn test_validation_error_variants() {
+        let errors = vec![
+            ValidationError::InvalidIdFormat {
+                id: "BAD_ID".to_string(),
+            },
+            ValidationError::IdTooLong {
+                id: "very_long_id".to_string(),
+                max: 64,
+            },
+            ValidationError::MissingField {
+                field: "name".to_string(),
+                context: "module.toml".to_string(),
+            },
+            ValidationError::InvalidValue {
+                field: "priority".to_string(),
+                message: "must be 1-10".to_string(),
+            },
+            ValidationError::ModuleConflict {
+                module_a: "a".to_string(),
+                module_b: "b".to_string(),
+            },
+            ValidationError::BundleConflict {
+                bundle_a: "x".to_string(),
+                bundle_b: "y".to_string(),
+            },
+            ValidationError::DotfileConflict {
+                target: "~/.config/nvim".to_string(),
+                module_a: "nvim".to_string(),
+                module_b: "neovim".to_string(),
+            },
+            ValidationError::MissingDependency {
+                module: "child".to_string(),
+                dependency: "parent".to_string(),
+            },
+            ValidationError::CircularDependency {
+                chain: "a -> b -> a".to_string(),
+            },
+            ValidationError::FileNotFound {
+                path: PathBuf::from("/missing.toml"),
+            },
+            ValidationError::InvalidPath {
+                path: PathBuf::from("../escape"),
+                message: "path traversal".to_string(),
+            },
+        ];
+
+        for err in errors {
+            let msg = err.to_string();
+            assert!(!msg.is_empty());
+        }
+    }
+
+    // ==========================================================================
+    // ServiceError Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_service_error_variants() {
+        let errors = vec![
+            ServiceError::NotFound {
+                name: "missing.service".to_string(),
+            },
+            ServiceError::EnableFailed {
+                name: "test.service".to_string(),
+                message: "permission denied".to_string(),
+            },
+            ServiceError::DisableFailed {
+                name: "test.service".to_string(),
+                message: "in use".to_string(),
+            },
+            ServiceError::StartFailed {
+                name: "test.service".to_string(),
+                message: "exit code 1".to_string(),
+            },
+            ServiceError::StopFailed {
+                name: "test.service".to_string(),
+                message: "timeout".to_string(),
+            },
+            ServiceError::SystemctlNotFound,
+            ServiceError::NotAvailable {
+                service: "nvidia.service".to_string(),
+            },
+            ServiceError::OperationFailed {
+                service: "docker.service".to_string(),
+                message: "unknown".to_string(),
+            },
+        ];
+
+        for err in errors {
+            let msg = err.to_string();
+            assert!(!msg.is_empty());
+        }
+    }
+
+    // ==========================================================================
+    // SnapshotError Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_snapshot_error_variants() {
+        let errors = vec![
+            SnapshotError::NoSnapshotTool,
+            SnapshotError::CreateFailed {
+                message: "no space".to_string(),
+            },
+            SnapshotError::NotFound {
+                id: "snap-123".to_string(),
+            },
+            SnapshotError::RestoreFailed {
+                id: "snap-456".to_string(),
+                message: "corrupted".to_string(),
+            },
+            SnapshotError::NoSnapshots,
+        ];
+
+        for err in errors {
+            let msg = err.to_string();
+            assert!(!msg.is_empty());
+        }
+    }
+
+    // ==========================================================================
+    // RecoveryAction Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_recovery_action_debug() {
+        let actions = vec![
+            RecoveryAction::Rollback {
+                description: "undo last change".to_string(),
+            },
+            RecoveryAction::Retry {
+                with_changes: "increase timeout".to_string(),
+            },
+            RecoveryAction::Skip {
+                item: "failing module".to_string(),
+            },
+            RecoveryAction::Abort,
+            RecoveryAction::RunCommand {
+                command: "iron init".to_string(),
+            },
+            RecoveryAction::EditConfig {
+                path: PathBuf::from("/config.toml"),
+            },
+        ];
+
+        for action in actions {
+            let debug_str = format!("{:?}", action);
+            assert!(!debug_str.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_recovery_action_clone() {
+        let action = RecoveryAction::RunCommand {
+            command: "test".to_string(),
+        };
+        let cloned = action.clone();
+        match cloned {
+            RecoveryAction::RunCommand { command } => assert_eq!(command, "test"),
+            _ => panic!("Clone failed"),
+        }
+    }
+
+    // ==========================================================================
+    // Recoverable Trait Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_recoverable_trait() {
+        let err = IronError::State(StateError::NoActiveHost);
+        assert!(err.auto_recovery().is_some());
+        assert!(!err.manual_recovery_steps().is_empty());
+    }
+
+    #[test]
+    fn test_recoverable_secrets_locked() {
+        let err = IronError::Git(GitError::SecretsLocked);
+        let recovery = err.auto_recovery();
+        assert!(recovery.is_some());
+        match recovery.unwrap() {
+            RecoveryAction::RunCommand { command } => {
+                assert!(command.contains("unlock"));
+            }
+            _ => panic!("Expected RunCommand"),
+        }
+    }
+
+    #[test]
+    fn test_recoverable_no_snapshot_tool() {
+        let err = IronError::Snapshot(SnapshotError::NoSnapshotTool);
+        let recovery = err.auto_recovery();
+        assert!(recovery.is_some());
+        match recovery.unwrap() {
+            RecoveryAction::RunCommand { command } => {
+                assert!(command.contains("timeshift"));
+            }
+            _ => panic!("Expected RunCommand"),
+        }
+    }
+
+    #[test]
+    fn test_recoverable_no_auto_recovery() {
+        let err = IronError::Cancelled;
+        assert!(err.auto_recovery().is_none());
+    }
+
+    #[test]
+    fn test_manual_recovery_parse_error() {
+        let err = IronError::Config(ConfigError::ParseError {
+            path: PathBuf::from("/test.toml"),
+            message: "syntax error".to_string(),
+        });
+        let steps = err.manual_recovery_steps();
+        assert!(steps.len() >= 2);
+        assert!(steps[0].contains("/test.toml"));
+    }
+
+    #[test]
+    fn test_manual_recovery_merge_conflict() {
+        let err = IronError::Git(GitError::MergeConflict {
+            files: vec!["a.rs".to_string(), "b.rs".to_string()],
+        });
+        let steps = err.manual_recovery_steps();
+        assert!(steps.len() >= 3);
+        assert!(steps.iter().any(|s| s.contains("a.rs")));
+        assert!(steps.iter().any(|s| s.contains("b.rs")));
+    }
+
+    #[test]
+    fn test_manual_recovery_dependency_conflict() {
+        let err = IronError::Package(PackageError::DependencyConflict {
+            message: "libfoo requires bar >= 2.0".to_string(),
+        });
+        let steps = err.manual_recovery_steps();
+        assert!(!steps.is_empty());
+        assert!(steps[0].contains("libfoo"));
+    }
+
+    #[test]
+    fn test_is_retriable_io_error() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout");
+        let err = IronError::Io(io_err);
+        assert!(err.is_retriable());
+    }
+
+    #[test]
+    fn test_is_retriable_update_failed() {
+        let err = IronError::Package(PackageError::UpdateFailed {
+            message: "network error".to_string(),
+        });
+        assert!(err.is_retriable());
+    }
+
+    #[test]
+    fn test_is_not_retriable() {
+        let err = IronError::Config(ConfigError::NotFound {
+            path: PathBuf::from("/missing"),
+        });
+        assert!(!err.is_retriable());
     }
 }

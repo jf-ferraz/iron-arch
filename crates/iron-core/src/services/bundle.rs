@@ -419,4 +419,156 @@ mod tests {
         let active = service.active().unwrap();
         assert!(active.is_none());
     }
+
+    #[test]
+    fn test_activate_bundle() {
+        let (service, temp_dir) = create_test_service();
+        create_test_bundle(temp_dir.path(), "hyprland");
+
+        service.activate("hyprland").unwrap();
+
+        let active = service.active().unwrap();
+        assert!(active.is_some());
+        assert_eq!(active.unwrap().id, "hyprland");
+    }
+
+    #[test]
+    fn test_activate_already_active_bundle() {
+        let (service, temp_dir) = create_test_service();
+        create_test_bundle(temp_dir.path(), "hyprland");
+
+        service.activate("hyprland").unwrap();
+
+        // Trying to activate again should fail
+        let result = service.activate("hyprland");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_activate_switches_from_previous() {
+        let (service, temp_dir) = create_test_service();
+        create_test_bundle(temp_dir.path(), "hyprland");
+        create_test_bundle(temp_dir.path(), "niri");
+
+        service.activate("hyprland").unwrap();
+        service.activate("niri").unwrap();
+
+        let active = service.active().unwrap();
+        assert!(active.is_some());
+        assert_eq!(active.unwrap().id, "niri");
+    }
+
+    #[test]
+    fn test_deactivate_not_active_bundle() {
+        let (service, temp_dir) = create_test_service();
+        create_test_bundle(temp_dir.path(), "hyprland");
+
+        // Deactivating a non-active bundle should fail
+        let result = service.deactivate("hyprland");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_switch_bundles() {
+        let (service, temp_dir) = create_test_service();
+        create_test_bundle(temp_dir.path(), "hyprland");
+        create_test_bundle(temp_dir.path(), "niri");
+
+        // Activate first bundle
+        service.activate("hyprland").unwrap();
+        assert_eq!(service.state("hyprland").unwrap(), BundleState::Active);
+
+        // Switch to second bundle
+        service.switch("hyprland", "niri").unwrap();
+
+        let active = service.active().unwrap();
+        assert!(active.is_some());
+        assert_eq!(active.unwrap().id, "niri");
+    }
+
+    #[test]
+    fn test_bundle_state_active() {
+        let (service, temp_dir) = create_test_service();
+        create_test_bundle(temp_dir.path(), "hyprland");
+
+        service.activate("hyprland").unwrap();
+
+        let state = service.state("hyprland").unwrap();
+        assert_eq!(state, BundleState::Active);
+    }
+
+    #[test]
+    fn test_check_conflicts_empty() {
+        let (service, temp_dir) = create_test_service();
+        create_test_bundle(temp_dir.path(), "hyprland");
+
+        let conflicts = service.check_conflicts("hyprland").unwrap();
+        assert!(conflicts.is_empty());
+    }
+
+    fn create_conflicting_bundle(dir: &Path, id: &str, conflicts_with: Vec<&str>) {
+        let bundle_dir = dir.join("bundles").join(id);
+        fs::create_dir_all(&bundle_dir).unwrap();
+
+        let bundle = Bundle {
+            id: id.to_string(),
+            name: format!("Test Bundle {}", id),
+            description: Some("A test bundle".to_string()),
+            bundle_type: BundleType::WaylandCompositor,
+            packages: vec!["pkg1".to_string()],
+            aur_packages: vec![],
+            profiles: vec![],
+            default_profile: None,
+            conflicts: conflicts_with.iter().map(|s| s.to_string()).collect(),
+            services: vec![],
+            post_install: None,
+        };
+
+        let config_path = bundle_dir.join("bundle.toml");
+        let content = toml::to_string_pretty(&bundle).unwrap();
+        fs::write(config_path, content).unwrap();
+    }
+
+    #[test]
+    fn test_check_conflicts_with_active() {
+        let (service, temp_dir) = create_test_service();
+
+        // Create two bundles that conflict
+        create_conflicting_bundle(temp_dir.path(), "hyprland", vec!["niri"]);
+        create_test_bundle(temp_dir.path(), "niri");
+
+        // Activate niri
+        service.activate("niri").unwrap();
+
+        // Check if hyprland conflicts with active niri
+        let conflicts = service.check_conflicts("hyprland").unwrap();
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0], "niri");
+    }
+
+    #[test]
+    fn test_discover_empty_dir() {
+        let (service, _temp) = create_test_service();
+
+        let bundles = service.discover().unwrap();
+        assert!(bundles.is_empty());
+    }
+
+    #[test]
+    fn test_bundle_service_new() {
+        let temp_dir = TempDir::new().unwrap();
+        let state_manager = StateManager::new(temp_dir.path().to_path_buf()).unwrap();
+        let service = DefaultBundleService::new(temp_dir.path(), state_manager);
+
+        // Service should be created successfully
+        assert!(service.bundles_dir.ends_with("bundles"));
+    }
+
+    #[test]
+    fn test_activate_nonexistent_bundle() {
+        let (service, _temp) = create_test_service();
+
+        let result = service.activate("nonexistent");
+        assert!(result.is_err());
+    }
 }

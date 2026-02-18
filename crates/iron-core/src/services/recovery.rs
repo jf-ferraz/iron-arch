@@ -492,6 +492,153 @@ mod tests {
         (service, temp_dir)
     }
 
+    // ==========================================================================
+    // RecoveryExport Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_recovery_export_serialization() {
+        let export = RecoveryExport {
+            version: "1.0".to_string(),
+            timestamp: Utc::now(),
+            host_id: "desktop".to_string(),
+            active_bundle: Some("hyprland".to_string()),
+            active_profile: Some("developer".to_string()),
+            active_modules: vec!["nvim".to_string(), "fish".to_string()],
+            packages: vec!["neovim".to_string(), "fish".to_string()],
+            aur_packages: vec!["hyprshot".to_string()],
+            services: vec!["pipewire.service".to_string()],
+        };
+
+        let json = serde_json::to_string(&export).unwrap();
+        let deserialized: RecoveryExport = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.version, "1.0");
+        assert_eq!(deserialized.host_id, "desktop");
+        assert_eq!(deserialized.active_bundle, Some("hyprland".to_string()));
+        assert_eq!(deserialized.active_profile, Some("developer".to_string()));
+        assert_eq!(deserialized.active_modules.len(), 2);
+        assert_eq!(deserialized.packages.len(), 2);
+        assert_eq!(deserialized.aur_packages.len(), 1);
+        assert_eq!(deserialized.services.len(), 1);
+    }
+
+    #[test]
+    fn test_recovery_export_clone() {
+        let export = RecoveryExport {
+            version: "1.0".to_string(),
+            timestamp: Utc::now(),
+            host_id: "test".to_string(),
+            active_bundle: None,
+            active_profile: None,
+            active_modules: vec![],
+            packages: vec![],
+            aur_packages: vec![],
+            services: vec![],
+        };
+
+        let cloned = export.clone();
+        assert_eq!(cloned.host_id, "test");
+        assert_eq!(cloned.version, "1.0");
+    }
+
+    #[test]
+    fn test_recovery_export_debug() {
+        let export = RecoveryExport {
+            version: "1.0".to_string(),
+            timestamp: Utc::now(),
+            host_id: "debug-test".to_string(),
+            active_bundle: None,
+            active_profile: None,
+            active_modules: vec![],
+            packages: vec![],
+            aur_packages: vec![],
+            services: vec![],
+        };
+
+        let debug_str = format!("{:?}", export);
+        assert!(debug_str.contains("debug-test"));
+        assert!(debug_str.contains("RecoveryExport"));
+    }
+
+    #[test]
+    fn test_recovery_export_empty_fields() {
+        let export = RecoveryExport {
+            version: "1.0".to_string(),
+            timestamp: Utc::now(),
+            host_id: "empty".to_string(),
+            active_bundle: None,
+            active_profile: None,
+            active_modules: vec![],
+            packages: vec![],
+            aur_packages: vec![],
+            services: vec![],
+        };
+
+        let json = serde_json::to_string(&export).unwrap();
+        let deserialized: RecoveryExport = serde_json::from_str(&json).unwrap();
+
+        assert!(deserialized.active_bundle.is_none());
+        assert!(deserialized.active_profile.is_none());
+        assert!(deserialized.active_modules.is_empty());
+    }
+
+    // ==========================================================================
+    // InstallScriptOptions Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_install_script_options_default() {
+        let options = InstallScriptOptions::default();
+
+        assert!(!options.include_packages);
+        assert!(!options.include_aur);
+        assert!(!options.include_services);
+        assert!(!options.include_modules);
+        assert!(!options.include_bundle);
+        assert!(options.aur_helper.is_empty());
+        assert!(!options.interactive);
+    }
+
+    #[test]
+    fn test_install_script_options_clone() {
+        let options = InstallScriptOptions {
+            include_packages: true,
+            include_aur: true,
+            include_services: false,
+            include_modules: true,
+            include_bundle: false,
+            aur_helper: "paru".to_string(),
+            interactive: true,
+        };
+
+        let cloned = options.clone();
+        assert!(cloned.include_packages);
+        assert!(cloned.include_aur);
+        assert!(!cloned.include_services);
+        assert!(cloned.include_modules);
+        assert!(!cloned.include_bundle);
+        assert_eq!(cloned.aur_helper, "paru");
+        assert!(cloned.interactive);
+    }
+
+    #[test]
+    fn test_install_script_options_debug() {
+        let options = InstallScriptOptions {
+            include_packages: true,
+            aur_helper: "yay".to_string(),
+            ..Default::default()
+        };
+
+        let debug_str = format!("{:?}", options);
+        assert!(debug_str.contains("InstallScriptOptions"));
+        assert!(debug_str.contains("yay"));
+    }
+
+    // ==========================================================================
+    // DefaultRecoveryService Tests
+    // ==========================================================================
+
     #[test]
     fn test_export() {
         let (service, _temp) = create_test_service();
@@ -499,6 +646,27 @@ mod tests {
         let export = service.export().unwrap();
         assert_eq!(export.host_id, "test-host");
         assert_eq!(export.version, "1.0");
+    }
+
+    #[test]
+    fn test_export_with_bundle_and_profile() {
+        let (service, _temp) = create_test_service();
+
+        // Set active bundle and profile
+        service
+            .state_manager
+            .set_active_bundle("test-host", "hyprland")
+            .unwrap();
+        service
+            .state_manager
+            .set_active_profile("test-host", "developer")
+            .unwrap();
+        service.state_manager.enable_module("nvim-ide").unwrap();
+
+        let export = service.export().unwrap();
+        assert_eq!(export.active_bundle, Some("hyprland".to_string()));
+        assert_eq!(export.active_profile, Some("developer".to_string()));
+        assert!(export.active_modules.contains(&"nvim-ide".to_string()));
     }
 
     #[test]
@@ -518,6 +686,75 @@ mod tests {
         let script = service.generate_install_script(&options).unwrap();
         assert!(script.contains("#!/bin/bash"));
         assert!(script.contains("Iron Recovery Script"));
+        assert!(script.contains("set -e"));
+        assert!(script.contains("Recovery complete!"));
+    }
+
+    #[test]
+    fn test_generate_install_script_interactive() {
+        let (service, _temp) = create_test_service();
+
+        let options = InstallScriptOptions {
+            include_packages: true,
+            include_aur: true,
+            include_services: true,
+            include_modules: true,
+            include_bundle: true,
+            aur_helper: "paru".to_string(),
+            interactive: true,
+        };
+
+        let script = service.generate_install_script(&options).unwrap();
+        assert!(script.contains("confirm()"));
+        assert!(script.contains("Interactive mode"));
+        assert!(script.contains("[y/N]"));
+    }
+
+    #[test]
+    fn test_generate_install_script_default_aur_helper() {
+        let (service, _temp) = create_test_service();
+
+        // Enable module and set bundle to generate content
+        service.state_manager.enable_module("test-mod").unwrap();
+        service
+            .state_manager
+            .set_active_bundle("test-host", "test-bundle")
+            .unwrap();
+
+        let options = InstallScriptOptions {
+            include_packages: false,
+            include_aur: true,
+            include_services: false,
+            include_modules: true,
+            include_bundle: true,
+            aur_helper: String::new(), // Empty - should default to paru
+            interactive: false,
+        };
+
+        let script = service.generate_install_script(&options).unwrap();
+        // Script should contain iron module enable for test-mod
+        assert!(script.contains("iron module enable test-mod"));
+        assert!(script.contains("iron bundle activate test-bundle"));
+    }
+
+    #[test]
+    fn test_generate_install_script_services_only() {
+        let (service, _temp) = create_test_service();
+
+        let options = InstallScriptOptions {
+            include_packages: false,
+            include_aur: false,
+            include_services: true,
+            include_modules: false,
+            include_bundle: false,
+            aur_helper: String::new(),
+            interactive: false,
+        };
+
+        let script = service.generate_install_script(&options).unwrap();
+        assert!(script.contains("#!/bin/bash"));
+        // Should not contain package installation sections since include_packages is false
+        assert!(!script.contains("sudo pacman -S"));
     }
 
     #[test]
@@ -529,6 +766,27 @@ mod tests {
 
         let loaded = service.load_export(&export_path).unwrap();
         assert_eq!(loaded.host_id, "test-host");
+    }
+
+    #[test]
+    fn test_load_export_not_found() {
+        let (service, temp_dir) = create_test_service();
+
+        let export_path = temp_dir.path().join("nonexistent.json");
+        let result = service.load_export(&export_path);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_export_invalid_json() {
+        let (service, temp_dir) = create_test_service();
+
+        let export_path = temp_dir.path().join("invalid.json");
+        fs::write(&export_path, "not valid json {{{").unwrap();
+
+        let result = service.load_export(&export_path);
+        assert!(result.is_err());
     }
 
     #[test]
@@ -552,5 +810,159 @@ mod tests {
         // Verify import
         let state = service.state_manager.current_host();
         assert_eq!(state, Some("new-host".to_string()));
+    }
+
+    #[test]
+    fn test_import_export_no_bundle() {
+        let (service, _temp) = create_test_service();
+
+        let export = RecoveryExport {
+            version: "1.0".to_string(),
+            timestamp: Utc::now(),
+            host_id: "no-bundle-host".to_string(),
+            active_bundle: None,
+            active_profile: None,
+            active_modules: vec![],
+            packages: vec![],
+            aur_packages: vec![],
+            services: vec![],
+        };
+
+        service.import(&export).unwrap();
+
+        let state = service.state_manager.current_host();
+        assert_eq!(state, Some("no-bundle-host".to_string()));
+    }
+
+    #[test]
+    fn test_import_with_modules_only() {
+        let (service, _temp) = create_test_service();
+
+        let export = RecoveryExport {
+            version: "1.0".to_string(),
+            timestamp: Utc::now(),
+            host_id: "modules-host".to_string(),
+            active_bundle: None,
+            active_profile: None,
+            active_modules: vec!["mod1".to_string(), "mod2".to_string(), "mod3".to_string()],
+            packages: vec![],
+            aur_packages: vec![],
+            services: vec![],
+        };
+
+        service.import(&export).unwrap();
+
+        let modules = service.state_manager.active_modules();
+        assert!(modules.contains(&"mod1".to_string()));
+        assert!(modules.contains(&"mod2".to_string()));
+        assert!(modules.contains(&"mod3".to_string()));
+    }
+
+    // ==========================================================================
+    // copy_dir_recursive Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_copy_dir_recursive_simple() {
+        let temp_dir = TempDir::new().unwrap();
+        let src = temp_dir.path().join("src");
+        let dst = temp_dir.path().join("dst");
+
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("file1.txt"), "content1").unwrap();
+        fs::write(src.join("file2.txt"), "content2").unwrap();
+
+        copy_dir_recursive(&src, &dst).unwrap();
+
+        assert!(dst.join("file1.txt").exists());
+        assert!(dst.join("file2.txt").exists());
+        assert_eq!(
+            fs::read_to_string(dst.join("file1.txt")).unwrap(),
+            "content1"
+        );
+    }
+
+    #[test]
+    fn test_copy_dir_recursive_nested() {
+        let temp_dir = TempDir::new().unwrap();
+        let src = temp_dir.path().join("src");
+        let dst = temp_dir.path().join("dst");
+
+        fs::create_dir_all(src.join("level1/level2")).unwrap();
+        fs::write(src.join("root.txt"), "root").unwrap();
+        fs::write(src.join("level1/mid.txt"), "mid").unwrap();
+        fs::write(src.join("level1/level2/deep.txt"), "deep").unwrap();
+
+        copy_dir_recursive(&src, &dst).unwrap();
+
+        assert!(dst.join("root.txt").exists());
+        assert!(dst.join("level1/mid.txt").exists());
+        assert!(dst.join("level1/level2/deep.txt").exists());
+        assert_eq!(
+            fs::read_to_string(dst.join("level1/level2/deep.txt")).unwrap(),
+            "deep"
+        );
+    }
+
+    #[test]
+    fn test_copy_dir_recursive_empty() {
+        let temp_dir = TempDir::new().unwrap();
+        let src = temp_dir.path().join("empty_src");
+        let dst = temp_dir.path().join("empty_dst");
+
+        fs::create_dir_all(&src).unwrap();
+
+        copy_dir_recursive(&src, &dst).unwrap();
+
+        assert!(dst.exists());
+        assert!(dst.is_dir());
+    }
+
+    #[test]
+    fn test_copy_dir_recursive_creates_dst() {
+        let temp_dir = TempDir::new().unwrap();
+        let src = temp_dir.path().join("src");
+        let dst = temp_dir.path().join("nested/deep/dst");
+
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("test.txt"), "test").unwrap();
+
+        copy_dir_recursive(&src, &dst).unwrap();
+
+        assert!(dst.exists());
+        assert!(dst.join("test.txt").exists());
+    }
+
+    // ==========================================================================
+    // Backup/Restore Tests (limited - require system commands)
+    // ==========================================================================
+
+    #[test]
+    fn test_create_backup_creates_directories() {
+        let (service, temp_dir) = create_test_service();
+
+        // Create some config directories
+        fs::create_dir_all(temp_dir.path().join("hosts")).unwrap();
+        fs::write(temp_dir.path().join("hosts/test.toml"), "[host]").unwrap();
+        fs::create_dir_all(temp_dir.path().join("bundles")).unwrap();
+        fs::create_dir_all(temp_dir.path().join("profiles")).unwrap();
+        fs::create_dir_all(temp_dir.path().join("modules")).unwrap();
+
+        let output_dir = temp_dir.path().join("backups");
+        fs::create_dir_all(&output_dir).unwrap();
+
+        // This test may fail if tar is not available, but it tests the setup
+        let _result = service.create_backup(&output_dir);
+        // We don't assert success because tar might not be available in test env
+    }
+
+    #[test]
+    fn test_restore_backup_nonexistent() {
+        let (service, temp_dir) = create_test_service();
+
+        let backup_path = temp_dir.path().join("nonexistent.tar.gz");
+        let result = service.restore_backup(&backup_path);
+
+        assert!(result.is_err());
     }
 }

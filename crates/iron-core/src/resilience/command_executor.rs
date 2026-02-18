@@ -130,10 +130,7 @@ impl CommandConfig {
 #[derive(Debug, Clone)]
 pub enum CommandError {
     /// Command timed out
-    Timeout {
-        command: String,
-        timeout_secs: u64,
-    },
+    Timeout { command: String, timeout_secs: u64 },
     /// Command exited with non-zero status
     ExitError {
         command: String,
@@ -141,20 +138,11 @@ pub enum CommandError {
         stderr: String,
     },
     /// Command was terminated by signal
-    Signaled {
-        command: String,
-        signal: i32,
-    },
+    Signaled { command: String, signal: i32 },
     /// Failed to spawn command
-    SpawnFailed {
-        command: String,
-        message: String,
-    },
+    SpawnFailed { command: String, message: String },
     /// IO error during command execution
-    IoError {
-        command: String,
-        message: String,
-    },
+    IoError { command: String, message: String },
     /// Circuit breaker is open
     CircuitOpen(CircuitOpenError),
     /// All retries exhausted
@@ -349,9 +337,7 @@ impl RealCommandExecutor {
         env: Option<&[(&str, &str)]>,
     ) -> Result<CommandOutput, CommandError> {
         let mut cmd = Command::new(command);
-        cmd.args(args)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+        cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
 
         if let Some(env_vars) = env {
             for (key, value) in env_vars {
@@ -500,14 +486,13 @@ impl RealCommandExecutor {
 impl CommandExecutor for RealCommandExecutor {
     fn execute(&self, command: &str, args: &[&str]) -> Result<String, CommandError> {
         // Check circuit breaker first
-        if let Some(cb) = &self.circuit_breaker {
-            if !cb.can_execute() {
+        if let Some(cb) = &self.circuit_breaker
+            && !cb.can_execute() {
                 return Err(CommandError::CircuitOpen(CircuitOpenError {
                     service: cb.name().to_string(),
                     time_until_reset: cb.time_until_reset(),
                 }));
             }
-        }
 
         let output = self.execute_with_retry(command, args, None)?;
         Ok(output.stdout)
@@ -515,14 +500,13 @@ impl CommandExecutor for RealCommandExecutor {
 
     fn execute_full(&self, command: &str, args: &[&str]) -> Result<CommandOutput, CommandError> {
         // Check circuit breaker first
-        if let Some(cb) = &self.circuit_breaker {
-            if !cb.can_execute() {
+        if let Some(cb) = &self.circuit_breaker
+            && !cb.can_execute() {
                 return Err(CommandError::CircuitOpen(CircuitOpenError {
                     service: cb.name().to_string(),
                     time_until_reset: cb.time_until_reset(),
                 }));
             }
-        }
 
         self.execute_with_retry(command, args, None)
     }
@@ -534,14 +518,13 @@ impl CommandExecutor for RealCommandExecutor {
         env: &[(&str, &str)],
     ) -> Result<String, CommandError> {
         // Check circuit breaker first
-        if let Some(cb) = &self.circuit_breaker {
-            if !cb.can_execute() {
+        if let Some(cb) = &self.circuit_breaker
+            && !cb.can_execute() {
                 return Err(CommandError::CircuitOpen(CircuitOpenError {
                     service: cb.name().to_string(),
                     time_until_reset: cb.time_until_reset(),
                 }));
             }
-        }
 
         let output = self.execute_with_retry(command, args, Some(env))?;
         Ok(output.stdout)
@@ -752,7 +735,8 @@ mod tests {
 
     #[test]
     fn test_executor_command_exists() {
-        let executor = RealCommandExecutor::new(CommandConfig::no_retry().with_circuit_breaker(false));
+        let executor =
+            RealCommandExecutor::new(CommandConfig::no_retry().with_circuit_breaker(false));
         // 'ls' should exist on Unix systems
         #[cfg(unix)]
         assert!(executor.command_exists("ls"));
@@ -762,7 +746,8 @@ mod tests {
 
     #[test]
     fn test_executor_simple_command() {
-        let executor = RealCommandExecutor::new(CommandConfig::no_retry().with_circuit_breaker(false));
+        let executor =
+            RealCommandExecutor::new(CommandConfig::no_retry().with_circuit_breaker(false));
 
         #[cfg(unix)]
         {
@@ -777,14 +762,17 @@ mod tests {
         let executor = RealCommandExecutor::new(CommandConfig::default());
         assert!(executor.circuit_breaker().is_some());
 
-        let executor_no_cb = RealCommandExecutor::new(CommandConfig::default().with_circuit_breaker(false));
+        let executor_no_cb =
+            RealCommandExecutor::new(CommandConfig::default().with_circuit_breaker(false));
         assert!(executor_no_cb.circuit_breaker().is_none());
     }
 
     #[test]
     fn test_executor_for_service() {
         let executor = RealCommandExecutor::for_service("pacman", CommandConfig::default());
-        let cb = executor.circuit_breaker().expect("should have circuit breaker");
+        let cb = executor
+            .circuit_breaker()
+            .expect("should have circuit breaker");
         assert_eq!(cb.name(), "pacman");
     }
 }

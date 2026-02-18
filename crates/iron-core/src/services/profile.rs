@@ -373,4 +373,204 @@ mod tests {
         let state = service.state("test").unwrap();
         assert_eq!(state, ProfileState::Inactive);
     }
+
+    #[test]
+    fn test_profile_not_found() {
+        let (service, _temp) = create_test_service();
+
+        let result = service.load("nonexistent");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_active_profile_none() {
+        let (service, _temp) = create_test_service();
+
+        let active = service.active().unwrap();
+        assert!(active.is_none());
+    }
+
+    #[test]
+    fn test_discover_empty() {
+        let (service, _temp) = create_test_service();
+
+        let profiles = service.discover().unwrap();
+        assert!(profiles.is_empty());
+    }
+
+    #[test]
+    fn test_circular_inheritance() {
+        let (service, temp_dir) = create_test_service();
+
+        // Create profiles that extend each other (circular)
+        let profile_a_dir = temp_dir.path().join("profiles").join("a");
+        let profile_b_dir = temp_dir.path().join("profiles").join("b");
+        fs::create_dir_all(&profile_a_dir).unwrap();
+        fs::create_dir_all(&profile_b_dir).unwrap();
+
+        let profile_a = Profile {
+            id: "a".to_string(),
+            name: "Profile A".to_string(),
+            description: None,
+            modules: vec!["mod-a".to_string()],
+            theme: None,
+            shell: None,
+            extends: Some("b".to_string()),
+            for_bundle: None,
+        };
+
+        let profile_b = Profile {
+            id: "b".to_string(),
+            name: "Profile B".to_string(),
+            description: None,
+            modules: vec!["mod-b".to_string()],
+            theme: None,
+            shell: None,
+            extends: Some("a".to_string()),
+            for_bundle: None,
+        };
+
+        fs::write(
+            profile_a_dir.join("profile.toml"),
+            toml::to_string_pretty(&profile_a).unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            profile_b_dir.join("profile.toml"),
+            toml::to_string_pretty(&profile_b).unwrap(),
+        )
+        .unwrap();
+
+        // Should handle circular inheritance gracefully
+        let chain = service.resolve_inheritance("a").unwrap();
+        // Should not contain infinite loop
+        assert!(chain.len() <= 2);
+    }
+
+    fn create_bundle_profile(dir: &Path, id: &str, bundle: &str) {
+        let profile_dir = dir.join("profiles").join(id);
+        fs::create_dir_all(&profile_dir).unwrap();
+
+        let profile = Profile {
+            id: id.to_string(),
+            name: format!("Profile for {}", bundle),
+            description: Some("Bundle-specific profile".to_string()),
+            modules: vec![format!("{}-module", id)],
+            theme: None,
+            shell: None,
+            extends: None,
+            for_bundle: Some(bundle.to_string()),
+        };
+
+        let config_path = profile_dir.join("profile.toml");
+        let content = toml::to_string_pretty(&profile).unwrap();
+        fs::write(config_path, content).unwrap();
+    }
+
+    #[test]
+    fn test_for_bundle() {
+        let (service, temp_dir) = create_test_service();
+
+        // Create profiles for different bundles
+        create_bundle_profile(temp_dir.path(), "hyprland-profile", "hyprland");
+        create_bundle_profile(temp_dir.path(), "niri-profile", "niri");
+        create_test_profile(temp_dir.path(), "generic", None);
+
+        // Get profiles for hyprland bundle
+        let hyprland_profiles = service.for_bundle("hyprland").unwrap();
+
+        // Should include hyprland-specific and generic (no for_bundle specified)
+        assert!(hyprland_profiles.len() >= 1);
+
+        let ids: Vec<&str> = hyprland_profiles.iter().map(|p| p.id.as_str()).collect();
+        assert!(ids.contains(&"hyprland-profile") || ids.contains(&"generic"));
+    }
+
+    #[test]
+    fn test_apply_profile() {
+        let (service, temp_dir) = create_test_service();
+
+        create_test_profile(temp_dir.path(), "test", None);
+        create_test_module(temp_dir.path(), "test-module");
+
+        // Apply should enable the modules
+        service.apply("test").unwrap();
+
+        // Active profile should be set
+        let active = service.active().unwrap();
+        assert!(active.is_some());
+        assert_eq!(active.unwrap().id, "test");
+    }
+
+    #[test]
+    fn test_profile_service_new() {
+        let temp_dir = TempDir::new().unwrap();
+        let state_manager = StateManager::new(temp_dir.path().to_path_buf()).unwrap();
+        state_manager.set_current_host("test-host").unwrap();
+        let module_service = DefaultModuleService::new(temp_dir.path(), state_manager.clone());
+        let service = DefaultProfileService::new(temp_dir.path(), state_manager, module_service);
+
+        assert!(service.profiles_dir.ends_with("profiles"));
+    }
+
+    #[test]
+    fn test_deep_inheritance_chain() {
+        let (service, temp_dir) = create_test_service();
+
+        // Create deep inheritance: child -> parent -> grandparent
+        create_test_profile(temp_dir.path(), "grandparent", None);
+        create_test_profile(temp_dir.path(), "parent", Some("grandparent"));
+        create_test_profile(temp_dir.path(), "child", Some("parent"));
+
+        let chain = service.resolve_inheritance("child").unwrap();
+        assert_eq!(chain, vec!["child", "parent", "grandparent"]);
+    }
+
+    #[test]
+    fn test_effective_modules_no_duplicates() {
+        let (service, temp_dir) = create_test_service();
+
+        // Create profiles with overlapping modules
+        let profile_dir = temp_dir.path().join("profiles").join("base");
+        fs::create_dir_all(&profile_dir).unwrap();
+        let base = Profile {
+            id: "base".to_string(),
+            name: "Base".to_string(),
+            description: None,
+            modules: vec!["shared".to_string(), "base-only".to_string()],
+            theme: None,
+            shell: None,
+            extends: None,
+            for_bundle: None,
+        };
+        fs::write(
+            profile_dir.join("profile.toml"),
+            toml::to_string_pretty(&base).unwrap(),
+        )
+        .unwrap();
+
+        let child_dir = temp_dir.path().join("profiles").join("child");
+        fs::create_dir_all(&child_dir).unwrap();
+        let child = Profile {
+            id: "child".to_string(),
+            name: "Child".to_string(),
+            description: None,
+            modules: vec!["shared".to_string(), "child-only".to_string()],
+            theme: None,
+            shell: None,
+            extends: Some("base".to_string()),
+            for_bundle: None,
+        };
+        fs::write(
+            child_dir.join("profile.toml"),
+            toml::to_string_pretty(&child).unwrap(),
+        )
+        .unwrap();
+
+        let modules = service.effective_modules("child").unwrap();
+
+        // Should only have unique modules
+        let unique: HashSet<_> = modules.iter().collect();
+        assert_eq!(modules.len(), unique.len());
+    }
 }

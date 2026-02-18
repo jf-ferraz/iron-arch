@@ -375,9 +375,7 @@ impl MockFileSystem {
 
         for component in path.components() {
             current.push(component);
-            entries
-                .entry(current.clone())
-                .or_insert(MockEntry::Dir);
+            entries.entry(current.clone()).or_insert(MockEntry::Dir);
         }
     }
 
@@ -483,9 +481,9 @@ impl FileSystem for MockFileSystem {
         }
 
         // Check if directory is empty
-        let has_children = entries_read.keys().any(|p| {
-            p != path && p.starts_with(path)
-        });
+        let has_children = entries_read
+            .keys()
+            .any(|p| p != path && p.starts_with(path));
 
         if has_children {
             return Err(FsError::IoError {
@@ -533,18 +531,21 @@ impl FileSystem for MockFileSystem {
             });
         }
 
-        let mut children = Vec::new();
-        for entry_path in entries.keys() {
-            if let Some(parent) = entry_path.parent() {
-                if parent == path {
-                    if let Some(name) = entry_path.file_name() {
-                        if let Some(name_str) = name.to_str() {
-                            children.push(name_str.to_string());
-                        }
+        let children = entries
+            .keys()
+            .filter_map(|entry_path| {
+                entry_path.parent().and_then(|parent| {
+                    if parent == path {
+                        entry_path
+                            .file_name()
+                            .and_then(|name| name.to_str())
+                            .map(|s| s.to_string())
+                    } else {
+                        None
                     }
-                }
-            }
-        }
+                })
+            })
+            .collect();
 
         Ok(children)
     }
@@ -677,7 +678,8 @@ mod tests {
         let fs = MockFileSystem::new();
         fs.add_file("/old.txt", "content");
 
-        fs.rename(Path::new("/old.txt"), Path::new("/new.txt")).unwrap();
+        fs.rename(Path::new("/old.txt"), Path::new("/new.txt"))
+            .unwrap();
 
         assert!(!fs.exists(Path::new("/old.txt")));
         assert!(fs.exists(Path::new("/new.txt")));
@@ -706,7 +708,8 @@ mod tests {
     fn test_mock_symlink() {
         let fs = MockFileSystem::new();
         fs.add_file("/target.txt", "target content");
-        fs.symlink(Path::new("/target.txt"), Path::new("/link.txt")).unwrap();
+        fs.symlink(Path::new("/target.txt"), Path::new("/link.txt"))
+            .unwrap();
 
         assert!(fs.is_symlink(Path::new("/link.txt")));
 
@@ -741,9 +744,12 @@ mod tests {
     fn test_mock_simulated_permission_error() {
         let fs = MockFileSystem::new();
         fs.add_file("/protected.txt", "content");
-        fs.set_error("/protected.txt", FsError::PermissionDenied {
-            path: PathBuf::from("/protected.txt"),
-        });
+        fs.set_error(
+            "/protected.txt",
+            FsError::PermissionDenied {
+                path: PathBuf::from("/protected.txt"),
+            },
+        );
 
         let result = fs.read_to_string(Path::new("/protected.txt"));
         assert!(matches!(result, Err(FsError::PermissionDenied { .. })));
@@ -753,9 +759,12 @@ mod tests {
     fn test_mock_clear_error() {
         let fs = MockFileSystem::new();
         fs.add_file("/file.txt", "content");
-        fs.set_error("/file.txt", FsError::PermissionDenied {
-            path: PathBuf::from("/file.txt"),
-        });
+        fs.set_error(
+            "/file.txt",
+            FsError::PermissionDenied {
+                path: PathBuf::from("/file.txt"),
+            },
+        );
 
         // Error active
         assert!(fs.read_to_string(Path::new("/file.txt")).is_err());
@@ -775,10 +784,14 @@ mod tests {
         let fs = MockFileSystem::new();
         fs.add_file("/source.txt", "source content");
 
-        fs.copy(Path::new("/source.txt"), Path::new("/dest.txt")).unwrap();
+        fs.copy(Path::new("/source.txt"), Path::new("/dest.txt"))
+            .unwrap();
 
         assert!(fs.is_file(Path::new("/dest.txt")));
-        assert_eq!(fs.get_content("/dest.txt"), Some("source content".to_string()));
+        assert_eq!(
+            fs.get_content("/dest.txt"),
+            Some("source content".to_string())
+        );
     }
 
     // =========================================================================
@@ -849,5 +862,432 @@ mod tests {
         for i in 0..10 {
             assert!(fs.exists(Path::new(&format!("/file_{}.txt", i))));
         }
+    }
+
+    // =========================================================================
+    // Additional Edge Case Tests
+    // =========================================================================
+
+    #[test]
+    fn test_mock_remove_dir_not_empty() {
+        let fs = MockFileSystem::new();
+        fs.add_dir("/parent");
+        fs.add_file("/parent/child.txt", "content");
+
+        let result = fs.remove_dir(Path::new("/parent"));
+        assert!(matches!(result, Err(FsError::IoError { .. })));
+
+        // Directory should still exist
+        assert!(fs.is_dir(Path::new("/parent")));
+    }
+
+    #[test]
+    fn test_mock_remove_dir_not_found() {
+        let fs = MockFileSystem::new();
+        let result = fs.remove_dir(Path::new("/nonexistent"));
+        assert!(matches!(result, Err(FsError::NotFound { .. })));
+    }
+
+    #[test]
+    fn test_mock_remove_dir_is_file() {
+        let fs = MockFileSystem::new();
+        fs.add_file("/file.txt", "content");
+
+        // Trying to remove_dir on a file should fail
+        let result = fs.remove_dir(Path::new("/file.txt"));
+        assert!(matches!(result, Err(FsError::NotFound { .. })));
+    }
+
+    #[test]
+    fn test_mock_read_dir_not_a_directory() {
+        let fs = MockFileSystem::new();
+        fs.add_file("/file.txt", "content");
+
+        let result = fs.read_dir(Path::new("/file.txt"));
+        assert!(matches!(result, Err(FsError::NotFound { .. })));
+    }
+
+    #[test]
+    fn test_mock_read_dir_empty() {
+        let fs = MockFileSystem::new();
+        fs.add_dir("/empty");
+
+        let children = fs.read_dir(Path::new("/empty")).unwrap();
+        assert!(children.is_empty());
+    }
+
+    #[test]
+    fn test_mock_read_to_string_is_directory() {
+        let fs = MockFileSystem::new();
+        fs.add_dir("/dir");
+
+        let result = fs.read_to_string(Path::new("/dir"));
+        assert!(
+            matches!(result, Err(FsError::IoError { message }) if message.contains("directory"))
+        );
+    }
+
+    #[test]
+    fn test_mock_remove_file_is_directory() {
+        let fs = MockFileSystem::new();
+        fs.add_dir("/dir");
+
+        let result = fs.remove_file(Path::new("/dir"));
+        assert!(
+            matches!(result, Err(FsError::IoError { message }) if message.contains("directory"))
+        );
+    }
+
+    #[test]
+    fn test_mock_remove_file_not_found() {
+        let fs = MockFileSystem::new();
+        let result = fs.remove_file(Path::new("/nonexistent"));
+        assert!(matches!(result, Err(FsError::NotFound { .. })));
+    }
+
+    #[test]
+    fn test_mock_read_link_not_symlink() {
+        let fs = MockFileSystem::new();
+        fs.add_file("/file.txt", "content");
+
+        let result = fs.read_link(Path::new("/file.txt"));
+        assert!(
+            matches!(result, Err(FsError::IoError { message }) if message.contains("symbolic link"))
+        );
+    }
+
+    #[test]
+    fn test_mock_read_link_not_found() {
+        let fs = MockFileSystem::new();
+        let result = fs.read_link(Path::new("/nonexistent"));
+        assert!(matches!(result, Err(FsError::NotFound { .. })));
+    }
+
+    #[test]
+    fn test_mock_rename_not_found() {
+        let fs = MockFileSystem::new();
+        let result = fs.rename(Path::new("/nonexistent"), Path::new("/new"));
+        assert!(matches!(result, Err(FsError::NotFound { .. })));
+    }
+
+    #[test]
+    fn test_mock_rename_with_simulated_error() {
+        let fs = MockFileSystem::new();
+        fs.add_file("/file.txt", "content");
+        fs.set_error(
+            "/file.txt",
+            FsError::PermissionDenied {
+                path: PathBuf::from("/file.txt"),
+            },
+        );
+
+        let result = fs.rename(Path::new("/file.txt"), Path::new("/new.txt"));
+        assert!(matches!(result, Err(FsError::PermissionDenied { .. })));
+    }
+
+    #[test]
+    fn test_mock_copy_source_not_found() {
+        let fs = MockFileSystem::new();
+        let result = fs.copy(Path::new("/nonexistent"), Path::new("/dest"));
+        assert!(matches!(result, Err(FsError::NotFound { .. })));
+    }
+
+    #[test]
+    fn test_mock_copy_with_simulated_error_on_dest() {
+        let fs = MockFileSystem::new();
+        fs.add_file("/source.txt", "content");
+        fs.set_error(
+            "/dest.txt",
+            FsError::PermissionDenied {
+                path: PathBuf::from("/dest.txt"),
+            },
+        );
+
+        let result = fs.copy(Path::new("/source.txt"), Path::new("/dest.txt"));
+        assert!(matches!(result, Err(FsError::PermissionDenied { .. })));
+    }
+
+    #[test]
+    fn test_mock_all_paths() {
+        let fs = MockFileSystem::new();
+        fs.add_file("/a.txt", "");
+        fs.add_file("/b.txt", "");
+        fs.add_dir("/dir");
+
+        let paths = fs.all_paths();
+        assert!(paths.len() >= 3);
+        assert!(paths.contains(&PathBuf::from("/a.txt")));
+        assert!(paths.contains(&PathBuf::from("/b.txt")));
+    }
+
+    #[test]
+    fn test_mock_has_path() {
+        let fs = MockFileSystem::new();
+        fs.add_file("/exists.txt", "");
+
+        assert!(fs.has_path("/exists.txt"));
+        assert!(!fs.has_path("/not-exists.txt"));
+    }
+
+    #[test]
+    fn test_mock_get_content_not_file() {
+        let fs = MockFileSystem::new();
+        fs.add_dir("/dir");
+
+        assert!(fs.get_content("/dir").is_none());
+        assert!(fs.get_content("/nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_mock_remove_symlink() {
+        let fs = MockFileSystem::new();
+        fs.add_symlink("/link", "/target");
+
+        assert!(fs.is_symlink(Path::new("/link")));
+        fs.remove_file(Path::new("/link")).unwrap();
+        assert!(!fs.exists(Path::new("/link")));
+    }
+
+    #[test]
+    fn test_mock_symlink_error_simulation() {
+        let fs = MockFileSystem::new();
+        fs.set_error(
+            "/link",
+            FsError::PermissionDenied {
+                path: PathBuf::from("/link"),
+            },
+        );
+
+        let result = fs.symlink(Path::new("/target"), Path::new("/link"));
+        assert!(matches!(result, Err(FsError::PermissionDenied { .. })));
+    }
+
+    #[test]
+    fn test_mock_create_dir_all_with_error() {
+        let fs = MockFileSystem::new();
+        fs.set_error(
+            "/dir",
+            FsError::PermissionDenied {
+                path: PathBuf::from("/dir"),
+            },
+        );
+
+        let result = fs.create_dir_all(Path::new("/dir"));
+        assert!(matches!(result, Err(FsError::PermissionDenied { .. })));
+    }
+
+    #[test]
+    fn test_mock_read_dir_with_error() {
+        let fs = MockFileSystem::new();
+        fs.add_dir("/dir");
+        fs.set_error(
+            "/dir",
+            FsError::PermissionDenied {
+                path: PathBuf::from("/dir"),
+            },
+        );
+
+        let result = fs.read_dir(Path::new("/dir"));
+        assert!(matches!(result, Err(FsError::PermissionDenied { .. })));
+    }
+
+    #[test]
+    fn test_mock_remove_dir_with_error() {
+        let fs = MockFileSystem::new();
+        fs.add_dir("/dir");
+        fs.set_error(
+            "/dir",
+            FsError::PermissionDenied {
+                path: PathBuf::from("/dir"),
+            },
+        );
+
+        let result = fs.remove_dir(Path::new("/dir"));
+        assert!(matches!(result, Err(FsError::PermissionDenied { .. })));
+    }
+
+    #[test]
+    fn test_mock_write_with_error() {
+        let fs = MockFileSystem::new();
+        fs.set_error(
+            "/file.txt",
+            FsError::PermissionDenied {
+                path: PathBuf::from("/file.txt"),
+            },
+        );
+
+        let result = fs.write(Path::new("/file.txt"), "content");
+        assert!(matches!(result, Err(FsError::PermissionDenied { .. })));
+    }
+
+    #[test]
+    fn test_mock_default() {
+        let fs: MockFileSystem = Default::default();
+        assert!(!fs.exists(Path::new("/anything")));
+    }
+
+    #[test]
+    fn test_real_fs_default() {
+        let fs: RealFileSystem = Default::default();
+        // Just verify it creates without panicking
+        assert!(!fs.exists(Path::new("/definitely/does/not/exist/xyz123")));
+    }
+
+    // =========================================================================
+    // RealFileSystem Error Path Tests
+    // =========================================================================
+
+    #[test]
+    fn test_real_fs_read_nonexistent() {
+        let fs = RealFileSystem::new();
+        let result = fs.read_to_string(Path::new("/definitely/does/not/exist/xyz"));
+        assert!(matches!(result, Err(FsError::NotFound { .. })));
+    }
+
+    #[test]
+    fn test_real_fs_remove_file_nonexistent() {
+        let fs = RealFileSystem::new();
+        let result = fs.remove_file(Path::new("/definitely/does/not/exist/xyz"));
+        assert!(matches!(result, Err(FsError::NotFound { .. })));
+    }
+
+    #[test]
+    fn test_real_fs_remove_dir_nonexistent() {
+        let fs = RealFileSystem::new();
+        let result = fs.remove_dir(Path::new("/definitely/does/not/exist/xyz"));
+        assert!(matches!(result, Err(FsError::NotFound { .. })));
+    }
+
+    #[test]
+    fn test_real_fs_rename_nonexistent() {
+        let fs = RealFileSystem::new();
+        let result = fs.rename(
+            Path::new("/definitely/does/not/exist/xyz"),
+            Path::new("/new"),
+        );
+        assert!(matches!(result, Err(FsError::NotFound { .. })));
+    }
+
+    #[test]
+    fn test_real_fs_read_dir_nonexistent() {
+        let fs = RealFileSystem::new();
+        let result = fs.read_dir(Path::new("/definitely/does/not/exist/xyz"));
+        assert!(matches!(result, Err(FsError::NotFound { .. })));
+    }
+
+    #[test]
+    fn test_real_fs_read_link_nonexistent() {
+        let fs = RealFileSystem::new();
+        let result = fs.read_link(Path::new("/definitely/does/not/exist/xyz"));
+        assert!(matches!(result, Err(FsError::NotFound { .. })));
+    }
+
+    #[test]
+    fn test_real_fs_copy_nonexistent() {
+        let fs = RealFileSystem::new();
+        let result = fs.copy(
+            Path::new("/definitely/does/not/exist/xyz"),
+            Path::new("/dest"),
+        );
+        assert!(matches!(result, Err(FsError::NotFound { .. })));
+    }
+
+    #[test]
+    fn test_real_fs_is_file_nonexistent() {
+        let fs = RealFileSystem::new();
+        assert!(!fs.is_file(Path::new("/definitely/does/not/exist/xyz")));
+    }
+
+    #[test]
+    fn test_real_fs_is_dir_nonexistent() {
+        let fs = RealFileSystem::new();
+        assert!(!fs.is_dir(Path::new("/definitely/does/not/exist/xyz")));
+    }
+
+    #[test]
+    fn test_real_fs_is_symlink_nonexistent() {
+        let fs = RealFileSystem::new();
+        assert!(!fs.is_symlink(Path::new("/definitely/does/not/exist/xyz")));
+    }
+
+    #[test]
+    fn test_real_fs_read_dir_contents() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let fs = RealFileSystem::new();
+
+        // Create some files
+        fs.write(&temp_dir.path().join("a.txt"), "a").unwrap();
+        fs.write(&temp_dir.path().join("b.txt"), "b").unwrap();
+        fs.create_dir_all(&temp_dir.path().join("subdir")).unwrap();
+
+        let mut entries = fs.read_dir(temp_dir.path()).unwrap();
+        entries.sort();
+
+        assert!(entries.contains(&"a.txt".to_string()));
+        assert!(entries.contains(&"b.txt".to_string()));
+        assert!(entries.contains(&"subdir".to_string()));
+    }
+
+    #[test]
+    fn test_real_fs_copy() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let fs = RealFileSystem::new();
+
+        let src = temp_dir.path().join("source.txt");
+        let dst = temp_dir.path().join("dest.txt");
+
+        fs.write(&src, "source content").unwrap();
+        fs.copy(&src, &dst).unwrap();
+
+        assert!(fs.is_file(&dst));
+        let content = fs.read_to_string(&dst).unwrap();
+        assert_eq!(content, "source content");
+    }
+
+    #[test]
+    fn test_real_fs_rename() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let fs = RealFileSystem::new();
+
+        let old = temp_dir.path().join("old.txt");
+        let new = temp_dir.path().join("new.txt");
+
+        fs.write(&old, "content").unwrap();
+        fs.rename(&old, &new).unwrap();
+
+        assert!(!fs.exists(&old));
+        assert!(fs.exists(&new));
+    }
+
+    #[test]
+    fn test_real_fs_remove_empty_dir() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let fs = RealFileSystem::new();
+
+        let dir = temp_dir.path().join("empty_dir");
+        fs.create_dir_all(&dir).unwrap();
+        assert!(fs.is_dir(&dir));
+
+        fs.remove_dir(&dir).unwrap();
+        assert!(!fs.exists(&dir));
+    }
+
+    #[test]
+    fn test_mock_entry_debug() {
+        let file = MockEntry::File("content".to_string());
+        let dir = MockEntry::Dir;
+        let link = MockEntry::Symlink(PathBuf::from("/target"));
+
+        // Test Debug trait
+        let _ = format!("{:?}", file);
+        let _ = format!("{:?}", dir);
+        let _ = format!("{:?}", link);
+    }
+
+    #[test]
+    fn test_mock_entry_clone() {
+        let file = MockEntry::File("content".to_string());
+        let cloned = file.clone();
+        assert!(matches!(cloned, MockEntry::File(s) if s == "content"));
     }
 }
