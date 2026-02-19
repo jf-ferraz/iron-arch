@@ -1,0 +1,14 @@
+# Runtime state
+app/state/logs/
+app/state/locks/
+app/state/cache/
+app/state/run/
+
+# Rust
+rust/target/
+**/*.rs.bk
+
+# Editor/OS
+.DS_Store
+*.swp
+*.swo

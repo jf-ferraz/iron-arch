@@ -459,6 +459,10 @@ impl PackageManager for DefaultPackageManager {
 
         Ok(preview_result)
     }
+
+    fn fetch_news(&self) -> IronResult<Vec<ArchNewsItem>> {
+        fetch_arch_news()
+    }
 }
 
 /// Detect available AUR helper

@@ -2,17 +2,20 @@
 //!
 //! Provides update checking, risk assessment, and snapshot integration.
 //! Includes partial update recovery (FR-5.10) with real-time progress tracking.
+//! Includes pre-flight checks (Phase 2.1) for safe update execution.
 
 use crate::services::state::StateManager;
 use crate::snapshot::SnapshotManager;
 use crate::state::{
     CompletedPackage, OperationStatus, SavedPackage, SavedUpdatePlan, UpdatePhase, UpdateProgress,
 };
-use crate::{IronResult, PackageError};
+use crate::{ArchNewsItem, IronResult, PackageError};
 use chrono::{Duration, Utc};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::fs;
 use std::io::{BufRead, BufReader};
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::LazyLock;
 
@@ -196,10 +199,253 @@ pub struct UpdatePlan {
     pub created_at: chrono::DateTime<Utc>,
 }
 
+// ==========================================================================
+// Pre-flight Checks (Phase 2.1)
+// ==========================================================================
+
+/// Pre-flight check status
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PreflightStatus {
+    /// Check passed
+    Pass,
+    /// Check passed with warning
+    Warning,
+    /// Check failed (blocking)
+    Fail,
+    /// Check skipped or not applicable
+    Skipped,
+}
+
+/// Individual pre-flight check result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PreflightCheck {
+    /// Check name
+    pub name: String,
+    /// Check status
+    pub status: PreflightStatus,
+    /// Human-readable message
+    pub message: String,
+    /// Additional details
+    pub details: Option<String>,
+}
+
+/// Unacknowledged news item requiring attention
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnacknowledgedNews {
+    /// News title
+    pub title: String,
+    /// News URL (used as identifier)
+    pub url: String,
+    /// News date
+    pub date: String,
+    /// Brief description
+    pub description: String,
+    /// Whether this news requires manual intervention before upgrading
+    pub requires_manual: bool,
+}
+
+/// Result of all pre-flight checks
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PreflightResult {
+    /// Network connectivity check
+    pub network_ok: bool,
+    /// Disk space check (minimum 2GB free)
+    pub disk_space_ok: bool,
+    /// Available disk space in bytes
+    pub disk_space_available: u64,
+    /// Battery check (>20% or AC power)
+    pub battery_ok: bool,
+    /// Battery percentage (None if on AC or no battery)
+    pub battery_percent: Option<u8>,
+    /// Whether on AC power
+    pub on_ac_power: bool,
+    /// Pacman lock file check
+    pub pacman_lock_free: bool,
+    /// Time synchronization check
+    pub time_synced: bool,
+    /// Unacknowledged Arch news items (Phase 2.2)
+    pub unacknowledged_news: Vec<UnacknowledgedNews>,
+    /// Whether there's critical news requiring acknowledgment before update
+    pub news_blocks_update: bool,
+    /// Individual check results
+    pub checks: Vec<PreflightCheck>,
+    /// Warning messages (non-blocking)
+    pub warnings: Vec<String>,
+    /// Blocker messages (update cannot proceed)
+    pub blockers: Vec<String>,
+}
+
+impl PreflightResult {
+    /// Create a new pre-flight result with defaults
+    pub fn new() -> Self {
+        Self {
+            network_ok: false,
+            disk_space_ok: false,
+            disk_space_available: 0,
+            battery_ok: true,
+            battery_percent: None,
+            on_ac_power: true,
+            pacman_lock_free: true,
+            time_synced: true,
+            unacknowledged_news: Vec::new(),
+            news_blocks_update: false,
+            checks: Vec::new(),
+            warnings: Vec::new(),
+            blockers: Vec::new(),
+        }
+    }
+
+    /// Check if all pre-flight checks passed including news acknowledgment
+    pub fn can_proceed_with_news(&self) -> bool {
+        self.blockers.is_empty() && !self.news_blocks_update
+    }
+
+    /// Get count of unacknowledged news requiring manual intervention
+    pub fn critical_news_count(&self) -> usize {
+        self.unacknowledged_news
+            .iter()
+            .filter(|n| n.requires_manual)
+            .count()
+    }
+
+    /// Check if all pre-flight checks passed (no blockers)
+    pub fn can_proceed(&self) -> bool {
+        self.blockers.is_empty()
+    }
+
+    /// Check if there are any warnings
+    pub fn has_warnings(&self) -> bool {
+        !self.warnings.is_empty()
+    }
+
+    /// Add a check result
+    pub fn add_check(&mut self, check: PreflightCheck) {
+        match check.status {
+            PreflightStatus::Fail => {
+                self.blockers.push(check.message.clone());
+            }
+            PreflightStatus::Warning => {
+                self.warnings.push(check.message.clone());
+            }
+            _ => {}
+        }
+        self.checks.push(check);
+    }
+}
+
+impl Default for PreflightResult {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ==========================================================================
+// Post-Update Detection (Phase 2.4)
+// ==========================================================================
+
+/// Configuration file conflict type
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ConfigConflictType {
+    /// .pacnew file - new default config from package
+    Pacnew,
+    /// .pacsave file - user config saved when package removed/replaced
+    Pacsave,
+}
+
+/// A configuration file conflict detected after update
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfigConflict {
+    /// Original config file path
+    pub original: String,
+    /// Path to the conflicting file (.pacnew or .pacsave)
+    pub conflict_file: String,
+    /// Type of conflict
+    pub conflict_type: ConfigConflictType,
+    /// Package that owns the original file (if known)
+    pub package: Option<String>,
+}
+
+/// A failed systemd service detected after update
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FailedService {
+    /// Service unit name
+    pub name: String,
+    /// Service load state
+    pub load_state: String,
+    /// Service active state
+    pub active_state: String,
+    /// Brief description
+    pub description: String,
+}
+
+/// Result of post-update checks (Phase 2.4)
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PostUpdateResult {
+    /// Configuration file conflicts (.pacnew/.pacsave)
+    pub config_conflicts: Vec<ConfigConflict>,
+    /// Whether a reboot is required (kernel/glibc/systemd updated)
+    pub reboot_required: bool,
+    /// Packages that require reboot
+    pub reboot_packages: Vec<String>,
+    /// Failed systemd services
+    pub failed_services: Vec<FailedService>,
+    /// Whether there are issues requiring attention
+    pub has_issues: bool,
+}
+
+impl PostUpdateResult {
+    /// Create a new empty post-update result
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Check if there are configuration conflicts to resolve
+    pub fn has_config_conflicts(&self) -> bool {
+        !self.config_conflicts.is_empty()
+    }
+
+    /// Get count of .pacnew files
+    pub fn pacnew_count(&self) -> usize {
+        self.config_conflicts
+            .iter()
+            .filter(|c| c.conflict_type == ConfigConflictType::Pacnew)
+            .count()
+    }
+
+    /// Get count of .pacsave files
+    pub fn pacsave_count(&self) -> usize {
+        self.config_conflicts
+            .iter()
+            .filter(|c| c.conflict_type == ConfigConflictType::Pacsave)
+            .count()
+    }
+
+    /// Check if there are failed services
+    pub fn has_failed_services(&self) -> bool {
+        !self.failed_services.is_empty()
+    }
+
+    /// Update the has_issues flag based on current state
+    pub fn update_has_issues(&mut self) {
+        self.has_issues = !self.config_conflicts.is_empty()
+            || self.reboot_required
+            || !self.failed_services.is_empty();
+    }
+}
+
 /// Update service trait
 pub trait UpdateService {
     /// Check for available updates
     fn check(&self) -> IronResult<UpdatePlan>;
+
+    /// Run pre-flight checks before update (Phase 2.1)
+    fn run_preflight_checks(&self) -> PreflightResult;
+
+    /// Run pre-flight checks including Arch news acknowledgment (Phase 2.2)
+    ///
+    /// Takes pre-fetched news items and checks which ones are unacknowledged.
+    /// Critical news (requiring manual intervention) will block the update.
+    fn run_preflight_checks_with_news(&self, news_items: &[ArchNewsItem]) -> PreflightResult;
 
     /// Apply updates (optionally with snapshot)
     fn apply(&self, create_snapshot: bool) -> IronResult<()>;
@@ -236,6 +482,27 @@ pub trait UpdateService {
 
     /// Clear update progress (marks update as complete or abandons it)
     fn clear_progress(&self) -> IronResult<()>;
+
+    // ==========================================================================
+    // Post-Update Detection (Phase 2.4)
+    // ==========================================================================
+
+    /// Run post-update checks to detect issues after update completion
+    ///
+    /// Detects:
+    /// - `.pacnew` and `.pacsave` configuration file conflicts
+    /// - Packages that require a system reboot (kernel, glibc, systemd)
+    /// - Failed systemd services
+    fn run_post_update_checks(&self, updated_packages: &[String]) -> PostUpdateResult;
+
+    /// Find .pacnew and .pacsave files in /etc
+    fn find_config_conflicts(&self) -> Vec<ConfigConflict>;
+
+    /// Check if updated packages require a reboot
+    fn check_reboot_required(&self, packages: &[String]) -> (bool, Vec<String>);
+
+    /// List failed systemd services
+    fn find_failed_services(&self) -> Vec<FailedService>;
 }
 
 /// Default update service implementation
@@ -374,6 +641,310 @@ impl<S: SnapshotManager> DefaultUpdateService<S> {
                 // Fallback: use pacman -Qu
                 self.run_pacman(&["-Qu"])
             }
+        }
+    }
+
+    // ==========================================================================
+    // Pre-flight Check Helpers (Phase 2.1)
+    // ==========================================================================
+
+    /// Check network connectivity
+    fn check_network(&self) -> PreflightCheck {
+        // Try to reach archlinux.org mirrors
+        let result = Command::new("curl")
+            .args(["-s", "-o", "/dev/null", "-w", "%{http_code}", "--connect-timeout", "5", "https://archlinux.org"])
+            .output();
+
+        match result {
+            Ok(output) if output.status.success() => {
+                let code = String::from_utf8_lossy(&output.stdout);
+                if code.starts_with('2') || code.starts_with('3') {
+                    PreflightCheck {
+                        name: "Network".to_string(),
+                        status: PreflightStatus::Pass,
+                        message: "Network connectivity OK".to_string(),
+                        details: None,
+                    }
+                } else {
+                    PreflightCheck {
+                        name: "Network".to_string(),
+                        status: PreflightStatus::Fail,
+                        message: format!("Network check failed (HTTP {})", code.trim()),
+                        details: Some("Cannot reach archlinux.org".to_string()),
+                    }
+                }
+            }
+            _ => PreflightCheck {
+                name: "Network".to_string(),
+                status: PreflightStatus::Fail,
+                message: "No network connectivity".to_string(),
+                details: Some("Cannot reach archlinux.org".to_string()),
+            },
+        }
+    }
+
+    /// Check available disk space
+    fn check_disk_space(&self) -> (PreflightCheck, u64) {
+        const MIN_SPACE_BYTES: u64 = 2 * 1024 * 1024 * 1024; // 2GB
+        const WARN_SPACE_BYTES: u64 = 5 * 1024 * 1024 * 1024; // 5GB
+
+        // Check /var partition (where packages are cached/extracted)
+        let result = Command::new("df")
+            .args(["--output=avail", "-B1", "/var"])
+            .output();
+
+        match result {
+            Ok(output) if output.status.success() => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let available: u64 = stdout
+                    .lines()
+                    .nth(1) // Skip header
+                    .and_then(|s| s.trim().parse().ok())
+                    .unwrap_or(0);
+
+                let gb_available = available / (1024 * 1024 * 1024);
+
+                if available >= WARN_SPACE_BYTES {
+                    (
+                        PreflightCheck {
+                            name: "Disk Space".to_string(),
+                            status: PreflightStatus::Pass,
+                            message: format!("{}GB available on /var", gb_available),
+                            details: None,
+                        },
+                        available,
+                    )
+                } else if available >= MIN_SPACE_BYTES {
+                    (
+                        PreflightCheck {
+                            name: "Disk Space".to_string(),
+                            status: PreflightStatus::Warning,
+                            message: format!("Low disk space: {}GB available (recommended: 5GB+)", gb_available),
+                            details: Some("Consider cleaning package cache".to_string()),
+                        },
+                        available,
+                    )
+                } else {
+                    (
+                        PreflightCheck {
+                            name: "Disk Space".to_string(),
+                            status: PreflightStatus::Fail,
+                            message: format!("Insufficient disk space: {}GB (minimum: 2GB)", gb_available),
+                            details: Some("Free up space before updating".to_string()),
+                        },
+                        available,
+                    )
+                }
+            }
+            _ => (
+                PreflightCheck {
+                    name: "Disk Space".to_string(),
+                    status: PreflightStatus::Warning,
+                    message: "Could not determine disk space".to_string(),
+                    details: None,
+                },
+                0,
+            ),
+        }
+    }
+
+    /// Check battery status
+    fn check_battery(&self) -> (PreflightCheck, Option<u8>, bool) {
+        const MIN_BATTERY: u8 = 20;
+
+        // Check for battery
+        let battery_path = Path::new("/sys/class/power_supply/BAT0/capacity");
+        let ac_path = Path::new("/sys/class/power_supply/AC/online");
+
+        // Check AC power status
+        let on_ac = fs::read_to_string(ac_path)
+            .map(|s| s.trim() == "1")
+            .unwrap_or(true); // Assume AC if can't read
+
+        // Check battery capacity
+        let battery_percent: Option<u8> = fs::read_to_string(battery_path)
+            .ok()
+            .and_then(|s| s.trim().parse().ok());
+
+        match (battery_percent, on_ac) {
+            (_, true) => (
+                PreflightCheck {
+                    name: "Power".to_string(),
+                    status: PreflightStatus::Pass,
+                    message: "On AC power".to_string(),
+                    details: None,
+                },
+                battery_percent,
+                true,
+            ),
+            (Some(pct), false) if pct >= MIN_BATTERY => (
+                PreflightCheck {
+                    name: "Power".to_string(),
+                    status: PreflightStatus::Warning,
+                    message: format!("On battery ({}%)", pct),
+                    details: Some("Consider connecting to AC power".to_string()),
+                },
+                Some(pct),
+                false,
+            ),
+            (Some(pct), false) => (
+                PreflightCheck {
+                    name: "Power".to_string(),
+                    status: PreflightStatus::Fail,
+                    message: format!("Battery too low ({}%)", pct),
+                    details: Some(format!("Minimum {}% required for update", MIN_BATTERY)),
+                },
+                Some(pct),
+                false,
+            ),
+            (None, false) => (
+                PreflightCheck {
+                    name: "Power".to_string(),
+                    status: PreflightStatus::Pass,
+                    message: "No battery detected (desktop)".to_string(),
+                    details: None,
+                },
+                None,
+                false,
+            ),
+        }
+    }
+
+    /// Check if pacman lock file exists
+    fn check_pacman_lock(&self) -> PreflightCheck {
+        let lock_path = Path::new("/var/lib/pacman/db.lck");
+
+        if lock_path.exists() {
+            PreflightCheck {
+                name: "Pacman Lock".to_string(),
+                status: PreflightStatus::Fail,
+                message: "Pacman database is locked".to_string(),
+                details: Some("Another package manager may be running, or remove stale lock with: sudo rm /var/lib/pacman/db.lck".to_string()),
+            }
+        } else {
+            PreflightCheck {
+                name: "Pacman Lock".to_string(),
+                status: PreflightStatus::Pass,
+                message: "Pacman database is available".to_string(),
+                details: None,
+            }
+        }
+    }
+
+    /// Check time synchronization
+    fn check_time_sync(&self) -> PreflightCheck {
+        let result = Command::new("timedatectl")
+            .args(["show", "--property=NTPSynchronized", "--value"])
+            .output();
+
+        match result {
+            Ok(output) if output.status.success() => {
+                let synced = String::from_utf8_lossy(&output.stdout).trim() == "yes";
+                if synced {
+                    PreflightCheck {
+                        name: "Time Sync".to_string(),
+                        status: PreflightStatus::Pass,
+                        message: "System time is synchronized".to_string(),
+                        details: None,
+                    }
+                } else {
+                    PreflightCheck {
+                        name: "Time Sync".to_string(),
+                        status: PreflightStatus::Warning,
+                        message: "System time may not be synchronized".to_string(),
+                        details: Some("Run: sudo timedatectl set-ntp true".to_string()),
+                    }
+                }
+            }
+            _ => PreflightCheck {
+                name: "Time Sync".to_string(),
+                status: PreflightStatus::Skipped,
+                message: "Could not check time synchronization".to_string(),
+                details: None,
+            },
+        }
+    }
+
+    /// Check Arch news for unacknowledged items (Phase 2.2)
+    ///
+    /// Returns the check result, list of unacknowledged news, and whether update is blocked
+    fn check_news(&self, news_items: &[ArchNewsItem]) -> (PreflightCheck, Vec<UnacknowledgedNews>, bool) {
+        if news_items.is_empty() {
+            return (
+                PreflightCheck {
+                    name: "Arch News".to_string(),
+                    status: PreflightStatus::Pass,
+                    message: "No recent Arch news".to_string(),
+                    details: None,
+                },
+                Vec::new(),
+                false,
+            );
+        }
+
+        // Filter to unacknowledged news using state manager
+        let unacknowledged: Vec<UnacknowledgedNews> = news_items
+            .iter()
+            .filter(|item| !self.state_manager.is_news_acknowledged(&item.url))
+            .map(|item| UnacknowledgedNews {
+                title: item.title.clone(),
+                url: item.url.clone(),
+                date: item.date.clone(),
+                description: if item.description.len() > 200 {
+                    format!("{}...", &item.description[..200])
+                } else {
+                    item.description.clone()
+                },
+                requires_manual: item.requires_manual,
+            })
+            .collect();
+
+        if unacknowledged.is_empty() {
+            return (
+                PreflightCheck {
+                    name: "Arch News".to_string(),
+                    status: PreflightStatus::Pass,
+                    message: "All Arch news acknowledged".to_string(),
+                    details: None,
+                },
+                Vec::new(),
+                false,
+            );
+        }
+
+        // Check for critical news (requiring manual intervention)
+        let critical_count = unacknowledged.iter().filter(|n| n.requires_manual).count();
+        let total_count = unacknowledged.len();
+
+        if critical_count > 0 {
+            (
+                PreflightCheck {
+                    name: "Arch News".to_string(),
+                    status: PreflightStatus::Fail,
+                    message: format!(
+                        "{} unacknowledged news item(s) requiring manual intervention",
+                        critical_count
+                    ),
+                    details: Some(
+                        "Review news and acknowledge before updating. \
+                        Critical news may require manual steps before or after the update."
+                            .to_string(),
+                    ),
+                },
+                unacknowledged,
+                true, // Block update
+            )
+        } else {
+            (
+                PreflightCheck {
+                    name: "Arch News".to_string(),
+                    status: PreflightStatus::Warning,
+                    message: format!("{} unacknowledged news item(s)", total_count),
+                    details: Some("Consider reviewing before updating".to_string()),
+                },
+                unacknowledged,
+                false, // Don't block, just warn
+            )
         }
     }
 
@@ -559,6 +1130,54 @@ impl<S: SnapshotManager> UpdateService for DefaultUpdateService<S> {
             news_items: vec![], // TODO: Integrate with Arch News parser
             created_at: Utc::now(),
         })
+    }
+
+    fn run_preflight_checks(&self) -> PreflightResult {
+        let mut result = PreflightResult::new();
+
+        // Run all pre-flight checks
+        let network_check = self.check_network();
+        result.network_ok = network_check.status == PreflightStatus::Pass;
+        result.add_check(network_check);
+
+        let (disk_check, disk_space) = self.check_disk_space();
+        result.disk_space_ok = disk_check.status == PreflightStatus::Pass
+            || disk_check.status == PreflightStatus::Warning;
+        result.disk_space_available = disk_space;
+        result.add_check(disk_check);
+
+        let (battery_check, battery_pct, on_ac) = self.check_battery();
+        result.battery_ok = battery_check.status == PreflightStatus::Pass
+            || battery_check.status == PreflightStatus::Warning;
+        result.battery_percent = battery_pct;
+        result.on_ac_power = on_ac;
+        result.add_check(battery_check);
+
+        let pacman_check = self.check_pacman_lock();
+        result.pacman_lock_free = pacman_check.status == PreflightStatus::Pass;
+        result.add_check(pacman_check);
+
+        let time_check = self.check_time_sync();
+        result.time_synced = time_check.status == PreflightStatus::Pass;
+        result.add_check(time_check);
+
+        result
+    }
+
+    fn run_preflight_checks_with_news(&self, news_items: &[ArchNewsItem]) -> PreflightResult {
+        // Run all standard pre-flight checks first
+        let mut result = self.run_preflight_checks();
+
+        // Add news check (Phase 2.2)
+        let (news_check, unacknowledged, blocks_update) = self.check_news(news_items);
+        result.add_check(news_check);
+        result.unacknowledged_news = unacknowledged;
+        result.news_blocks_update = blocks_update;
+
+        // Mark news as fetched in state
+        let _ = self.state_manager.mark_news_fetched();
+
+        result
     }
 
     fn apply(&self, create_snapshot: bool) -> IronResult<()> {
@@ -805,6 +1424,158 @@ impl<S: SnapshotManager> UpdateService for DefaultUpdateService<S> {
 
     fn clear_progress(&self) -> IronResult<()> {
         self.state_manager.set_update_progress(None)
+    }
+
+    // ==========================================================================
+    // Post-Update Detection Implementation (Phase 2.4)
+    // ==========================================================================
+
+    fn run_post_update_checks(&self, updated_packages: &[String]) -> PostUpdateResult {
+        let mut result = PostUpdateResult::new();
+
+        // Find config conflicts (.pacnew/.pacsave files)
+        result.config_conflicts = self.find_config_conflicts();
+
+        // Check if any updated packages require reboot
+        let (reboot_required, reboot_packages) = self.check_reboot_required(updated_packages);
+        result.reboot_required = reboot_required;
+        result.reboot_packages = reboot_packages;
+
+        // Find failed systemd services
+        result.failed_services = self.find_failed_services();
+
+        // Update the has_issues flag
+        result.update_has_issues();
+
+        result
+    }
+
+    fn find_config_conflicts(&self) -> Vec<ConfigConflict> {
+        let mut conflicts = Vec::new();
+
+        // Search for .pacnew files in /etc
+        if let Ok(output) = Command::new("find")
+            .args(["/etc", "-name", "*.pacnew", "-type", "f"])
+            .output()
+        {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    let line = line.trim();
+                    if !line.is_empty() {
+                        let original = line.trim_end_matches(".pacnew").to_string();
+                        conflicts.push(ConfigConflict {
+                            original: original.clone(),
+                            conflict_file: line.to_string(),
+                            conflict_type: ConfigConflictType::Pacnew,
+                            package: Self::find_package_owner(&original),
+                        });
+                    }
+                }
+            }
+        }
+
+        // Search for .pacsave files in /etc
+        if let Ok(output) = Command::new("find")
+            .args(["/etc", "-name", "*.pacsave", "-type", "f"])
+            .output()
+        {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    let line = line.trim();
+                    if !line.is_empty() {
+                        let original = line.trim_end_matches(".pacsave").to_string();
+                        conflicts.push(ConfigConflict {
+                            original: original.clone(),
+                            conflict_file: line.to_string(),
+                            conflict_type: ConfigConflictType::Pacsave,
+                            package: Self::find_package_owner(&original),
+                        });
+                    }
+                }
+            }
+        }
+
+        conflicts
+    }
+
+    fn check_reboot_required(&self, packages: &[String]) -> (bool, Vec<String>) {
+        let reboot_packages: Vec<String> = packages
+            .iter()
+            .filter(|p| {
+                let name = p.to_lowercase();
+                // Kernel packages
+                name.starts_with("linux")
+                    // Core system libraries
+                    || name == "glibc"
+                    || name == "gcc-libs"
+                    // Systemd and related
+                    || name == "systemd"
+                    || name.starts_with("systemd-")
+                    // Graphics drivers
+                    || name.starts_with("nvidia")
+                    || name.starts_with("mesa")
+                    // DBus (affects many services)
+                    || name == "dbus"
+            })
+            .cloned()
+            .collect();
+
+        (!reboot_packages.is_empty(), reboot_packages)
+    }
+
+    fn find_failed_services(&self) -> Vec<FailedService> {
+        let mut failed = Vec::new();
+
+        // Run systemctl --failed to find failed services
+        if let Ok(output) = Command::new("systemctl")
+            .args(["--failed", "--no-legend", "--no-pager"])
+            .output()
+        {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    // Format: UNIT LOAD ACTIVE SUB DESCRIPTION...
+                    if parts.len() >= 4 {
+                        failed.push(FailedService {
+                            name: parts[0].to_string(),
+                            load_state: parts[1].to_string(),
+                            active_state: parts[2].to_string(),
+                            description: parts[4..].join(" "),
+                        });
+                    }
+                }
+            }
+        }
+
+        failed
+    }
+}
+
+impl<S: SnapshotManager> DefaultUpdateService<S> {
+    /// Find which package owns a file using pacman -Qo
+    fn find_package_owner(file_path: &str) -> Option<String> {
+        if let Ok(output) = Command::new("pacman")
+            .args(["-Qo", file_path])
+            .output()
+        {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                // Output format: "/path/to/file is owned by package version"
+                if let Some(line) = stdout.lines().next() {
+                    let parts: Vec<&str> = line.split(" is owned by ").collect();
+                    if parts.len() >= 2 {
+                        // Get package name (without version)
+                        if let Some(pkg) = parts[1].split_whitespace().next() {
+                            return Some(pkg.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        None
     }
 }
 
@@ -1906,5 +2677,763 @@ mod tests {
         assert_eq!(saved.packages[0].current_version, "120.0");
         assert_eq!(saved.packages[1].name, "linux");
         assert!(saved.snapshot_recommended);
+    }
+
+    // ==========================================================================
+    // Pre-flight Check Tests (Phase 2.1)
+    // ==========================================================================
+
+    #[test]
+    fn test_preflight_status_equality() {
+        assert_eq!(PreflightStatus::Pass, PreflightStatus::Pass);
+        assert_ne!(PreflightStatus::Pass, PreflightStatus::Fail);
+        assert_ne!(PreflightStatus::Warning, PreflightStatus::Skipped);
+    }
+
+    #[test]
+    fn test_preflight_check_creation() {
+        let check = PreflightCheck {
+            name: "Network".to_string(),
+            status: PreflightStatus::Pass,
+            message: "Network OK".to_string(),
+            details: None,
+        };
+
+        assert_eq!(check.name, "Network");
+        assert_eq!(check.status, PreflightStatus::Pass);
+        assert!(check.details.is_none());
+    }
+
+    #[test]
+    fn test_preflight_check_with_details() {
+        let check = PreflightCheck {
+            name: "Disk Space".to_string(),
+            status: PreflightStatus::Fail,
+            message: "Not enough space".to_string(),
+            details: Some("Need 2GB, have 500MB".to_string()),
+        };
+
+        assert_eq!(check.status, PreflightStatus::Fail);
+        assert!(check.details.is_some());
+        assert!(check.details.unwrap().contains("2GB"));
+    }
+
+    #[test]
+    fn test_preflight_result_new() {
+        let result = PreflightResult::new();
+
+        // Default values
+        assert!(!result.network_ok);
+        assert!(!result.disk_space_ok);
+        assert_eq!(result.disk_space_available, 0);
+        assert!(result.battery_ok); // Defaults to true (assume AC)
+        assert!(result.on_ac_power); // Defaults to true
+        assert!(result.pacman_lock_free); // Defaults to true
+        assert!(result.time_synced); // Defaults to true
+        assert!(result.checks.is_empty());
+        assert!(result.warnings.is_empty());
+        assert!(result.blockers.is_empty());
+    }
+
+    #[test]
+    fn test_preflight_result_default() {
+        let result = PreflightResult::default();
+        assert!(result.blockers.is_empty());
+    }
+
+    #[test]
+    fn test_preflight_result_can_proceed_no_blockers() {
+        let result = PreflightResult::new();
+        assert!(result.can_proceed()); // No blockers = can proceed
+    }
+
+    #[test]
+    fn test_preflight_result_can_proceed_with_blockers() {
+        let mut result = PreflightResult::new();
+        result.blockers.push("Network failed".to_string());
+        assert!(!result.can_proceed());
+    }
+
+    #[test]
+    fn test_preflight_result_has_warnings_empty() {
+        let result = PreflightResult::new();
+        assert!(!result.has_warnings());
+    }
+
+    #[test]
+    fn test_preflight_result_has_warnings_true() {
+        let mut result = PreflightResult::new();
+        result.warnings.push("Low battery".to_string());
+        assert!(result.has_warnings());
+    }
+
+    #[test]
+    fn test_preflight_result_add_check_pass() {
+        let mut result = PreflightResult::new();
+
+        let check = PreflightCheck {
+            name: "Test".to_string(),
+            status: PreflightStatus::Pass,
+            message: "Test passed".to_string(),
+            details: None,
+        };
+
+        result.add_check(check);
+
+        assert_eq!(result.checks.len(), 1);
+        assert!(result.warnings.is_empty());
+        assert!(result.blockers.is_empty());
+    }
+
+    #[test]
+    fn test_preflight_result_add_check_warning() {
+        let mut result = PreflightResult::new();
+
+        let check = PreflightCheck {
+            name: "Battery".to_string(),
+            status: PreflightStatus::Warning,
+            message: "Low battery (30%)".to_string(),
+            details: None,
+        };
+
+        result.add_check(check);
+
+        assert_eq!(result.checks.len(), 1);
+        assert_eq!(result.warnings.len(), 1);
+        assert!(result.blockers.is_empty());
+        assert!(result.warnings[0].contains("Low battery"));
+    }
+
+    #[test]
+    fn test_preflight_result_add_check_fail() {
+        let mut result = PreflightResult::new();
+
+        let check = PreflightCheck {
+            name: "Network".to_string(),
+            status: PreflightStatus::Fail,
+            message: "No network connectivity".to_string(),
+            details: None,
+        };
+
+        result.add_check(check);
+
+        assert_eq!(result.checks.len(), 1);
+        assert!(result.warnings.is_empty());
+        assert_eq!(result.blockers.len(), 1);
+        assert!(result.blockers[0].contains("No network"));
+    }
+
+    #[test]
+    fn test_preflight_result_add_check_skipped() {
+        let mut result = PreflightResult::new();
+
+        let check = PreflightCheck {
+            name: "Time Sync".to_string(),
+            status: PreflightStatus::Skipped,
+            message: "Could not check".to_string(),
+            details: None,
+        };
+
+        result.add_check(check);
+
+        assert_eq!(result.checks.len(), 1);
+        assert!(result.warnings.is_empty());
+        assert!(result.blockers.is_empty());
+    }
+
+    #[test]
+    fn test_preflight_result_multiple_checks() {
+        let mut result = PreflightResult::new();
+
+        // Add a passing check
+        result.add_check(PreflightCheck {
+            name: "Network".to_string(),
+            status: PreflightStatus::Pass,
+            message: "OK".to_string(),
+            details: None,
+        });
+
+        // Add a warning
+        result.add_check(PreflightCheck {
+            name: "Battery".to_string(),
+            status: PreflightStatus::Warning,
+            message: "Low".to_string(),
+            details: None,
+        });
+
+        // Add a blocker
+        result.add_check(PreflightCheck {
+            name: "Disk".to_string(),
+            status: PreflightStatus::Fail,
+            message: "Full".to_string(),
+            details: None,
+        });
+
+        assert_eq!(result.checks.len(), 3);
+        assert_eq!(result.warnings.len(), 1);
+        assert_eq!(result.blockers.len(), 1);
+        assert!(!result.can_proceed());
+        assert!(result.has_warnings());
+    }
+
+    #[test]
+    fn test_preflight_result_clone() {
+        let mut result = PreflightResult::new();
+        result.network_ok = true;
+        result.disk_space_available = 1024;
+        result.warnings.push("Test warning".to_string());
+
+        let cloned = result.clone();
+        assert!(cloned.network_ok);
+        assert_eq!(cloned.disk_space_available, 1024);
+        assert_eq!(cloned.warnings.len(), 1);
+    }
+
+    #[test]
+    fn test_preflight_check_clone() {
+        let check = PreflightCheck {
+            name: "Test".to_string(),
+            status: PreflightStatus::Pass,
+            message: "Message".to_string(),
+            details: Some("Details".to_string()),
+        };
+
+        let cloned = check.clone();
+        assert_eq!(cloned.name, "Test");
+        assert_eq!(cloned.status, PreflightStatus::Pass);
+        assert!(cloned.details.is_some());
+    }
+
+    #[test]
+    fn test_preflight_status_copy() {
+        let status = PreflightStatus::Warning;
+        let copied = status;
+        assert_eq!(copied, PreflightStatus::Warning);
+    }
+
+    // Integration test for run_preflight_checks
+    // Note: This test may have varying results depending on system state
+    #[test]
+    fn test_run_preflight_checks_returns_result() {
+        let (service, _temp) = create_test_service();
+
+        let result = service.run_preflight_checks();
+
+        // Should have all 5 checks
+        assert_eq!(result.checks.len(), 5);
+
+        // Check names should be present
+        let check_names: Vec<&str> = result.checks.iter().map(|c| c.name.as_str()).collect();
+        assert!(check_names.contains(&"Network"));
+        assert!(check_names.contains(&"Disk Space"));
+        assert!(check_names.contains(&"Power"));
+        assert!(check_names.contains(&"Pacman Lock"));
+        assert!(check_names.contains(&"Time Sync"));
+    }
+
+    // ==========================================================================
+    // Arch News Check Tests (Phase 2.2)
+    // ==========================================================================
+
+    fn create_test_news_item(
+        title: &str,
+        url: &str,
+        requires_manual: bool,
+    ) -> ArchNewsItem {
+        ArchNewsItem {
+            title: title.to_string(),
+            url: url.to_string(),
+            date: "2024-01-15".to_string(),
+            description: "Test news description".to_string(),
+            requires_manual,
+        }
+    }
+
+    #[test]
+    fn test_check_news_empty_items() {
+        let (service, _temp) = create_test_service();
+
+        let (check, unack, blocks) = service.check_news(&[]);
+
+        assert_eq!(check.status, PreflightStatus::Pass);
+        assert!(check.message.contains("No recent"));
+        assert!(unack.is_empty());
+        assert!(!blocks);
+    }
+
+    #[test]
+    fn test_check_news_all_acknowledged() {
+        let (service, temp) = create_test_service();
+
+        // Acknowledge all news first
+        let news = vec![
+            create_test_news_item("Test News 1", "https://archlinux.org/news/1/", false),
+            create_test_news_item("Test News 2", "https://archlinux.org/news/2/", false),
+        ];
+        for item in &news {
+            service.state_manager.acknowledge_news(&item.url).unwrap();
+        }
+
+        let (check, unack, blocks) = service.check_news(&news);
+
+        assert_eq!(check.status, PreflightStatus::Pass);
+        assert!(check.message.contains("acknowledged"));
+        assert!(unack.is_empty());
+        assert!(!blocks);
+        drop(temp);
+    }
+
+    #[test]
+    fn test_check_news_unacknowledged_non_critical() {
+        let (service, _temp) = create_test_service();
+
+        let news = vec![
+            create_test_news_item("Test News", "https://archlinux.org/news/1/", false),
+        ];
+
+        let (check, unack, blocks) = service.check_news(&news);
+
+        assert_eq!(check.status, PreflightStatus::Warning);
+        assert!(check.message.contains("1 unacknowledged"));
+        assert_eq!(unack.len(), 1);
+        assert!(!blocks); // Non-critical news doesn't block
+    }
+
+    #[test]
+    fn test_check_news_unacknowledged_critical() {
+        let (service, _temp) = create_test_service();
+
+        let news = vec![
+            create_test_news_item(
+                "Manual intervention required",
+                "https://archlinux.org/news/critical/",
+                true,
+            ),
+        ];
+
+        let (check, unack, blocks) = service.check_news(&news);
+
+        assert_eq!(check.status, PreflightStatus::Fail);
+        assert!(check.message.contains("manual intervention"));
+        assert_eq!(unack.len(), 1);
+        assert!(unack[0].requires_manual);
+        assert!(blocks); // Critical news blocks update
+    }
+
+    #[test]
+    fn test_check_news_mixed_critical_and_non_critical() {
+        let (service, _temp) = create_test_service();
+
+        let news = vec![
+            create_test_news_item("Regular update", "https://archlinux.org/news/1/", false),
+            create_test_news_item("Critical update", "https://archlinux.org/news/2/", true),
+            create_test_news_item("Another update", "https://archlinux.org/news/3/", false),
+        ];
+
+        let (check, unack, blocks) = service.check_news(&news);
+
+        assert_eq!(check.status, PreflightStatus::Fail); // Critical takes precedence
+        assert_eq!(unack.len(), 3);
+        assert!(blocks); // Blocked due to critical news
+    }
+
+    #[test]
+    fn test_check_news_partially_acknowledged() {
+        let (service, temp) = create_test_service();
+
+        let news = vec![
+            create_test_news_item("Acknowledged news", "https://archlinux.org/news/1/", false),
+            create_test_news_item("New news", "https://archlinux.org/news/2/", false),
+        ];
+
+        // Acknowledge only the first one
+        service
+            .state_manager
+            .acknowledge_news("https://archlinux.org/news/1/")
+            .unwrap();
+
+        let (check, unack, blocks) = service.check_news(&news);
+
+        assert_eq!(check.status, PreflightStatus::Warning);
+        assert_eq!(unack.len(), 1);
+        assert_eq!(unack[0].url, "https://archlinux.org/news/2/");
+        assert!(!blocks);
+        drop(temp);
+    }
+
+    #[test]
+    fn test_run_preflight_checks_with_news() {
+        let (service, _temp) = create_test_service();
+
+        let news = vec![
+            create_test_news_item("Test News", "https://archlinux.org/news/1/", false),
+        ];
+
+        let result = service.run_preflight_checks_with_news(&news);
+
+        // Should have 6 checks (5 standard + 1 news)
+        assert_eq!(result.checks.len(), 6);
+
+        let check_names: Vec<&str> = result.checks.iter().map(|c| c.name.as_str()).collect();
+        assert!(check_names.contains(&"Arch News"));
+
+        // Should have unacknowledged news
+        assert_eq!(result.unacknowledged_news.len(), 1);
+        assert!(!result.news_blocks_update);
+    }
+
+    #[test]
+    fn test_run_preflight_checks_with_critical_news() {
+        let (service, _temp) = create_test_service();
+
+        let news = vec![create_test_news_item(
+            "Manual intervention required",
+            "https://archlinux.org/news/critical/",
+            true,
+        )];
+
+        let result = service.run_preflight_checks_with_news(&news);
+
+        assert!(result.news_blocks_update);
+        assert_eq!(result.critical_news_count(), 1);
+        assert!(!result.can_proceed_with_news()); // Should not be able to proceed
+    }
+
+    #[test]
+    fn test_run_preflight_checks_with_no_news() {
+        let (service, _temp) = create_test_service();
+
+        let result = service.run_preflight_checks_with_news(&[]);
+
+        // Should still have the Arch News check
+        let check_names: Vec<&str> = result.checks.iter().map(|c| c.name.as_str()).collect();
+        assert!(check_names.contains(&"Arch News"));
+
+        assert!(result.unacknowledged_news.is_empty());
+        assert!(!result.news_blocks_update);
+    }
+
+    #[test]
+    fn test_unacknowledged_news_struct() {
+        let news = UnacknowledgedNews {
+            title: "Test Title".to_string(),
+            url: "https://example.com".to_string(),
+            date: "2024-01-15".to_string(),
+            description: "Test description".to_string(),
+            requires_manual: true,
+        };
+
+        assert_eq!(news.title, "Test Title");
+        assert_eq!(news.url, "https://example.com");
+        assert!(news.requires_manual);
+    }
+
+    #[test]
+    fn test_unacknowledged_news_serialization() {
+        let news = UnacknowledgedNews {
+            title: "Test".to_string(),
+            url: "https://example.com".to_string(),
+            date: "2024-01-15".to_string(),
+            description: "Description".to_string(),
+            requires_manual: false,
+        };
+
+        let json = serde_json::to_string(&news).unwrap();
+        assert!(json.contains("Test"));
+        assert!(json.contains("https://example.com"));
+
+        let deserialized: UnacknowledgedNews = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.title, news.title);
+        assert_eq!(deserialized.requires_manual, news.requires_manual);
+    }
+
+    #[test]
+    fn test_preflight_result_can_proceed_with_news() {
+        let mut result = PreflightResult::new();
+        assert!(result.can_proceed_with_news()); // No blockers, no news blocking
+
+        result.news_blocks_update = true;
+        assert!(!result.can_proceed_with_news()); // Blocked by news
+
+        result.news_blocks_update = false;
+        result.blockers.push("Test blocker".to_string());
+        assert!(!result.can_proceed_with_news()); // Blocked by other issue
+    }
+
+    #[test]
+    fn test_preflight_result_critical_news_count() {
+        let mut result = PreflightResult::new();
+        assert_eq!(result.critical_news_count(), 0);
+
+        result.unacknowledged_news.push(UnacknowledgedNews {
+            title: "Test".to_string(),
+            url: "url1".to_string(),
+            date: "date".to_string(),
+            description: "desc".to_string(),
+            requires_manual: false,
+        });
+        assert_eq!(result.critical_news_count(), 0);
+
+        result.unacknowledged_news.push(UnacknowledgedNews {
+            title: "Critical".to_string(),
+            url: "url2".to_string(),
+            date: "date".to_string(),
+            description: "desc".to_string(),
+            requires_manual: true,
+        });
+        assert_eq!(result.critical_news_count(), 1);
+
+        result.unacknowledged_news.push(UnacknowledgedNews {
+            title: "Another Critical".to_string(),
+            url: "url3".to_string(),
+            date: "date".to_string(),
+            description: "desc".to_string(),
+            requires_manual: true,
+        });
+        assert_eq!(result.critical_news_count(), 2);
+    }
+
+    #[test]
+    fn test_check_news_description_truncation() {
+        let (service, _temp) = create_test_service();
+
+        // Create news with long description
+        let long_desc = "A".repeat(300);
+        let news = vec![ArchNewsItem {
+            title: "Test".to_string(),
+            url: "https://archlinux.org/news/1/".to_string(),
+            date: "2024-01-15".to_string(),
+            description: long_desc,
+            requires_manual: false,
+        }];
+
+        let (_, unack, _) = service.check_news(&news);
+
+        // Description should be truncated to ~200 chars + "..."
+        assert!(unack[0].description.len() <= 205);
+        assert!(unack[0].description.ends_with("..."));
+    }
+
+    // ==========================================================================
+    // Post-Update Detection Tests (Phase 2.4)
+    // ==========================================================================
+
+    #[test]
+    fn test_post_update_result_new() {
+        let result = PostUpdateResult::new();
+        assert!(result.config_conflicts.is_empty());
+        assert!(!result.reboot_required);
+        assert!(result.reboot_packages.is_empty());
+        assert!(result.failed_services.is_empty());
+        assert!(!result.has_issues);
+    }
+
+    #[test]
+    fn test_post_update_result_has_config_conflicts() {
+        let mut result = PostUpdateResult::new();
+        assert!(!result.has_config_conflicts());
+
+        result.config_conflicts.push(ConfigConflict {
+            original: "/etc/pacman.conf".to_string(),
+            conflict_file: "/etc/pacman.conf.pacnew".to_string(),
+            conflict_type: ConfigConflictType::Pacnew,
+            package: Some("pacman".to_string()),
+        });
+        assert!(result.has_config_conflicts());
+    }
+
+    #[test]
+    fn test_post_update_result_pacnew_count() {
+        let mut result = PostUpdateResult::new();
+        assert_eq!(result.pacnew_count(), 0);
+
+        result.config_conflicts.push(ConfigConflict {
+            original: "/etc/pacman.conf".to_string(),
+            conflict_file: "/etc/pacman.conf.pacnew".to_string(),
+            conflict_type: ConfigConflictType::Pacnew,
+            package: None,
+        });
+        result.config_conflicts.push(ConfigConflict {
+            original: "/etc/mkinitcpio.conf".to_string(),
+            conflict_file: "/etc/mkinitcpio.conf.pacnew".to_string(),
+            conflict_type: ConfigConflictType::Pacnew,
+            package: None,
+        });
+        result.config_conflicts.push(ConfigConflict {
+            original: "/etc/ssh/sshd_config".to_string(),
+            conflict_file: "/etc/ssh/sshd_config.pacsave".to_string(),
+            conflict_type: ConfigConflictType::Pacsave,
+            package: None,
+        });
+
+        assert_eq!(result.pacnew_count(), 2);
+        assert_eq!(result.pacsave_count(), 1);
+    }
+
+    #[test]
+    fn test_post_update_result_has_failed_services() {
+        let mut result = PostUpdateResult::new();
+        assert!(!result.has_failed_services());
+
+        result.failed_services.push(FailedService {
+            name: "sshd.service".to_string(),
+            load_state: "loaded".to_string(),
+            active_state: "failed".to_string(),
+            description: "OpenSSH Daemon".to_string(),
+        });
+        assert!(result.has_failed_services());
+    }
+
+    #[test]
+    fn test_post_update_result_update_has_issues() {
+        let mut result = PostUpdateResult::new();
+        result.update_has_issues();
+        assert!(!result.has_issues);
+
+        // Add a config conflict
+        result.config_conflicts.push(ConfigConflict {
+            original: "/etc/test".to_string(),
+            conflict_file: "/etc/test.pacnew".to_string(),
+            conflict_type: ConfigConflictType::Pacnew,
+            package: None,
+        });
+        result.update_has_issues();
+        assert!(result.has_issues);
+
+        // Test with reboot required
+        let mut result2 = PostUpdateResult::new();
+        result2.reboot_required = true;
+        result2.update_has_issues();
+        assert!(result2.has_issues);
+
+        // Test with failed services
+        let mut result3 = PostUpdateResult::new();
+        result3.failed_services.push(FailedService {
+            name: "test.service".to_string(),
+            load_state: "loaded".to_string(),
+            active_state: "failed".to_string(),
+            description: "Test".to_string(),
+        });
+        result3.update_has_issues();
+        assert!(result3.has_issues);
+    }
+
+    #[test]
+    fn test_check_reboot_required_kernel() {
+        let (service, _temp) = create_test_service();
+
+        let packages = vec!["linux".to_string(), "firefox".to_string()];
+        let (required, reboot_pkgs) = service.check_reboot_required(&packages);
+
+        assert!(required);
+        assert!(reboot_pkgs.contains(&"linux".to_string()));
+        assert!(!reboot_pkgs.contains(&"firefox".to_string()));
+    }
+
+    #[test]
+    fn test_check_reboot_required_glibc() {
+        let (service, _temp) = create_test_service();
+
+        let packages = vec!["glibc".to_string(), "vim".to_string()];
+        let (required, reboot_pkgs) = service.check_reboot_required(&packages);
+
+        assert!(required);
+        assert!(reboot_pkgs.contains(&"glibc".to_string()));
+    }
+
+    #[test]
+    fn test_check_reboot_required_systemd() {
+        let (service, _temp) = create_test_service();
+
+        let packages = vec!["systemd".to_string(), "systemd-libs".to_string()];
+        let (required, reboot_pkgs) = service.check_reboot_required(&packages);
+
+        assert!(required);
+        assert_eq!(reboot_pkgs.len(), 2);
+    }
+
+    #[test]
+    fn test_check_reboot_required_nvidia() {
+        let (service, _temp) = create_test_service();
+
+        let packages = vec!["nvidia".to_string(), "nvidia-utils".to_string()];
+        let (required, reboot_pkgs) = service.check_reboot_required(&packages);
+
+        assert!(required);
+        assert_eq!(reboot_pkgs.len(), 2);
+    }
+
+    #[test]
+    fn test_check_reboot_required_mesa() {
+        let (service, _temp) = create_test_service();
+
+        let packages = vec!["mesa".to_string(), "mesa-utils".to_string()];
+        let (required, reboot_pkgs) = service.check_reboot_required(&packages);
+
+        assert!(required);
+        assert_eq!(reboot_pkgs.len(), 2);
+    }
+
+    #[test]
+    fn test_check_reboot_required_none() {
+        let (service, _temp) = create_test_service();
+
+        let packages = vec![
+            "firefox".to_string(),
+            "vim".to_string(),
+            "neovim".to_string(),
+        ];
+        let (required, reboot_pkgs) = service.check_reboot_required(&packages);
+
+        assert!(!required);
+        assert!(reboot_pkgs.is_empty());
+    }
+
+    #[test]
+    fn test_check_reboot_required_mixed() {
+        let (service, _temp) = create_test_service();
+
+        let packages = vec![
+            "firefox".to_string(),
+            "linux-lts".to_string(),
+            "vim".to_string(),
+            "glibc".to_string(),
+            "neovim".to_string(),
+        ];
+        let (required, reboot_pkgs) = service.check_reboot_required(&packages);
+
+        assert!(required);
+        assert_eq!(reboot_pkgs.len(), 2);
+        assert!(reboot_pkgs.contains(&"linux-lts".to_string()));
+        assert!(reboot_pkgs.contains(&"glibc".to_string()));
+    }
+
+    #[test]
+    fn test_config_conflict_type_equality() {
+        assert_eq!(ConfigConflictType::Pacnew, ConfigConflictType::Pacnew);
+        assert_eq!(ConfigConflictType::Pacsave, ConfigConflictType::Pacsave);
+        assert_ne!(ConfigConflictType::Pacnew, ConfigConflictType::Pacsave);
+    }
+
+    #[test]
+    fn test_run_post_update_checks_no_packages() {
+        let (service, _temp) = create_test_service();
+
+        let result = service.run_post_update_checks(&[]);
+
+        assert!(!result.reboot_required);
+        assert!(result.reboot_packages.is_empty());
+        // Config conflicts and failed services depend on system state
+    }
+
+    #[test]
+    fn test_run_post_update_checks_with_kernel() {
+        let (service, _temp) = create_test_service();
+
+        let packages = vec!["linux".to_string(), "firefox".to_string()];
+        let result = service.run_post_update_checks(&packages);
+
+        assert!(result.reboot_required);
+        assert!(result.reboot_packages.contains(&"linux".to_string()));
     }
 }

@@ -1,0 +1,52 @@
+#!/bin/bash
+# Launch applications using the AMD eGPU instead of Intel iGPU
+# Usage: egpu-run <command> [args...]
+
+if [ $# -eq 0 ]; then
+    echo "Usage: egpu-run <command> [args...]"
+    echo "Example: egpu-run steam"
+    echo "         egpu-run blender myproject.blend"
+    exit 1
+fi
+
+# Check if eGPU is connected
+if ! lspci -n | grep -q "0b:00.0.*1002:"; then
+    echo "Error: AMD eGPU not detected"
+    notify-send "eGPU Error" "AMD Radeon RX 7600M XT not connected" -i dialog-error
+    exit 1
+fi
+
+# Get the DRI device for AMD GPU
+# The eGPU should be renderD129 (second GPU)
+AMD_DEVICE="/dev/dri/renderD129"
+
+if [ ! -e "$AMD_DEVICE" ]; then
+    # Fallback: try to find AMD device dynamically
+    for device in /dev/dri/renderD*; do
+        if udevadm info "$device" 2>/dev/null | grep -q "ID_VENDOR_ID=1002"; then
+            AMD_DEVICE="$device"
+            break
+        fi
+    done
+fi
+
+if [ ! -e "$AMD_DEVICE" ]; then
+    echo "Error: Could not find AMD GPU render device"
+    notify-send "eGPU Error" "Could not find AMD GPU render device" -i dialog-error
+    exit 1
+fi
+
+# Set environment variables to force AMD GPU usage
+export DRI_PRIME=1
+export __GLX_VENDOR_LIBRARY_NAME=amd
+export __VK_LAYER_NV_optimus=NVIDIA_only  # Not needed for AMD but doesn't hurt
+export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.x86_64.json
+
+# For Vulkan applications, explicitly set the AMD GPU
+export VK_DRIVER_FILES=/usr/share/vulkan/icd.d/radeon_icd.x86_64.json
+
+echo "Launching with AMD eGPU: $@"
+notify-send "eGPU Launch" "Starting '$1' with AMD Radeon RX 7600M XT" -i video-display -t 2000
+
+# Execute the command
+exec "$@"

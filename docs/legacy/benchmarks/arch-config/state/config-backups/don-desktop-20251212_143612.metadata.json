@@ -1,0 +1,23 @@
+{
+  "timestamp": "2025-12-12T14:36:12.353799101+00:00",
+  "timestamp_display": "2025-12-12 14:36",
+  "hostname": "don-desktop",
+  "active_host_file": "don-desktop.yaml",
+  "enabled_modules": [
+    "package-mods/main-apps",
+    "cli-tools/chaotic-aur",
+    "package-mods/content-creation",
+    "gaming/gaming-packages",
+    "cli-tools/webapp-tool",
+    "dev/development",
+    "cli-tools/cli-apps",
+    "dev/lazyvim",
+    "bdots-hypr",
+    "login-managers/sysc-greet",
+    "gaming/controller-support"
+  ],
+  "backup_type": "manual",
+  "dcli_version": "0.1.0",
+  "package_count": 359,
+  "validation_passed": true
+}

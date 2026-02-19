@@ -51,8 +51,8 @@ pub use snapshot::{
     detect_backend as detect_snapshot_backend,
 };
 pub use state::{
-    CompletedPackage, IronState, MaintenanceState, OperationRecord, OperationStatus, SavedPackage,
-    SavedUpdatePlan, UpdatePhase, UpdateProgress,
+    CompletedPackage, IronState, MaintenanceState, NewsAcknowledgment, OperationRecord,
+    OperationStatus, SavedPackage, SavedUpdatePlan, UpdatePhase, UpdateProgress,
 };
 pub use validation::{
     MAX_ID_LENGTH, ValidationResult, ValidationWarning, WarningCode, check_dotfile_conflicts,

@@ -133,6 +133,14 @@ pub trait PackageManager: Send + Sync {
     /// Perform full system upgrade
     fn upgrade(&self, preview: bool) -> IronResult<UpdatePreview>;
 
+    /// Fetch Arch Linux news from RSS feed
+    ///
+    /// Returns recent news items that may affect system updates.
+    /// Default implementation returns empty list (for testing/offline).
+    fn fetch_news(&self) -> IronResult<Vec<ArchNewsItem>> {
+        Ok(Vec::new())
+    }
+
     /// Get installed package count
     fn installed_count(&self) -> IronResult<usize> {
         Ok(self.query_installed()?.len())

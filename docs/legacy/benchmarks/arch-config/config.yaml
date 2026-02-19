@@ -1,0 +1,7 @@
+# dcli configuration pointer
+# This file points to the active host configuration
+# The full configuration lives in hosts/archlinux.yaml
+# Bootstrapped from BlackDon's configuration
+
+# Active host
+host: archlinux

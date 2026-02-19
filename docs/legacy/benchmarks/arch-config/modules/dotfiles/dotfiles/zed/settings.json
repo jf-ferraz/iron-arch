@@ -1,0 +1,137 @@
+// Zed settings
+//
+// For information on how to configure Zed, see the Zed
+// documentation: https://zed.dev/docs/configuring-zed
+//
+// To see all of Zed's default settings without changing your
+// custom settings, run `zed: open default settings` from the
+// command palette (cmd-shift-p / ctrl-shift-p)
+{
+  "language_models": {
+    "openai": {
+      "api_url": "http://localhost:11434/v1",
+      "available_models": [
+        {
+          "name": "glm-4.7-flash:latest",
+          "display_name": "GLM 4.7 Flash",
+          "max_tokens": 8192
+        }
+      ]
+    }
+  },
+  "title_bar": {
+    "show_sign_in": false
+  },
+  "agent_servers": {
+    "codex": {
+      "favorite_models": [
+        "gpt-5.2-codex/xhigh"
+      ],
+      "default_config_options": {},
+      "favorite_config_option_values": {}
+    }
+  },
+  "terminal": {
+    "dock": "right",
+    "shell": {
+      "program": "/usr/bin/fish"
+    }
+  },
+  "agent": {
+    "default_profile": "lets-get-it!!",
+    "profiles": {
+      "ollama-glm": {
+        "default_model": {
+          "provider": "openai",
+          "model": "glm-4.7-flash:latest"
+        },
+        "name": "Ollama GLM Flash",
+        "tools": {
+          "web_search": true,
+          "thinking": true,
+          "terminal": true,
+          "save_file": true,
+          "restore_file_from_disk": true,
+          "read_file": true,
+          "open": true,
+          "now": true,
+          "move_path": true,
+          "list_directory": true,
+          "grep": true,
+          "find_path": true,
+          "fetch": true,
+          "edit_file": true,
+          "diagnostics": true,
+          "delete_path": true,
+          "create_directory": true,
+          "copy_path": true
+        },
+        "enable_all_context_servers": false,
+        "context_servers": {}
+      },
+      "lets-get-it!!": {
+        "default_model": {
+          "provider": "zed.dev",
+          "model": "claude-opus-4-5-thinking"
+        },
+        "name": "Lets Get it!!",
+        "tools": {
+          "web_search": true,
+          "thinking": true,
+          "terminal": true,
+          "save_file": true,
+          "restore_file_from_disk": true,
+          "read_file": true,
+          "open": true,
+          "now": true,
+          "move_path": true,
+          "list_directory": true,
+          "grep": true,
+          "find_path": true,
+          "fetch": true,
+          "edit_file": true,
+          "diagnostics": true,
+          "delete_path": true,
+          "create_directory": true,
+          "copy_path": true
+        },
+        "enable_all_context_servers": false,
+        "context_servers": {}
+      },
+      "plan": {
+        "default_model": {
+          "provider": "zed.dev",
+          "model": "claude-opus-4-5-thinking"
+        },
+        "name": "Plan",
+        "tools": {
+          "diagnostics": true,
+          "list_directory": true,
+          "find_path": true,
+          "fetch": true,
+          "grep": true,
+          "web_search": true,
+          "read_file": true,
+          "thinking": true
+        },
+        "enable_all_context_servers": false,
+        "context_servers": {}
+      }
+    },
+    "default_model": {
+      "provider": "zed.dev",
+      "model": "claude-opus-4-5-thinking"
+    },
+    "favorite_models": [],
+    "model_parameters": []
+  },
+  "helix_mode": true,
+  "icon_theme": "Catppuccin Mocha",
+  "ui_font_size": 16,
+  "buffer_font_size": 15,
+  "theme": {
+    "mode": "system",
+    "light": "One Light",
+    "dark": "Noctalia Dark",
+  },
+}

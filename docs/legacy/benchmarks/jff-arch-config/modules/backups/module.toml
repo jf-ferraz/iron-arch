@@ -1,0 +1,21 @@
+version = 1
+id = "backups"
+name = "Backups Module"
+kind = "backup"
+status = "draft"
+owner = "laraj"
+description = "Backup and snapshot policy integrations."
+
+[paths]
+root = "modules/backups"
+docs = "docs/recovery.md"
+
+[[operations]]
+id = "lint"
+description = "Validate backup documentation and module structure."
+command = "sh -c 'test -f docs/recovery.md'"
+
+[hooks]
+pre_apply = []
+post_apply = []
+rollback = []

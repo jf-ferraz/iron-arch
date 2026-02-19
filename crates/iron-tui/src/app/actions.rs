@@ -4,8 +4,8 @@
 
 use super::{App, ConfirmAction, View};
 use crate::wizard::TextInput;
-use iron_core::services::{BundleService, DefaultBundleService, StateManager};
-use iron_core::{Module, Profile};
+use iron_core::services::{BundleService, DefaultBundleService, DefaultUpdateService, StateManager, UpdateService};
+use iron_core::{Module, NoopManager, Profile};
 
 impl App {
     /// Initialize application state
@@ -74,17 +74,17 @@ impl App {
             }
             ConfirmAction::RemoveBundle(id) => {
                 // Bundle removal not yet implemented
-                self.status_message = Some(format!("Bundle removal not yet implemented: {}", id));
+                self.set_warning(format!("Bundle removal not yet implemented: {}", id));
             }
             ConfirmAction::EnableModule(ref id) => {
                 if let Some(ref sm) = self.state_manager {
                     match sm.enable_module(id) {
                         Ok(()) => {
                             self.active_modules = sm.active_modules();
-                            self.status_message = Some(format!("Enabled module: {}", id));
+                            self.set_status(format!("Enabled module: {}", id));
                         }
                         Err(e) => {
-                            self.error_message = Some(format!("Failed to enable module: {:?}", e));
+                            self.set_error(format!("Failed to enable module: {:?}", e));
                         }
                     }
                 }
@@ -94,16 +94,19 @@ impl App {
                     match sm.disable_module(id) {
                         Ok(()) => {
                             self.active_modules = sm.active_modules();
-                            self.status_message = Some(format!("Disabled module: {}", id));
+                            self.set_status(format!("Disabled module: {}", id));
                         }
                         Err(e) => {
-                            self.error_message = Some(format!("Failed to disable module: {:?}", e));
+                            self.set_error(format!("Failed to disable module: {:?}", e));
                         }
                     }
                 }
             }
             ConfirmAction::RunUpdate => {
                 self.run_system_update();
+            }
+            ConfirmAction::RunCleanup => {
+                self.execute_cleanup();
             }
             ConfirmAction::Quit => {
                 self.should_quit = true;
@@ -150,32 +153,116 @@ impl App {
             match sm.set_active_profile(host_id, &profile) {
                 Ok(()) => {
                     self.active_profile = Some(profile.clone());
-                    self.status_message = Some(format!("Activated profile: {}", profile));
+                    self.set_status(format!("Activated profile: {}", profile));
                 }
                 Err(e) => {
-                    self.error_message = Some(format!("Failed to activate profile: {:?}", e));
+                    self.set_error(format!("Failed to activate profile: {:?}", e));
                 }
             }
         }
     }
 
-    /// Refresh updates
+    /// Refresh updates with pre-flight checks and news
     pub fn refresh_updates(&mut self) {
-        self.status_message = Some("Checking for updates...".to_string());
+        self.set_info("Running pre-flight checks...");
 
-        // Refresh package database and check for updates
+        // Check for updates
         match self.package_manager.check_updates() {
             Ok(updates) => {
-                let count = updates.len();
                 self.pending_updates = updates;
-                let (risk, _) = iron_core::assess_risk(&self.pending_updates, &[]);
-                self.update_risk = risk;
-                self.status_message = Some(format!("Found {} available updates", count));
             }
             Err(e) => {
-                self.error_message = Some(format!("Failed to check updates: {:?}", e));
+                self.set_error(format!("Failed to check updates: {:?}", e));
+                return;
             }
         }
+
+        // Fetch news
+        let news_items = self.package_manager.fetch_news().unwrap_or_default();
+        self.arch_news = news_items.clone();
+
+        // Run pre-flight checks with news (Phase 2.3)
+        if let Some(ref sm) = self.state_manager {
+            let update_service = DefaultUpdateService::new(sm.clone(), NoopManager);
+            let preflight_result = update_service.run_preflight_checks_with_news(&news_items);
+            self.preflight_result = Some(preflight_result);
+        } else {
+            // Without state manager, run basic pre-flight checks
+            let sm = StateManager::new(self.config_dir.clone()).ok();
+            if let Some(sm) = sm {
+                let update_service = DefaultUpdateService::new(sm, NoopManager);
+                let preflight_result = update_service.run_preflight_checks_with_news(&news_items);
+                self.preflight_result = Some(preflight_result);
+            }
+        }
+
+        // Assess risk level
+        let (risk, _) = iron_core::assess_risk(&self.pending_updates, &self.arch_news);
+        self.update_risk = risk;
+
+        // Reset update view state
+        self.reset_update_view();
+
+        let count = self.pending_updates.len();
+        let news_count = self.unacknowledged_news_count();
+        if news_count > 0 {
+            self.set_status(format!(
+                "Found {} updates, {} unacknowledged news items",
+                count, news_count
+            ));
+        } else {
+            self.set_status(format!("Found {} available updates", count));
+        }
+    }
+
+    /// Edit selected setting (show contextual hints)
+    pub fn edit_selected_setting(&mut self) {
+        match self.selected_index {
+            0 => {
+                // Config Directory - read-only
+                self.set_info("Config directory is read-only");
+            }
+            1 => {
+                // Current Host - guide to wizard
+                self.set_info("Use Setup Wizard [w] to change host configuration");
+            }
+            2 => {
+                // Active Bundle - guide to bundles view
+                self.set_info("Use Bundles view [b] to change active bundle");
+            }
+            3 => {
+                // Active Profile - guide to profiles view
+                self.set_info("Use Profiles view [p] to change active profile");
+            }
+            4 => {
+                // Enabled Modules - guide to modules view
+                self.set_info("Use Modules view [m] to enable/disable modules");
+            }
+            5 | 6 | 7 => {
+                // Last Sync, Installed Packages, Pending Updates - read-only
+                self.set_info("This value is read-only");
+            }
+            _ => {}
+        }
+    }
+
+    /// Refresh settings from state manager
+    pub fn refresh_settings(&mut self) {
+        // Reload data from state manager
+        if let Some(ref sm) = self.state_manager {
+            self.current_host = sm.current_host();
+            self.active_modules = sm.active_modules();
+
+            // Get active bundle for current host
+            if let Some(ref host_id) = self.current_host {
+                self.active_profile = sm.active_profile(host_id);
+            }
+        }
+
+        // Reload package counts (non-blocking, fail gracefully)
+        self.load_package_data();
+
+        self.set_status("Settings refreshed");
     }
 
     /// Refresh current view
@@ -185,13 +272,13 @@ impl App {
                 if let Some(ref sm) = self.state_manager {
                     let bundle_service = DefaultBundleService::new(&self.config_dir, sm.clone());
                     self.bundles = bundle_service.discover().unwrap_or_default();
-                    self.status_message = Some("Bundles refreshed".to_string());
+                    self.set_status("Bundles refreshed");
                 }
             }
             View::Profiles | View::ProfileDetail => {
                 self.profiles.clear();
                 self.load_profiles();
-                self.status_message = Some("Profiles refreshed".to_string());
+                self.set_status("Profiles refreshed");
             }
             View::Modules | View::ModuleDetail => {
                 self.modules.clear();
@@ -199,7 +286,7 @@ impl App {
                 if let Some(ref sm) = self.state_manager {
                     self.active_modules = sm.active_modules();
                 }
-                self.status_message = Some("Modules refreshed".to_string());
+                self.set_status("Modules refreshed");
             }
             View::UpdatePreview => {
                 self.refresh_updates();
@@ -207,7 +294,10 @@ impl App {
             View::Dashboard => {
                 // Refresh all data
                 let _ = self.init();
-                self.status_message = Some("Dashboard refreshed".to_string());
+                self.set_status("Dashboard refreshed");
+            }
+            View::Settings => {
+                self.refresh_settings();
             }
             _ => {}
         }
@@ -281,7 +371,7 @@ impl App {
             if let Some(ref current) = self.active_bundle
                 && let Err(e) = bundle_service.deactivate(&current.id)
             {
-                self.error_message = Some(format!("Failed to deactivate current bundle: {:?}", e));
+                self.set_error(format!("Failed to deactivate current bundle: {:?}", e));
                 return;
             }
 
@@ -292,25 +382,150 @@ impl App {
                     self.bundles = bundle_service.discover().unwrap_or_default();
                     self.active_bundle = self.bundles.iter().find(|b| b.id == bundle_id).cloned();
                     self.active_modules = sm.active_modules();
-                    self.status_message = Some(format!("Switched to bundle: {}", bundle_id));
+                    self.set_status(format!("Switched to bundle: {}", bundle_id));
                 }
                 Err(e) => {
-                    self.error_message = Some(format!("Failed to activate bundle: {:?}", e));
+                    self.set_error(format!("Failed to activate bundle: {:?}", e));
                 }
             }
         } else {
-            self.error_message = Some("No state manager available".to_string());
+            self.set_error("No state manager available");
         }
     }
 
     /// Run system update (placeholder)
     pub fn run_system_update(&mut self) {
         // TODO: Integrate with pacman service when available
-        self.status_message = Some("System update started (dry-run mode)".to_string());
+        self.set_info("System update started (dry-run mode)");
+
+        // Collect package names for post-update checks
+        let package_names: Vec<String> = self.pending_updates.iter().map(|p| p.name.clone()).collect();
+
         // In a real implementation, this would:
         // 1. Run pacman -Syu or use the PacmanService
         // 2. Show progress in the UpdatePreview view
         // 3. Handle errors and rollbacks
+
+        // Run post-update detection checks (Phase 2.4)
+        // This detects .pacnew/.pacsave files, reboot requirements, and failed services
+        self.run_post_update_checks(&package_names);
+    }
+
+    /// Run post-update detection checks (Phase 2.4)
+    ///
+    /// Called after system update completes to detect:
+    /// - .pacnew/.pacsave configuration file conflicts
+    /// - Packages that require a system reboot
+    /// - Failed systemd services
+    pub fn run_post_update_checks(&mut self, updated_packages: &[String]) {
+        if let Some(ref sm) = self.state_manager {
+            let update_service = DefaultUpdateService::new(sm.clone(), NoopManager);
+            let result = update_service.run_post_update_checks(updated_packages);
+
+            if result.has_issues {
+                let mut issues = Vec::new();
+
+                if result.reboot_required {
+                    issues.push(format!(
+                        "Reboot required ({} packages)",
+                        result.reboot_packages.len()
+                    ));
+                }
+
+                if !result.config_conflicts.is_empty() {
+                    issues.push(format!(
+                        "{} config conflicts (.pacnew/.pacsave)",
+                        result.config_conflicts.len()
+                    ));
+                }
+
+                if !result.failed_services.is_empty() {
+                    issues.push(format!("{} failed services", result.failed_services.len()));
+                }
+
+                self.set_warning(format!("Post-update: {}", issues.join(", ")));
+            }
+
+            self.post_update_result = Some(result);
+        } else {
+            // Without state manager, run basic post-update checks
+            if let Ok(sm) = StateManager::new(self.config_dir.clone()) {
+                let update_service = DefaultUpdateService::new(sm, NoopManager);
+                self.post_update_result = Some(update_service.run_post_update_checks(updated_packages));
+            }
+        }
+    }
+
+    // ==========================================================================
+    // Cleanup Actions (Phase 3)
+    // ==========================================================================
+
+    /// Toggle the currently selected cleanup category
+    pub fn toggle_selected_cleanup_category(&mut self) {
+        use iron_core::services::clean::CleanupCategory;
+
+        let all_categories = CleanupCategory::all();
+        if self.selected_index < all_categories.len() {
+            let category = all_categories[self.selected_index];
+            self.toggle_cleanup_category(category);
+        }
+    }
+
+    /// Preview cleanup for selected categories
+    pub fn preview_cleanup(&mut self) {
+        use iron_core::services::clean::{CleanupService, DefaultCleanupService};
+
+        if self.cleanup_categories.is_empty() {
+            self.set_warning("No categories selected for preview");
+            return;
+        }
+
+        self.set_info("Scanning cleanup categories...");
+
+        let service = DefaultCleanupService::new();
+        self.cleanup_previews = service.preview(&self.cleanup_categories);
+
+        let total_space = self.cleanup_total_space();
+        self.set_status(format!(
+            "Preview complete: {} reclaimable from {} categories",
+            iron_core::services::clean::format_bytes(total_space),
+            self.cleanup_categories.len()
+        ));
+    }
+
+    /// Execute cleanup for selected categories
+    pub fn execute_cleanup(&mut self) {
+        use iron_core::services::clean::{CleanupService, DefaultCleanupService};
+
+        if self.cleanup_categories.is_empty() {
+            self.set_warning("No categories selected for cleanup");
+            return;
+        }
+
+        self.set_info("Executing cleanup...");
+
+        let service = DefaultCleanupService::new();
+
+        // Run with dry_run=false for real cleanup
+        // For safety, we run dry_run=true in TUI (user can use CLI for actual cleanup)
+        let summary = service.execute(&self.cleanup_categories, true);
+
+        if summary.failed > 0 {
+            self.set_warning(format!(
+                "Cleanup completed with {} errors: {} freed",
+                summary.failed,
+                summary.space_formatted()
+            ));
+        } else {
+            self.set_status(format!(
+                "Cleanup complete: {} freed from {} items",
+                summary.space_formatted(),
+                summary.total_items
+            ));
+        }
+
+        self.cleanup_summary = Some(summary);
+        self.cleanup_preview_mode = false;
     }
 }
 
@@ -400,8 +615,8 @@ mod tests {
 
         app.execute_confirm_action();
 
-        assert!(app.status_message.is_some());
-        assert!(app.status_message.unwrap().contains("not yet implemented"));
+        assert!(app.status_text().is_some());
+        assert!(app.status_text().unwrap().contains("not yet implemented"));
     }
 
     #[test]
@@ -435,8 +650,8 @@ mod tests {
 
         app.execute_confirm_action();
 
-        assert!(app.status_message.is_some());
-        assert!(app.status_message.unwrap().contains("update started"));
+        assert!(app.status_text().is_some());
+        assert!(app.status_text().unwrap().contains("update started"));
     }
 
     // ==========================================================================
@@ -595,7 +810,7 @@ mod tests {
         app.activate_selected_profile();
 
         // Should return early without any action
-        assert!(app.status_message.is_none());
+        assert!(app.status_text().is_none());
     }
 
     #[test]
@@ -609,7 +824,7 @@ mod tests {
         app.activate_selected_profile();
 
         // Without state manager, nothing should happen
-        assert!(app.status_message.is_none());
+        assert!(app.status_text().is_none());
     }
 
     #[test]
@@ -622,7 +837,7 @@ mod tests {
         app.activate_selected_profile();
 
         // Without current host, nothing should happen
-        assert!(app.status_message.is_none());
+        assert!(app.status_text().is_none());
     }
 
     // ==========================================================================
@@ -636,8 +851,8 @@ mod tests {
 
         app.refresh_current_view();
 
-        assert!(app.status_message.is_some());
-        assert!(app.status_message.unwrap().contains("refreshed"));
+        assert!(app.status_text().is_some());
+        assert!(app.status_text().unwrap().contains("refreshed"));
     }
 
     #[test]
@@ -650,8 +865,8 @@ mod tests {
 
         // Without state manager, nothing happens but no error either
         assert!(
-            app.status_message.is_none()
-                || app.status_message.as_ref().unwrap().contains("refreshed")
+            app.status_text().is_none()
+                || app.status_text().unwrap().contains("refreshed")
         );
     }
 
@@ -667,8 +882,8 @@ mod tests {
 
         app.refresh_current_view();
 
-        assert!(app.status_message.is_some());
-        assert!(app.status_message.unwrap().contains("Profiles refreshed"));
+        assert!(app.status_text().is_some());
+        assert!(app.status_text().unwrap().contains("Profiles refreshed"));
     }
 
     #[test]
@@ -683,8 +898,8 @@ mod tests {
 
         app.refresh_current_view();
 
-        assert!(app.status_message.is_some());
-        assert!(app.status_message.unwrap().contains("Modules refreshed"));
+        assert!(app.status_text().is_some());
+        assert!(app.status_text().unwrap().contains("Modules refreshed"));
     }
 
     #[test]
@@ -695,18 +910,110 @@ mod tests {
         app.refresh_current_view();
 
         // refresh_updates is called which sets status message
-        assert!(app.status_message.is_some());
+        assert!(app.status_text().is_some());
     }
 
     #[test]
-    fn test_refresh_current_view_settings_no_op() {
+    fn test_refresh_current_view_settings() {
         let mut app = App::default();
         app.view = View::Settings;
 
         app.refresh_current_view();
 
-        // Settings view has no refresh action
-        assert!(app.status_message.is_none());
+        // Settings view now has refresh action
+        assert!(app.status_text().is_some());
+        assert!(app.status_text().unwrap().contains("refreshed"));
+    }
+
+    // ==========================================================================
+    // edit_selected_setting Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_edit_selected_setting_config_dir() {
+        let mut app = App::default();
+        app.view = View::Settings;
+        app.selected_index = 0;
+
+        app.edit_selected_setting();
+
+        assert!(app.status_text().is_some());
+        assert!(app.status_text().unwrap().contains("read-only"));
+    }
+
+    #[test]
+    fn test_edit_selected_setting_current_host() {
+        let mut app = App::default();
+        app.view = View::Settings;
+        app.selected_index = 1;
+
+        app.edit_selected_setting();
+
+        assert!(app.status_text().is_some());
+        assert!(app.status_text().unwrap().contains("Wizard"));
+    }
+
+    #[test]
+    fn test_edit_selected_setting_active_bundle() {
+        let mut app = App::default();
+        app.view = View::Settings;
+        app.selected_index = 2;
+
+        app.edit_selected_setting();
+
+        assert!(app.status_text().is_some());
+        assert!(app.status_text().unwrap().contains("Bundles"));
+    }
+
+    #[test]
+    fn test_edit_selected_setting_active_profile() {
+        let mut app = App::default();
+        app.view = View::Settings;
+        app.selected_index = 3;
+
+        app.edit_selected_setting();
+
+        assert!(app.status_text().is_some());
+        assert!(app.status_text().unwrap().contains("Profiles"));
+    }
+
+    #[test]
+    fn test_edit_selected_setting_enabled_modules() {
+        let mut app = App::default();
+        app.view = View::Settings;
+        app.selected_index = 4;
+
+        app.edit_selected_setting();
+
+        assert!(app.status_text().is_some());
+        assert!(app.status_text().unwrap().contains("Modules"));
+    }
+
+    #[test]
+    fn test_edit_selected_setting_readonly_items() {
+        let mut app = App::default();
+        app.view = View::Settings;
+
+        // Test Last Sync, Installed Packages, Pending Updates (indices 5, 6, 7)
+        for idx in 5..=7 {
+            app.selected_index = idx;
+            app.edit_selected_setting();
+            assert!(app.status_text().unwrap().contains("read-only"));
+        }
+    }
+
+    // ==========================================================================
+    // refresh_settings Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_refresh_settings_sets_status() {
+        let mut app = App::default();
+
+        app.refresh_settings();
+
+        assert!(app.status_text().is_some());
+        assert!(app.status_text().unwrap().contains("refreshed"));
     }
 
     // ==========================================================================
@@ -897,8 +1204,8 @@ depends = []
 
         app.run_system_update();
 
-        assert!(app.status_message.is_some());
-        assert!(app.status_message.unwrap().contains("dry-run"));
+        assert!(app.status_text().is_some());
+        assert!(app.status_text().unwrap().contains("dry-run"));
     }
 
     // ==========================================================================
@@ -912,7 +1219,7 @@ depends = []
 
         app.switch_bundle("hyprland".to_string());
 
-        assert!(app.error_message.is_some());
-        assert!(app.error_message.unwrap().contains("No state manager"));
+        assert!(app.error_text().is_some());
+        assert!(app.error_text().unwrap().contains("No state manager"));
     }
 }

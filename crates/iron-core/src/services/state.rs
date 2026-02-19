@@ -593,6 +593,62 @@ impl StateManager {
         self.persist()?;
         self.audit("import_state", OperationStatus::Success, None)
     }
+
+    // ==========================================================================
+    // News Acknowledgment Methods (Phase 2.2)
+    // ==========================================================================
+
+    /// Check if a news item has been acknowledged
+    pub fn is_news_acknowledged(&self, url: &str) -> bool {
+        self.state().is_news_acknowledged(url)
+    }
+
+    /// Acknowledge a single news item
+    pub fn acknowledge_news(&self, url: &str) -> IronResult<()> {
+        {
+            let mut state = self.state.lock().unwrap();
+            state.acknowledge_news(url);
+        }
+        self.persist()?;
+        self.audit(
+            "acknowledge_news",
+            OperationStatus::Success,
+            Some(url.to_string()),
+        )
+    }
+
+    /// Acknowledge multiple news items
+    pub fn acknowledge_all_news(&self, urls: &[&str]) -> IronResult<()> {
+        {
+            let mut state = self.state.lock().unwrap();
+            state.acknowledge_all_news(urls);
+        }
+        self.persist()?;
+        self.audit(
+            "acknowledge_all_news",
+            OperationStatus::Success,
+            Some(format!("{} items", urls.len())),
+        )
+    }
+
+    /// Mark news as recently fetched
+    pub fn mark_news_fetched(&self) -> IronResult<()> {
+        {
+            let mut state = self.state.lock().unwrap();
+            state.mark_news_fetched();
+        }
+        self.persist()
+    }
+
+    /// Check if news should be refetched
+    pub fn should_refetch_news(&self) -> bool {
+        self.state().should_refetch_news()
+    }
+
+    /// Get count of acknowledged news items
+    pub fn acknowledged_news_count(&self) -> usize {
+        self.state().news_acknowledgment.acknowledged_count()
+    }
 }
 
 #[cfg(test)]

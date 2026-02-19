@@ -5,13 +5,30 @@
 mod actions;
 mod handlers;
 
+use crate::message::{MessageLevel, StatusMessage};
+use crate::widgets::ProgressTracker;
 use crate::wizard::{TextInput, WizardState};
 use iron_core::{
-    Bundle, Module, NoopPackageManager, PackageManager, PackageUpdate, Profile, RiskLevel,
+    ArchNewsItem, Bundle, Module, NoopPackageManager, PackageManager, PackageUpdate, Profile,
+    RiskLevel,
     services::StateManager,
+    services::clean::{CleanupCategory, CleanupPreview, CleanupSummary},
+    services::update::{PostUpdateResult, PreflightResult, UnacknowledgedNews},
 };
 use std::path::PathBuf;
 use std::sync::Arc;
+
+/// Update view section for keyboard navigation
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum UpdateSection {
+    /// Pre-flight checks section
+    #[default]
+    PreflightChecks,
+    /// News section
+    News,
+    /// Package list section
+    Packages,
+}
 
 /// Application state
 pub struct App {
@@ -41,10 +58,10 @@ pub struct App {
     pub active_modules: Vec<String>,
     /// Selected index in list views
     pub selected_index: usize,
-    /// Status message
-    pub status_message: Option<String>,
-    /// Error message
-    pub error_message: Option<String>,
+    /// Status message with expiration
+    pub status_message: Option<StatusMessage>,
+    /// Error message with expiration
+    pub error_message: Option<StatusMessage>,
     /// Show help overlay
     pub show_help: bool,
     /// Show confirm dialog
@@ -63,10 +80,38 @@ pub struct App {
     pub pending_updates: Vec<PackageUpdate>,
     /// Update risk level
     pub update_risk: RiskLevel,
+    /// Pre-flight check results (Phase 2.3)
+    pub preflight_result: Option<PreflightResult>,
+    /// Fetched Arch news items (Phase 2.3)
+    pub arch_news: Vec<ArchNewsItem>,
+    /// Current section in update view for navigation
+    pub update_section: UpdateSection,
+    /// Selected index within the current update section
+    pub update_section_index: usize,
+    /// Whether a reboot is recommended after updates
+    pub reboot_required: bool,
+    /// Post-update detection results (Phase 2.4)
+    pub post_update_result: Option<PostUpdateResult>,
+    // -------------------------------------------------------------------------
+    // Phase 3: System Cleanup State
+    // -------------------------------------------------------------------------
+    /// Selected cleanup categories (Phase 3)
+    pub cleanup_categories: Vec<CleanupCategory>,
+    /// Cleanup preview results (Phase 3)
+    pub cleanup_previews: Vec<CleanupPreview>,
+    /// Cleanup execution summary (Phase 3)
+    pub cleanup_summary: Option<CleanupSummary>,
+    /// Whether cleanup is in preview mode (vs execution mode)
+    pub cleanup_preview_mode: bool,
+    // -------------------------------------------------------------------------
+    // Progress Dialog State
+    // -------------------------------------------------------------------------
+    /// Active progress tracker for long-running operations
+    pub progress: Option<ProgressTracker>,
 }
 
 /// Available views
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum View {
     /// Dashboard home
     Dashboard,
@@ -90,6 +135,16 @@ pub enum View {
     Sync,
     /// Settings
     Settings,
+    /// System maintenance hub (Clean/Update/Doctor)
+    SystemMaintenance,
+    /// System cleanup with category selection
+    CleanSystem,
+    /// Security module management
+    SecurityModules,
+    /// Configuration and dotfile management
+    ConfigManager,
+    /// Operation log viewer (JSONL)
+    OperationLog,
 }
 
 /// Actions that require confirmation
@@ -105,6 +160,8 @@ pub enum ConfirmAction {
     DisableModule(String),
     /// Run system update
     RunUpdate,
+    /// Run system cleanup (Phase 3)
+    RunCleanup,
     /// Quit application
     Quit,
 }
@@ -151,6 +208,19 @@ impl App {
             installed_count: 0,
             pending_updates: Vec::new(),
             update_risk: RiskLevel::Low,
+            preflight_result: None,
+            arch_news: Vec::new(),
+            update_section: UpdateSection::default(),
+            update_section_index: 0,
+            reboot_required: false,
+            post_update_result: None,
+            // Phase 3: Cleanup state
+            cleanup_categories: CleanupCategory::safe().to_vec(),
+            cleanup_previews: Vec::new(),
+            cleanup_summary: None,
+            cleanup_preview_mode: true,
+            // Progress dialog
+            progress: None,
         }
     }
 
@@ -185,14 +255,44 @@ impl App {
         self.error_message = None;
     }
 
-    /// Set error message
+    /// Set error message with automatic expiration
     pub fn set_error(&mut self, message: impl Into<String>) {
-        self.error_message = Some(message.into());
+        self.error_message = Some(StatusMessage::error(message));
     }
 
-    /// Set status message
+    /// Set status message with automatic expiration (success level)
     pub fn set_status(&mut self, message: impl Into<String>) {
-        self.status_message = Some(message.into());
+        self.status_message = Some(StatusMessage::success(message));
+    }
+
+    /// Set an info message with automatic expiration
+    pub fn set_info(&mut self, message: impl Into<String>) {
+        self.status_message = Some(StatusMessage::info(message));
+    }
+
+    /// Set a warning message with automatic expiration
+    pub fn set_warning(&mut self, message: impl Into<String>) {
+        self.status_message = Some(StatusMessage::warning(message));
+    }
+
+    /// Get the current status message text (for backward compatibility)
+    pub fn status_text(&self) -> Option<&str> {
+        self.status_message.as_ref().map(|m| m.text())
+    }
+
+    /// Get the current error message text (for backward compatibility)
+    pub fn error_text(&self) -> Option<&str> {
+        self.error_message.as_ref().map(|m| m.text())
+    }
+
+    /// Get the current status message level
+    pub fn status_level(&self) -> Option<MessageLevel> {
+        self.status_message.as_ref().map(|m| m.level())
+    }
+
+    /// Get the current error message level
+    pub fn error_level(&self) -> Option<MessageLevel> {
+        self.error_message.as_ref().map(|m| m.level())
     }
 
     /// Get the selected bundle (if in bundle views)
@@ -216,8 +316,22 @@ impl App {
     }
 
     /// Check if state needs refresh (called on tick)
+    ///
+    /// Clears expired status and error messages.
     pub fn tick(&mut self) {
-        // Placeholder for periodic state refresh
+        // Clear expired status message
+        if let Some(ref msg) = self.status_message {
+            if msg.is_expired() {
+                self.status_message = None;
+            }
+        }
+
+        // Clear expired error message
+        if let Some(ref msg) = self.error_message {
+            if msg.is_expired() {
+                self.error_message = None;
+            }
+        }
     }
 
     /// Get system health status based on update risk and pending updates
@@ -258,5 +372,306 @@ impl App {
     /// Quit the application
     pub fn quit(&mut self) {
         self.should_quit = true;
+    }
+
+    // ==========================================================================
+    // Update View Helpers (Phase 2.3)
+    // ==========================================================================
+
+    /// Check if pre-flight checks have been run
+    pub fn has_preflight_results(&self) -> bool {
+        self.preflight_result.is_some()
+    }
+
+    /// Get pre-flight check results
+    pub fn preflight_checks(&self) -> Option<&PreflightResult> {
+        self.preflight_result.as_ref()
+    }
+
+    /// Check if system is ready for update (all pre-flight checks pass)
+    pub fn can_proceed_with_update(&self) -> bool {
+        self.preflight_result
+            .as_ref()
+            .map(|r| r.can_proceed_with_news())
+            .unwrap_or(false)
+    }
+
+    /// Get count of unacknowledged news
+    pub fn unacknowledged_news_count(&self) -> usize {
+        self.preflight_result
+            .as_ref()
+            .map(|r| r.unacknowledged_news.len())
+            .unwrap_or(0)
+    }
+
+    /// Get unacknowledged news items
+    pub fn unacknowledged_news(&self) -> &[UnacknowledgedNews] {
+        self.preflight_result
+            .as_ref()
+            .map(|r| r.unacknowledged_news.as_slice())
+            .unwrap_or(&[])
+    }
+
+    /// Check if there's critical news blocking updates
+    pub fn has_critical_news(&self) -> bool {
+        self.preflight_result
+            .as_ref()
+            .map(|r| r.news_blocks_update)
+            .unwrap_or(false)
+    }
+
+    /// Get critical news count
+    pub fn critical_news_count(&self) -> usize {
+        self.preflight_result
+            .as_ref()
+            .map(|r| r.critical_news_count())
+            .unwrap_or(0)
+    }
+
+    /// Navigate to next section in update view
+    pub fn next_update_section(&mut self) {
+        self.update_section = match self.update_section {
+            UpdateSection::PreflightChecks => UpdateSection::News,
+            UpdateSection::News => UpdateSection::Packages,
+            UpdateSection::Packages => UpdateSection::PreflightChecks,
+        };
+        self.update_section_index = 0;
+    }
+
+    /// Navigate to previous section in update view
+    pub fn prev_update_section(&mut self) {
+        self.update_section = match self.update_section {
+            UpdateSection::PreflightChecks => UpdateSection::Packages,
+            UpdateSection::News => UpdateSection::PreflightChecks,
+            UpdateSection::Packages => UpdateSection::News,
+        };
+        self.update_section_index = 0;
+    }
+
+    /// Get max items in current update section
+    pub fn update_section_max_index(&self) -> usize {
+        match self.update_section {
+            UpdateSection::PreflightChecks => {
+                self.preflight_result.as_ref().map(|r| r.checks.len()).unwrap_or(0)
+            }
+            UpdateSection::News => self.unacknowledged_news_count(),
+            UpdateSection::Packages => self.pending_updates.len().min(50),
+        }
+    }
+
+    /// Move selection up in update section
+    pub fn update_section_up(&mut self) {
+        if self.update_section_index > 0 {
+            self.update_section_index -= 1;
+        }
+    }
+
+    /// Move selection down in update section
+    pub fn update_section_down(&mut self) {
+        let max = self.update_section_max_index();
+        if max > 0 && self.update_section_index < max - 1 {
+            self.update_section_index += 1;
+        }
+    }
+
+    /// Acknowledge the currently selected news item
+    pub fn acknowledge_selected_news(&mut self) -> Option<String> {
+        if self.update_section != UpdateSection::News {
+            return None;
+        }
+
+        let news = self.unacknowledged_news();
+        if self.update_section_index < news.len() {
+            let url = news[self.update_section_index].url.clone();
+
+            // Acknowledge via state manager
+            if let Some(ref state_manager) = self.state_manager {
+                if state_manager.acknowledge_news(&url).is_ok() {
+                    // Remove from preflight result
+                    if let Some(ref mut result) = self.preflight_result {
+                        result.unacknowledged_news.retain(|n| n.url != url);
+                        // Update news_blocks_update flag
+                        result.news_blocks_update = result
+                            .unacknowledged_news
+                            .iter()
+                            .any(|n| n.requires_manual);
+                    }
+                    return Some(url);
+                }
+            }
+        }
+        None
+    }
+
+    /// Acknowledge all news items
+    pub fn acknowledge_all_news(&mut self) -> usize {
+        let urls: Vec<String> = self
+            .unacknowledged_news()
+            .iter()
+            .map(|n| n.url.clone())
+            .collect();
+
+        if urls.is_empty() {
+            return 0;
+        }
+
+        let url_refs: Vec<&str> = urls.iter().map(|s| s.as_str()).collect();
+
+        if let Some(ref state_manager) = self.state_manager {
+            if state_manager.acknowledge_all_news(&url_refs).is_ok() {
+                let count = urls.len();
+                if let Some(ref mut result) = self.preflight_result {
+                    result.unacknowledged_news.clear();
+                    result.news_blocks_update = false;
+                }
+                return count;
+            }
+        }
+        0
+    }
+
+    /// Check if any packages require a reboot (kernel, systemd, glibc)
+    pub fn check_reboot_required(&self) -> bool {
+        self.pending_updates.iter().any(|p| {
+            let name = p.name.to_lowercase();
+            name.starts_with("linux")
+                || name == "systemd"
+                || name.starts_with("systemd-")
+                || name == "glibc"
+                || name == "nvidia"
+                || name == "nvidia-dkms"
+        })
+    }
+
+    /// Reset update view state (called when entering update view)
+    pub fn reset_update_view(&mut self) {
+        self.update_section = UpdateSection::PreflightChecks;
+        self.update_section_index = 0;
+        self.reboot_required = self.check_reboot_required();
+    }
+
+    // ==========================================================================
+    // Post-Update Detection Helpers (Phase 2.4)
+    // ==========================================================================
+
+    /// Check if post-update results are available
+    pub fn has_post_update_results(&self) -> bool {
+        self.post_update_result.is_some()
+    }
+
+    /// Get post-update results
+    pub fn post_update_results(&self) -> Option<&PostUpdateResult> {
+        self.post_update_result.as_ref()
+    }
+
+    /// Check if there are post-update issues requiring attention
+    pub fn has_post_update_issues(&self) -> bool {
+        self.post_update_result
+            .as_ref()
+            .map(|r| r.has_issues)
+            .unwrap_or(false)
+    }
+
+    /// Get count of .pacnew files
+    pub fn pacnew_count(&self) -> usize {
+        self.post_update_result
+            .as_ref()
+            .map(|r| r.pacnew_count())
+            .unwrap_or(0)
+    }
+
+    /// Get count of .pacsave files
+    pub fn pacsave_count(&self) -> usize {
+        self.post_update_result
+            .as_ref()
+            .map(|r| r.pacsave_count())
+            .unwrap_or(0)
+    }
+
+    /// Check if reboot is required (from post-update checks)
+    pub fn post_update_reboot_required(&self) -> bool {
+        self.post_update_result
+            .as_ref()
+            .map(|r| r.reboot_required)
+            .unwrap_or(false)
+    }
+
+    /// Get failed services count
+    pub fn failed_services_count(&self) -> usize {
+        self.post_update_result
+            .as_ref()
+            .map(|r| r.failed_services.len())
+            .unwrap_or(0)
+    }
+
+    /// Clear post-update results
+    pub fn clear_post_update_results(&mut self) {
+        self.post_update_result = None;
+    }
+
+    // ==========================================================================
+    // Cleanup Helpers (Phase 3)
+    // ==========================================================================
+
+    /// Toggle a cleanup category selection
+    pub fn toggle_cleanup_category(&mut self, category: CleanupCategory) {
+        if let Some(pos) = self.cleanup_categories.iter().position(|c| *c == category) {
+            self.cleanup_categories.remove(pos);
+        } else {
+            self.cleanup_categories.push(category);
+        }
+    }
+
+    /// Check if a cleanup category is selected
+    pub fn is_cleanup_category_selected(&self, category: &CleanupCategory) -> bool {
+        self.cleanup_categories.contains(category)
+    }
+
+    /// Get total reclaimable space from previews
+    pub fn cleanup_total_space(&self) -> u64 {
+        self.cleanup_previews
+            .iter()
+            .filter(|p| self.cleanup_categories.contains(&p.category))
+            .map(|p| p.space_reclaimable)
+            .sum()
+    }
+
+    /// Get preview for a specific category
+    pub fn cleanup_preview_for(&self, category: &CleanupCategory) -> Option<&CleanupPreview> {
+        self.cleanup_previews.iter().find(|p| &p.category == category)
+    }
+
+    /// Check if cleanup has been executed
+    pub fn has_cleanup_results(&self) -> bool {
+        self.cleanup_summary.is_some()
+    }
+
+    /// Clear cleanup state
+    pub fn clear_cleanup_state(&mut self) {
+        self.cleanup_previews.clear();
+        self.cleanup_summary = None;
+        self.cleanup_preview_mode = true;
+    }
+
+    /// Reset cleanup view state
+    pub fn reset_cleanup_view(&mut self) {
+        self.selected_index = 0;
+        self.cleanup_preview_mode = true;
+        // Keep selected categories, but refresh previews
+    }
+
+    /// Select all safe cleanup categories
+    pub fn select_safe_cleanup_categories(&mut self) {
+        self.cleanup_categories = CleanupCategory::safe().to_vec();
+    }
+
+    /// Select all cleanup categories (including aggressive)
+    pub fn select_all_cleanup_categories(&mut self) {
+        self.cleanup_categories = CleanupCategory::all().to_vec();
+    }
+
+    /// Deselect all cleanup categories
+    pub fn deselect_all_cleanup_categories(&mut self) {
+        self.cleanup_categories.clear();
     }
 }

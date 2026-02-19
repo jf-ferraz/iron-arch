@@ -1,0 +1,21 @@
+version = 1
+
+[[profiles]]
+id = "hyprland-desktop"
+description = "Hyprland tiling WM setup for main desktop"
+configs = ["hyprland"]
+
+[[profiles]]
+id = "niri-desktop"
+description = "Niri scrolling compositor setup"
+configs = ["niri"]
+
+[[profiles]]
+id = "gnome-desktop"
+description = "GNOME desktop environment"
+configs = ["gnome"]
+
+[[profiles]]
+id = "cosmic-desktop"
+description = "COSMIC desktop environment"
+configs = ["cosmic"]

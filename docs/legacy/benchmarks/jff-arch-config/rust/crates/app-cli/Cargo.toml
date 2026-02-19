@@ -1,0 +1,9 @@
+[package]
+name = "app-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+core-domain = { path = "../core-domain" }
+serde_json = "1.0"
+toml = "0.8"

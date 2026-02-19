@@ -1,0 +1,20 @@
+version = 1
+id = "niri"
+name = "Niri Config Module"
+kind = "config"
+status = "draft"
+owner = "laraj"
+description = "Niri compositor configuration module."
+
+[paths]
+root = "modules/configs/niri"
+
+[[operations]]
+id = "lint"
+description = "Validate module structure."
+command = "sh -c 'test -d modules/configs/niri'"
+
+[hooks]
+pre_apply = []
+post_apply = []
+rollback = []

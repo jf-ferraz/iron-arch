@@ -1,0 +1,23 @@
+// Shell Switcher - Keybindings
+// This file is managed by shell-switch for the switcher and launcher bindings
+// Current shell: Noctalia Shell
+// You can add additional shell-specific keybindings below the managed section
+
+binds {
+    // === MANAGED BY SHELL-SWITCH - DO NOT EDIT THIS SECTION ===
+
+    // App Launcher for Noctalia Shell
+    Mod+Space hotkey-overlay-title="Open Noctalia Shell Launcher" {
+        spawn "qs" "-c" "noctalia-shell" "ipc" "call" "launcher" "toggle";
+    }
+    Mod+E hotkey-overlay-title="Open Noctalia Shell Emoji Launcher" { spawn "qs" "-c" "noctalia-shell" "ipc" "call" "launcher" "emoji"; }
+
+    // Shell Switcher
+    Ctrl+Shift+S hotkey-overlay-title="Switch Desktop Shell" {
+        spawn "kitty" "--class=floating-kitty" "shell-switch";
+    }
+
+    // === END MANAGED SECTION ===
+
+    // Add your custom shell-specific keybindings below:
+}

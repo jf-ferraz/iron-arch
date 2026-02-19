@@ -1,0 +1,46 @@
+local packages = {
+    -- KDE Plasma desktop base packages
+    "plasma-desktop",
+    "plasma-wayland-session",
+    "kscreen",
+    "powerdevil",
+    "plasma-nm",
+    "plasma-pa",
+    "bluedevil",
+    "kinfocenter",
+    "systemsettings",
+    "dolphin",
+    "konsole",
+    "kate",
+    "spectacle",
+    "ark",
+    "gwenview",
+    "okular",
+    "kcalc",
+    "krunner",
+    "kwalletmanager",
+    "kde-gtk-config",
+    "xdg-desktop-portal-kde",
+    "qt5-wayland",
+    "qt6-wayland",
+    "kvantum",
+    "qt5ct",
+    "qt6ct",
+
+    -- KDE Plasma theming packages
+    "catppuccin-kde-git",
+    "catppuccin-gtk-theme-mocha",
+    "tela-icon-theme-purple-git",
+    "catppuccin-cursors-mocha",
+    "papirus-icon-theme",
+    "layan-kde-git",
+    "kwin-effects-kwin4_effect_geometry_change",
+    "kwin-scripts-krohnkite",
+}
+
+return {
+    description = "KDE Plasma desktop with Catppuccin Mocha Mauve theme, Tela purple icons, and Krohnkite tiling",
+    conflicts = { "bdots-hypr", "bdots-mango" },
+    post_install_hook = "scripts/install-kde-dotfiles.sh",
+    packages = packages,
+}

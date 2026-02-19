@@ -9,6 +9,8 @@
 
 pub mod app;
 pub mod event;
+pub mod message;
+pub mod screen;
 pub mod terminal;
 pub mod ui;
 pub mod widgets;
@@ -124,10 +126,10 @@ mod tests {
         let mut app = App::default();
 
         app.set_status("Test status");
-        assert_eq!(app.status_message, Some("Test status".to_string()));
+        assert_eq!(app.status_text(), Some("Test status"));
 
         app.set_error("Test error");
-        assert_eq!(app.error_message, Some("Test error".to_string()));
+        assert_eq!(app.error_text(), Some("Test error"));
 
         app.clear_messages();
         assert!(app.status_message.is_none());

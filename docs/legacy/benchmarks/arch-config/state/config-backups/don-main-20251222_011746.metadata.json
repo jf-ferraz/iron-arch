@@ -1,0 +1,14 @@
+{
+  "timestamp": "2025-12-22T01:17:46.795248072+00:00",
+  "timestamp_display": "2025-12-22 01:17",
+  "hostname": "don-main",
+  "active_host_file": "don-main.yaml",
+  "enabled_modules": [
+    "bdots-hypr",
+    "package-mods/main-apps"
+  ],
+  "backup_type": "auto-sync",
+  "dcli_version": "0.1.0",
+  "package_count": 14,
+  "validation_passed": true
+}

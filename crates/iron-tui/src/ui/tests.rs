@@ -168,8 +168,8 @@ fn test_dashboard_renders_health_ok() {
         })
         .unwrap();
 
-    assert!(buffer_contains(&terminal, "System Health"));
-    assert!(buffer_contains(&terminal, "System OK"));
+    assert!(buffer_contains(&terminal, "System Status"));
+    assert!(buffer_contains(&terminal, "Healthy"));
 }
 
 #[test]
@@ -184,7 +184,7 @@ fn test_dashboard_renders_health_warning() {
         })
         .unwrap();
 
-    assert!(buffer_contains(&terminal, "Warning"));
+    assert!(buffer_contains(&terminal, "Attention"));
 }
 
 #[test]
@@ -199,7 +199,7 @@ fn test_dashboard_renders_health_error() {
         })
         .unwrap();
 
-    assert!(buffer_contains(&terminal, "Error"));
+    assert!(buffer_contains(&terminal, "Critical"));
 }
 
 #[test]
@@ -214,7 +214,8 @@ fn test_dashboard_shows_package_count() {
         })
         .unwrap();
 
-    assert!(buffer_contains(&terminal, "150 packages"));
+    assert!(buffer_contains(&terminal, "150"));
+    assert!(buffer_contains(&terminal, "installed"));
 }
 
 #[test]
@@ -246,9 +247,10 @@ fn test_dashboard_shows_quick_actions() {
         .unwrap();
 
     assert!(buffer_contains(&terminal, "Quick Actions"));
-    assert!(buffer_contains(&terminal, "[b]"));
-    assert!(buffer_contains(&terminal, "[p]"));
-    assert!(buffer_contains(&terminal, "[m]"));
+    // Key hints are now styled as " b ", " p ", " m "
+    assert!(buffer_contains(&terminal, "Bundles"));
+    assert!(buffer_contains(&terminal, "Profiles"));
+    assert!(buffer_contains(&terminal, "Modules"));
 }
 
 #[test]
@@ -262,7 +264,7 @@ fn test_dashboard_shows_pending_updates_alert() {
         })
         .unwrap();
 
-    assert!(buffer_contains(&terminal, "5 updates available"));
+    assert!(buffer_contains(&terminal, "5 package updates"));
 }
 
 #[test]
@@ -276,7 +278,7 @@ fn test_dashboard_shows_no_alerts_when_empty() {
         })
         .unwrap();
 
-    assert!(buffer_contains(&terminal, "No alerts"));
+    assert!(buffer_contains(&terminal, "All clear"));
 }
 
 // =============================================================================
@@ -627,7 +629,8 @@ fn test_update_preview_shows_count() {
         })
         .unwrap();
 
-    assert!(buffer_contains(&terminal, "10 updates available"));
+    // New UI format shows "N package(s)" in header section
+    assert!(buffer_contains(&terminal, "10 package(s)"));
 }
 
 #[test]
@@ -750,9 +753,9 @@ fn test_settings_renders() {
         })
         .unwrap();
 
-    assert!(buffer_contains(&terminal, "Settings"));
-    assert!(buffer_contains(&terminal, "Config directory"));
-    assert!(buffer_contains(&terminal, "State file"));
+    // Settings view now uses just the Configuration block (no internal header)
+    assert!(buffer_contains(&terminal, "Configuration"));
+    assert!(buffer_contains(&terminal, "Current Host"));
 }
 
 // =============================================================================
@@ -794,7 +797,7 @@ fn test_render_dispatches_to_dashboard() {
         })
         .unwrap();
 
-    assert!(buffer_contains(&terminal, "System Health"));
+    assert!(buffer_contains(&terminal, "System Status"));
 }
 
 #[test]
@@ -899,7 +902,7 @@ fn test_render_shows_help_overlay() {
         .unwrap();
 
     assert!(buffer_contains(&terminal, "Help"));
-    assert!(buffer_contains(&terminal, "Keyboard Shortcuts"));
+    assert!(buffer_contains(&terminal, "Navigation"));
 }
 
 #[test]

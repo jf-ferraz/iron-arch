@@ -1,0 +1,45 @@
+version = 1
+id = "systemd-user"
+name = "Systemd User Services Module"
+kind = "service"
+status = "active"
+owner = "laraj"
+description = "User-session units, timers, and health checks managed declaratively."
+
+[paths]
+root = "modules/services/systemd-user"
+manifest = "app/manifests/services.toml"
+units_dir = "modules/services/systemd-user/units"
+
+[compat]
+os = ["arch-linux"]
+requires = ["systemd", "busctl"]
+optional = ["gnome-keyring"]
+
+[capabilities]
+provides = ["session-services", "service-health-checks", "timer-management"]
+
+[[operations]]
+id = "lint"
+description = "Validate service manifest presence and unit sync script."
+command = "sh -c 'test -f app/manifests/services.toml && test -f scripts/check-secrets-service.sh && test -f scripts/systemd-sync-user-units.sh'"
+
+[[operations]]
+id = "sync-units"
+description = "Symlink user unit files into ~/.config/systemd/user and daemon-reload."
+command = "scripts/systemd-sync-user-units.sh"
+
+[[operations]]
+id = "check-secrets"
+description = "Verify Secret Service (org.freedesktop.secrets) is available."
+command = "scripts/check-secrets-service.sh"
+
+[[operations]]
+id = "status"
+description = "Print services manifest entries."
+command = "cargo run -p app-cli --manifest-path rust/Cargo.toml -- service list --root ."
+
+[hooks]
+pre_apply = []
+post_apply = []
+rollback = []

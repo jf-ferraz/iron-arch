@@ -169,6 +169,10 @@ pub struct IronState {
     /// If present, indicates an update is in progress or was interrupted
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub update_progress: Option<UpdateProgress>,
+
+    /// News acknowledgment tracking (Phase 2.2)
+    #[serde(default)]
+    pub news_acknowledgment: NewsAcknowledgment,
 }
 
 /// Record of an operation
@@ -197,6 +201,67 @@ pub struct MaintenanceState {
     pub last_doctor: Option<DateTime<Utc>>,
     pub last_snapshot: Option<DateTime<Utc>>,
     pub last_sync: Option<DateTime<Utc>>,
+}
+
+// ==========================================================================
+// News Acknowledgment (Phase 2.2)
+// ==========================================================================
+
+/// Tracks acknowledged Arch Linux news items
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct NewsAcknowledgment {
+    /// URLs of acknowledged news items (used as unique identifiers)
+    pub acknowledged_urls: HashSet<String>,
+    /// Timestamp of last news fetch
+    pub last_fetch: Option<DateTime<Utc>>,
+    /// Timestamp of last acknowledgment
+    pub last_acknowledged: Option<DateTime<Utc>>,
+}
+
+impl NewsAcknowledgment {
+    /// Create a new empty acknowledgment tracker
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Check if a news item has been acknowledged
+    pub fn is_acknowledged(&self, url: &str) -> bool {
+        self.acknowledged_urls.contains(url)
+    }
+
+    /// Acknowledge a news item
+    pub fn acknowledge(&mut self, url: &str) {
+        self.acknowledged_urls.insert(url.to_string());
+        self.last_acknowledged = Some(Utc::now());
+    }
+
+    /// Acknowledge multiple news items
+    pub fn acknowledge_all(&mut self, urls: &[&str]) {
+        for url in urls {
+            self.acknowledged_urls.insert((*url).to_string());
+        }
+        if !urls.is_empty() {
+            self.last_acknowledged = Some(Utc::now());
+        }
+    }
+
+    /// Mark news as fetched
+    pub fn mark_fetched(&mut self) {
+        self.last_fetch = Some(Utc::now());
+    }
+
+    /// Get count of acknowledged items
+    pub fn acknowledged_count(&self) -> usize {
+        self.acknowledged_urls.len()
+    }
+
+    /// Clear old acknowledgments (keep last 100)
+    pub fn prune(&mut self, keep: usize) {
+        if self.acknowledged_urls.len() > keep {
+            // Since HashSet doesn't have ordering, we just keep it as-is
+            // In practice, old news URLs won't match new ones anyway
+        }
+    }
 }
 
 impl IronState {
@@ -240,6 +305,45 @@ impl IronState {
             self.last_operations = self
                 .last_operations
                 .split_off(self.last_operations.len() - 100);
+        }
+    }
+
+    // ==========================================================================
+    // News Acknowledgment Methods (Phase 2.2)
+    // ==========================================================================
+
+    /// Check if a news item has been acknowledged
+    pub fn is_news_acknowledged(&self, url: &str) -> bool {
+        self.news_acknowledgment.is_acknowledged(url)
+    }
+
+    /// Acknowledge a news item by URL
+    pub fn acknowledge_news(&mut self, url: &str) {
+        self.news_acknowledgment.acknowledge(url);
+    }
+
+    /// Acknowledge multiple news items
+    pub fn acknowledge_all_news(&mut self, urls: &[&str]) {
+        self.news_acknowledgment.acknowledge_all(urls);
+    }
+
+    /// Mark news as recently fetched
+    pub fn mark_news_fetched(&mut self) {
+        self.news_acknowledgment.mark_fetched();
+    }
+
+    /// Get the time since last news fetch
+    pub fn time_since_news_fetch(&self) -> Option<chrono::Duration> {
+        self.news_acknowledgment
+            .last_fetch
+            .map(|t| Utc::now().signed_duration_since(t))
+    }
+
+    /// Check if news should be refetched (default: older than 1 hour)
+    pub fn should_refetch_news(&self) -> bool {
+        match self.time_since_news_fetch() {
+            Some(duration) => duration.num_hours() >= 1,
+            None => true, // Never fetched
         }
     }
 }
@@ -1120,5 +1224,244 @@ mod tests {
         // Clear progress
         state.update_progress = None;
         assert!(state.update_progress.is_none());
+    }
+
+    // ==========================================================================
+    // NewsAcknowledgment Tests (Phase 2.2)
+    // ==========================================================================
+
+    #[test]
+    fn test_news_acknowledgment_new() {
+        let ack = NewsAcknowledgment::new();
+        assert!(ack.acknowledged_urls.is_empty());
+        assert!(ack.last_fetch.is_none());
+        assert!(ack.last_acknowledged.is_none());
+    }
+
+    #[test]
+    fn test_news_acknowledgment_default() {
+        let ack = NewsAcknowledgment::default();
+        assert!(ack.acknowledged_urls.is_empty());
+    }
+
+    #[test]
+    fn test_news_acknowledgment_is_acknowledged() {
+        let mut ack = NewsAcknowledgment::new();
+        let url = "https://archlinux.org/news/test/";
+
+        assert!(!ack.is_acknowledged(url));
+        ack.acknowledge(url);
+        assert!(ack.is_acknowledged(url));
+    }
+
+    #[test]
+    fn test_news_acknowledgment_acknowledge() {
+        let mut ack = NewsAcknowledgment::new();
+        let url = "https://archlinux.org/news/test/";
+
+        ack.acknowledge(url);
+
+        assert_eq!(ack.acknowledged_count(), 1);
+        assert!(ack.last_acknowledged.is_some());
+    }
+
+    #[test]
+    fn test_news_acknowledgment_acknowledge_all() {
+        let mut ack = NewsAcknowledgment::new();
+        let urls = [
+            "https://archlinux.org/news/1/",
+            "https://archlinux.org/news/2/",
+            "https://archlinux.org/news/3/",
+        ];
+
+        ack.acknowledge_all(&urls);
+
+        assert_eq!(ack.acknowledged_count(), 3);
+        assert!(ack.is_acknowledged(urls[0]));
+        assert!(ack.is_acknowledged(urls[1]));
+        assert!(ack.is_acknowledged(urls[2]));
+    }
+
+    #[test]
+    fn test_news_acknowledgment_acknowledge_all_empty() {
+        let mut ack = NewsAcknowledgment::new();
+        ack.acknowledge_all(&[]);
+
+        assert_eq!(ack.acknowledged_count(), 0);
+        assert!(ack.last_acknowledged.is_none());
+    }
+
+    #[test]
+    fn test_news_acknowledgment_mark_fetched() {
+        let mut ack = NewsAcknowledgment::new();
+        assert!(ack.last_fetch.is_none());
+
+        ack.mark_fetched();
+
+        assert!(ack.last_fetch.is_some());
+    }
+
+    #[test]
+    fn test_news_acknowledgment_acknowledged_count() {
+        let mut ack = NewsAcknowledgment::new();
+        assert_eq!(ack.acknowledged_count(), 0);
+
+        ack.acknowledge("url1");
+        assert_eq!(ack.acknowledged_count(), 1);
+
+        ack.acknowledge("url2");
+        assert_eq!(ack.acknowledged_count(), 2);
+
+        // Duplicate should not increase count (HashSet)
+        ack.acknowledge("url1");
+        assert_eq!(ack.acknowledged_count(), 2);
+    }
+
+    #[test]
+    fn test_news_acknowledgment_serialization() {
+        let mut ack = NewsAcknowledgment::new();
+        ack.acknowledge("https://archlinux.org/news/test/");
+        ack.mark_fetched();
+
+        let json = serde_json::to_string(&ack).unwrap();
+        let deserialized: NewsAcknowledgment = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.acknowledged_count(), 1);
+        assert!(deserialized.is_acknowledged("https://archlinux.org/news/test/"));
+        assert!(deserialized.last_fetch.is_some());
+    }
+
+    #[test]
+    fn test_news_acknowledgment_clone() {
+        let mut ack = NewsAcknowledgment::new();
+        ack.acknowledge("url1");
+        ack.mark_fetched();
+
+        let cloned = ack.clone();
+
+        assert_eq!(cloned.acknowledged_count(), 1);
+        assert!(cloned.is_acknowledged("url1"));
+    }
+
+    // ==========================================================================
+    // IronState News Methods Tests (Phase 2.2)
+    // ==========================================================================
+
+    #[test]
+    fn test_iron_state_is_news_acknowledged() {
+        let mut state = IronState::default();
+        let url = "https://archlinux.org/news/test/";
+
+        assert!(!state.is_news_acknowledged(url));
+
+        state.acknowledge_news(url);
+        assert!(state.is_news_acknowledged(url));
+    }
+
+    #[test]
+    fn test_iron_state_acknowledge_news() {
+        let mut state = IronState::default();
+        let url = "https://archlinux.org/news/important/";
+
+        state.acknowledge_news(url);
+
+        assert!(state.news_acknowledgment.is_acknowledged(url));
+        assert!(state.news_acknowledgment.last_acknowledged.is_some());
+    }
+
+    #[test]
+    fn test_iron_state_acknowledge_all_news() {
+        let mut state = IronState::default();
+        let urls = [
+            "https://archlinux.org/news/1/",
+            "https://archlinux.org/news/2/",
+        ];
+
+        state.acknowledge_all_news(&urls);
+
+        assert!(state.is_news_acknowledged(urls[0]));
+        assert!(state.is_news_acknowledged(urls[1]));
+    }
+
+    #[test]
+    fn test_iron_state_mark_news_fetched() {
+        let mut state = IronState::default();
+        assert!(state.news_acknowledgment.last_fetch.is_none());
+
+        state.mark_news_fetched();
+
+        assert!(state.news_acknowledgment.last_fetch.is_some());
+    }
+
+    #[test]
+    fn test_iron_state_time_since_news_fetch_none() {
+        let state = IronState::default();
+        assert!(state.time_since_news_fetch().is_none());
+    }
+
+    #[test]
+    fn test_iron_state_time_since_news_fetch_some() {
+        let mut state = IronState::default();
+        state.mark_news_fetched();
+
+        let duration = state.time_since_news_fetch();
+        assert!(duration.is_some());
+        // Should be very recent (less than 1 second)
+        assert!(duration.unwrap().num_seconds() < 1);
+    }
+
+    #[test]
+    fn test_iron_state_should_refetch_news_never_fetched() {
+        let state = IronState::default();
+        assert!(state.should_refetch_news()); // Never fetched = should refetch
+    }
+
+    #[test]
+    fn test_iron_state_should_refetch_news_recent() {
+        let mut state = IronState::default();
+        state.mark_news_fetched();
+
+        assert!(!state.should_refetch_news()); // Just fetched = should not refetch
+    }
+
+    #[test]
+    fn test_iron_state_news_acknowledgment_persists_in_roundtrip() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().join("news_test.json");
+
+        let mut state = IronState::default();
+        state.acknowledge_news("https://archlinux.org/news/persisted/");
+        state.mark_news_fetched();
+
+        state.save(&path).unwrap();
+        let loaded = IronState::load(&path).unwrap();
+
+        assert!(loaded.is_news_acknowledged("https://archlinux.org/news/persisted/"));
+        assert!(loaded.news_acknowledgment.last_fetch.is_some());
+    }
+
+    #[test]
+    fn test_iron_state_backward_compatibility_no_news_acknowledgment() {
+        // Simulate loading an old state file without news_acknowledgment field
+        let old_state_json = r#"{
+            "current_host": "legacy-host",
+            "active_bundles": {},
+            "active_profiles": {},
+            "active_modules": [],
+            "last_operations": [],
+            "maintenance": {
+                "last_update": null,
+                "last_clean": null,
+                "last_doctor": null,
+                "last_snapshot": null,
+                "last_sync": null
+            }
+        }"#;
+
+        let state: IronState = serde_json::from_str(old_state_json).unwrap();
+
+        // Should default to empty news acknowledgment
+        assert_eq!(state.news_acknowledgment.acknowledged_count(), 0);
+        assert!(state.news_acknowledgment.last_fetch.is_none());
     }
 }

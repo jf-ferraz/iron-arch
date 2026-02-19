@@ -1,0 +1,21 @@
+{
+  "timestamp": "2026-01-06T02:54:50.367255180+00:00",
+  "timestamp_display": "2026-01-06 02:54",
+  "hostname": "don-flow",
+  "active_host_file": "don-flow.yaml",
+  "enabled_modules": [
+    "bdots-hypr",
+    "asus/asus",
+    "login-managers/sddm-enable",
+    "package-mods/main-apps",
+    "package-mods/content-creation",
+    "editors/helix-catppuccin-mocha",
+    "bdots-hypr/qs-hyprview",
+    "dev/development",
+    "bdots-niri"
+  ],
+  "backup_type": "auto-sync",
+  "dcli_version": "0.1.0",
+  "package_count": 83,
+  "validation_passed": true
+}

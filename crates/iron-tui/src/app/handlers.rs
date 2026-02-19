@@ -49,32 +49,275 @@ impl App {
             return;
         }
 
-        // View-specific key handling
-        match self.view {
-            View::UpdatePreview => {
-                match key.code {
-                    KeyCode::Char('r') => self.refresh_updates(),
-                    KeyCode::Enter | KeyCode::Char('u') => {
+        // View-specific key handling (actions only, falls through for navigation)
+        let handled = match self.view {
+            View::UpdatePreview => match key.code {
+                KeyCode::Char('r') => {
+                    self.refresh_updates();
+                    true
+                }
+                KeyCode::Char('u') => {
+                    if self.can_proceed_with_update() {
                         self.request_confirm(ConfirmAction::RunUpdate);
+                    } else {
+                        self.set_warning("Cannot update - resolve pre-flight issues first");
                     }
-                    KeyCode::Esc => self.go_back(),
-                    KeyCode::Char('?') => self.show_help = true,
-                    KeyCode::Char('q') => self.should_quit = true,
-                    _ => {}
+                    true
                 }
-                return;
-            }
-            View::ProfileDetail => {
-                match key.code {
-                    KeyCode::Enter | KeyCode::Char('a') => self.activate_selected_profile(),
-                    KeyCode::Esc => self.go_back(),
-                    KeyCode::Char('?') => self.show_help = true,
-                    KeyCode::Char('q') => self.should_quit = true,
-                    _ => {}
+                // Section navigation with arrow keys (Tab cycles views globally)
+                KeyCode::Right | KeyCode::Char('l') => {
+                    self.next_update_section();
+                    true
                 }
-                return;
-            }
-            _ => {}
+                KeyCode::Left | KeyCode::Char('h') => {
+                    self.prev_update_section();
+                    true
+                }
+                // Item navigation within sections
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.update_section_up();
+                    true
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.update_section_down();
+                    true
+                }
+                // News acknowledgment
+                KeyCode::Char('a') => {
+                    if let Some(url) = self.acknowledge_selected_news() {
+                        self.set_status(format!("Acknowledged: {}", url));
+                    }
+                    true
+                }
+                KeyCode::Char('A') => {
+                    let count = self.acknowledge_all_news();
+                    if count > 0 {
+                        self.set_status(format!("Acknowledged {} news item(s)", count));
+                    }
+                    true
+                }
+                _ => false,
+            },
+            View::ProfileDetail => match key.code {
+                KeyCode::Enter | KeyCode::Char('a') => {
+                    self.activate_selected_profile();
+                    true
+                }
+                _ => false,
+            },
+            // Phase 3: CleanSystem view handlers
+            View::CleanSystem => match key.code {
+                // Toggle category selection
+                KeyCode::Char(' ') => {
+                    self.toggle_selected_cleanup_category();
+                    true
+                }
+                // Select all safe categories
+                KeyCode::Char('s') => {
+                    self.select_safe_cleanup_categories();
+                    self.set_info("Selected safe categories");
+                    true
+                }
+                // Select all categories (including aggressive)
+                KeyCode::Char('a') => {
+                    self.select_all_cleanup_categories();
+                    self.set_warning("Selected all categories (including aggressive)");
+                    true
+                }
+                // Deselect all
+                KeyCode::Char('n') => {
+                    self.deselect_all_cleanup_categories();
+                    self.set_info("Deselected all categories");
+                    true
+                }
+                // Preview (refresh estimates)
+                KeyCode::Enter => {
+                    self.preview_cleanup();
+                    true
+                }
+                // Execute cleanup
+                KeyCode::Char('c') => {
+                    if !self.cleanup_categories.is_empty() {
+                        self.request_confirm(ConfirmAction::RunCleanup);
+                    } else {
+                        self.set_warning("No categories selected");
+                    }
+                    true
+                }
+                // Navigate categories
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.select_previous();
+                    true
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.select_next();
+                    true
+                }
+                _ => false,
+            },
+            // SystemMaintenance view handlers
+            View::SystemMaintenance => match key.code {
+                // Quick shortcuts to actions
+                KeyCode::Char('u') => {
+                    self.navigate(View::UpdatePreview);
+                    true
+                }
+                KeyCode::Char('c') => {
+                    self.navigate(View::CleanSystem);
+                    true
+                }
+                KeyCode::Char('d') => {
+                    // Doctor not yet implemented, show info message
+                    self.set_info("System Doctor coming soon");
+                    true
+                }
+                // Card navigation
+                KeyCode::Left | KeyCode::Char('h') => {
+                    if self.selected_index > 0 {
+                        self.selected_index -= 1;
+                    }
+                    true
+                }
+                KeyCode::Right | KeyCode::Char('l') => {
+                    if self.selected_index < 2 {
+                        self.selected_index += 1;
+                    }
+                    true
+                }
+                // Enter to launch selected action
+                KeyCode::Enter => {
+                    match self.selected_index {
+                        0 => self.navigate(View::UpdatePreview),
+                        1 => self.navigate(View::CleanSystem),
+                        2 => self.set_info("System Doctor coming soon"),
+                        _ => {}
+                    }
+                    true
+                }
+                _ => false,
+            },
+            // ConfigManager view handlers
+            View::ConfigManager => match key.code {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.select_previous();
+                    true
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.select_next();
+                    true
+                }
+                KeyCode::Enter => {
+                    // TODO: View diff
+                    self.set_info("Diff viewer coming soon");
+                    true
+                }
+                KeyCode::Char('r') => {
+                    // TODO: Mark resolved
+                    self.set_info("Mark resolved coming soon");
+                    true
+                }
+                _ => false,
+            },
+            // OperationLog view handlers
+            View::OperationLog => match key.code {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.select_previous();
+                    true
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.select_next();
+                    true
+                }
+                KeyCode::Char('f') => {
+                    // TODO: Filter dialog
+                    self.set_info("Filter coming soon");
+                    true
+                }
+                KeyCode::Char('/') => {
+                    // TODO: Search
+                    self.set_info("Search coming soon");
+                    true
+                }
+                _ => false,
+            },
+            // SecurityModules view handlers
+            View::SecurityModules => match key.code {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.select_previous();
+                    true
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.select_next();
+                    true
+                }
+                KeyCode::Enter | KeyCode::Char('e') => {
+                    // Toggle module
+                    self.toggle_selected_module();
+                    true
+                }
+                KeyCode::Char('i') => {
+                    // TODO: Install module
+                    self.set_info("Module installation coming soon");
+                    true
+                }
+                _ => false,
+            },
+            // Settings view handlers
+            View::Settings => match key.code {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.select_previous();
+                    true
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.select_next();
+                    true
+                }
+                KeyCode::Enter => {
+                    self.edit_selected_setting();
+                    true
+                }
+                KeyCode::Char('r') => {
+                    self.refresh_settings();
+                    true
+                }
+                KeyCode::Char('o') => {
+                    self.navigate(View::OperationLog);
+                    true
+                }
+                KeyCode::Char('c') => {
+                    self.navigate(View::ConfigManager);
+                    true
+                }
+                KeyCode::Char('w') => {
+                    self.navigate(View::SetupWizard);
+                    true
+                }
+                _ => false,
+            },
+            // Sync view handlers
+            View::Sync => match key.code {
+                KeyCode::Char('p') => {
+                    // TODO: Implement git push
+                    self.set_status("Git push not yet implemented");
+                    true
+                }
+                KeyCode::Char('f') => {
+                    // TODO: Implement git fetch/pull
+                    self.set_status("Git pull not yet implemented");
+                    true
+                }
+                KeyCode::Char('s') => {
+                    // TODO: Implement git status refresh
+                    self.set_status("Refreshing git status...");
+                    true
+                }
+                _ => false,
+            },
+            _ => false,
+        };
+
+        if handled {
+            return;
         }
 
         // General key handling
@@ -90,8 +333,12 @@ impl App {
             KeyCode::Char('b') => self.navigate(View::Bundles),
             KeyCode::Char('p') => self.navigate(View::Profiles),
             KeyCode::Char('m') => self.navigate(View::Modules),
+            KeyCode::Char('x') => self.navigate(View::SystemMaintenance),
             KeyCode::Char('u') => self.navigate(View::UpdatePreview),
+            KeyCode::Char('l') => self.navigate(View::CleanSystem),  // Phase 3: Cleanup
             KeyCode::Char('s') => self.navigate(View::Settings),
+            KeyCode::Char('w') => self.navigate(View::SetupWizard),  // Re-enter wizard
+            KeyCode::Char('y') => self.navigate(View::Sync),         // Git sync
 
             // List navigation
             KeyCode::Up | KeyCode::Char('k') => self.select_previous(),
@@ -209,10 +456,16 @@ impl App {
             View::Dashboard => View::Bundles,
             View::Bundles | View::BundleDetail => View::Profiles,
             View::Profiles | View::ProfileDetail => View::Modules,
-            View::Modules | View::ModuleDetail => View::UpdatePreview,
-            View::UpdatePreview => View::Settings,
+            View::Modules | View::ModuleDetail => View::SystemMaintenance,
+            View::SystemMaintenance => View::UpdatePreview,
+            View::UpdatePreview => View::Sync,
+            View::Sync => View::Settings,
             View::Settings => View::Dashboard,
-            _ => View::Dashboard,
+            // Sub-views cycle to their parent
+            View::CleanSystem | View::SecurityModules | View::ConfigManager => View::SystemMaintenance,
+            View::OperationLog => View::Settings,
+            // SetupWizard exits to Dashboard (special case)
+            View::SetupWizard => View::Dashboard,
         };
         self.navigate(next);
     }
@@ -221,12 +474,18 @@ impl App {
     fn cycle_view_backward(&mut self) {
         let prev = match self.view {
             View::Dashboard => View::Settings,
-            View::Settings => View::UpdatePreview,
-            View::UpdatePreview => View::Modules,
+            View::Settings => View::Sync,
+            View::Sync => View::UpdatePreview,
+            View::UpdatePreview => View::SystemMaintenance,
+            View::SystemMaintenance => View::Modules,
             View::Modules | View::ModuleDetail => View::Profiles,
             View::Profiles | View::ProfileDetail => View::Bundles,
             View::Bundles | View::BundleDetail => View::Dashboard,
-            _ => View::Dashboard,
+            // Sub-views cycle to their parent
+            View::CleanSystem | View::SecurityModules | View::ConfigManager => View::SystemMaintenance,
+            View::OperationLog => View::Settings,
+            // SetupWizard exits to Dashboard (special case)
+            View::SetupWizard => View::Dashboard,
         };
         self.navigate(prev);
     }
@@ -254,9 +513,36 @@ impl App {
     /// Get current list length based on view
     fn current_list_len(&self) -> usize {
         match self.view {
-            View::Bundles => self.bundles.len(),
-            View::Profiles => self.profiles.len(),
-            View::Modules => self.modules.len(),
+            View::Bundles | View::BundleDetail => self.bundles.len(),
+            View::Profiles | View::ProfileDetail => self.profiles.len(),
+            View::Modules | View::ModuleDetail => self.modules.len(),
+            View::UpdatePreview => self.pending_updates.len(),
+            View::CleanSystem => iron_core::services::clean::CleanupCategory::all().len(),
+            View::SystemMaintenance => 3, // Update, Cleanup, Doctor
+            View::ConfigManager => self
+                .post_update_result
+                .as_ref()
+                .map(|r| r.config_conflicts.len())
+                .unwrap_or(0),
+            View::OperationLog => self
+                .state_manager
+                .as_ref()
+                .map(|sm| sm.state().last_operations.len())
+                .unwrap_or(0),
+            View::SecurityModules => self
+                .modules
+                .iter()
+                .filter(|m| {
+                    m.id.contains("security")
+                        || m.id.contains("firewall")
+                        || m.id.contains("audit")
+                        || ["ufw", "firewalld", "fail2ban", "auditd", "apparmor", "selinux", "clamav"]
+                            .contains(&m.id.as_str())
+                })
+                .count(),
+            View::Sync => 0, // No list items in sync view
+            View::SetupWizard => self.wizard.available_bundles.len(),
+            View::Settings => 8, // Number of setting items
             _ => 0,
         }
     }
@@ -475,10 +761,21 @@ mod tests {
         app.handle_key(create_key_event(KeyCode::Tab));
         assert_eq!(app.view, View::Modules);
 
-        // Modules -> UpdatePreview (skips ModuleDetail)
+        // Modules -> SystemMaintenance (skips ModuleDetail)
+        app.handle_key(create_key_event(KeyCode::Tab));
+        assert_eq!(app.view, View::SystemMaintenance);
+
+        // SystemMaintenance -> UpdatePreview
         app.handle_key(create_key_event(KeyCode::Tab));
         assert_eq!(app.view, View::UpdatePreview);
-        // Note: UpdatePreview has special key handling that doesn't pass Tab through
+
+        // UpdatePreview -> Sync (Tab now works globally, arrows for sections)
+        app.handle_key(create_key_event(KeyCode::Tab));
+        assert_eq!(app.view, View::Sync);
+
+        // Sync -> Settings
+        app.handle_key(create_key_event(KeyCode::Tab));
+        assert_eq!(app.view, View::Settings);
     }
 
     #[test]
@@ -498,6 +795,9 @@ mod tests {
 
         app.handle_key(create_key_event(KeyCode::BackTab));
         assert_eq!(app.view, View::Settings);
+
+        app.handle_key(create_key_event(KeyCode::BackTab));
+        assert_eq!(app.view, View::Sync);
 
         app.handle_key(create_key_event(KeyCode::BackTab));
         assert_eq!(app.view, View::UpdatePreview);
@@ -751,5 +1051,173 @@ mod tests {
         app.handle_key(create_key_event(KeyCode::Esc));
 
         assert_eq!(app.view, View::Profiles);
+    }
+
+    // =============================================================================
+    // System Maintenance View Tests
+    // =============================================================================
+
+    #[test]
+    fn test_x_navigates_to_system_maintenance() {
+        let mut app = App::default();
+        app.view = View::Dashboard;
+
+        app.handle_key(create_key_event(KeyCode::Char('x')));
+
+        assert_eq!(app.view, View::SystemMaintenance);
+    }
+
+    #[test]
+    fn test_tab_from_modules_to_system_maintenance() {
+        let mut app = App::default();
+        app.view = View::Modules;
+
+        app.handle_key(create_key_event(KeyCode::Tab));
+
+        assert_eq!(app.view, View::SystemMaintenance);
+    }
+
+    #[test]
+    fn test_tab_from_system_maintenance_to_update_preview() {
+        let mut app = App::default();
+        app.view = View::SystemMaintenance;
+
+        app.handle_key(create_key_event(KeyCode::Tab));
+
+        assert_eq!(app.view, View::UpdatePreview);
+    }
+
+    #[test]
+    fn test_backtab_from_system_maintenance_to_modules() {
+        let mut app = App::default();
+        app.view = View::SystemMaintenance;
+
+        app.handle_key(create_key_event(KeyCode::BackTab));
+
+        assert_eq!(app.view, View::Modules);
+    }
+
+    #[test]
+    fn test_backtab_from_update_preview_to_system_maintenance() {
+        let mut app = App::default();
+        app.view = View::UpdatePreview;
+        // Use cycle_view_backward directly since UpdatePreview has special handling
+        app.previous_view = Some(View::SystemMaintenance);
+
+        app.handle_key(create_key_event(KeyCode::Esc));
+
+        assert_eq!(app.view, View::SystemMaintenance);
+    }
+
+    #[test]
+    fn test_tab_from_clean_system_to_system_maintenance() {
+        let mut app = App::default();
+        app.view = View::CleanSystem;
+
+        app.handle_key(create_key_event(KeyCode::Tab));
+
+        assert_eq!(app.view, View::SystemMaintenance);
+    }
+
+    #[test]
+    fn test_tab_from_security_modules_to_system_maintenance() {
+        let mut app = App::default();
+        app.view = View::SecurityModules;
+
+        app.handle_key(create_key_event(KeyCode::Tab));
+
+        assert_eq!(app.view, View::SystemMaintenance);
+    }
+
+    #[test]
+    fn test_tab_from_config_manager_to_system_maintenance() {
+        let mut app = App::default();
+        app.view = View::ConfigManager;
+
+        app.handle_key(create_key_event(KeyCode::Tab));
+
+        assert_eq!(app.view, View::SystemMaintenance);
+    }
+
+    #[test]
+    fn test_tab_from_operation_log_to_settings() {
+        let mut app = App::default();
+        app.view = View::OperationLog;
+
+        app.handle_key(create_key_event(KeyCode::Tab));
+
+        assert_eq!(app.view, View::Settings);
+    }
+
+    // =============================================================================
+    // Settings View Handler Tests
+    // =============================================================================
+
+    #[test]
+    fn test_settings_enter_triggers_edit() {
+        let mut app = App::default();
+        app.view = View::Settings;
+        app.selected_index = 1; // Current Host
+
+        app.handle_key(create_key_event(KeyCode::Enter));
+
+        // Should show hint message
+        assert!(app.status_text().is_some());
+    }
+
+    #[test]
+    fn test_settings_r_triggers_refresh() {
+        let mut app = App::default();
+        app.view = View::Settings;
+
+        app.handle_key(create_key_event(KeyCode::Char('r')));
+
+        assert!(app.status_text().is_some());
+        assert!(app.status_text().unwrap().contains("refreshed"));
+    }
+
+    #[test]
+    fn test_settings_w_navigates_to_wizard() {
+        let mut app = App::default();
+        app.view = View::Settings;
+
+        app.handle_key(create_key_event(KeyCode::Char('w')));
+
+        assert_eq!(app.view, View::SetupWizard);
+    }
+
+    #[test]
+    fn test_settings_o_navigates_to_operation_log() {
+        let mut app = App::default();
+        app.view = View::Settings;
+
+        app.handle_key(create_key_event(KeyCode::Char('o')));
+
+        assert_eq!(app.view, View::OperationLog);
+    }
+
+    #[test]
+    fn test_settings_c_navigates_to_config_manager() {
+        let mut app = App::default();
+        app.view = View::Settings;
+
+        app.handle_key(create_key_event(KeyCode::Char('c')));
+
+        assert_eq!(app.view, View::ConfigManager);
+    }
+
+    #[test]
+    fn test_settings_navigation_respects_list_length() {
+        let mut app = App::default();
+        app.view = View::Settings;
+        app.selected_index = 0;
+
+        // Settings has 8 items (indices 0-7)
+        for _ in 0..10 {
+            app.handle_key(create_key_event(KeyCode::Down));
+        }
+
+        // Should stop at index 7 (last item)
+        assert_eq!(app.selected_index, 7);
     }
 }

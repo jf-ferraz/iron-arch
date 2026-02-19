@@ -1,0 +1,2841 @@
+{
+  "detectedCompositor": "niri",
+  "cheatsheetData": [
+    {
+      "title": "Applications",
+      "binds": [
+        {
+          "keys": "Super + Ctrl + Shift + Return",
+          "desc": "Run: kitty"
+        },
+        {
+          "keys": "Super + T",
+          "desc": "Open a Terminal: kitty"
+        },
+        {
+          "keys": "Super + Return",
+          "desc": "Open a Terminal: kitty"
+        },
+        {
+          "keys": "Super + D",
+          "desc": "Open Discord"
+        },
+        {
+          "keys": "Super + F",
+          "desc": "Open Discord"
+        },
+        {
+          "keys": "Super + Y",
+          "desc": "Open Yazi"
+        },
+        {
+          "keys": "Super + Shift + A",
+          "desc": "Open btop"
+        },
+        {
+          "keys": "Super + Shift + N",
+          "desc": "Open Obsidian"
+        },
+        {
+          "keys": "Super + G",
+          "desc": "Open Telegram"
+        },
+        {
+          "keys": "Super + B",
+          "desc": "Open Zen Browser"
+        },
+        {
+          "keys": "Super + Shift + Z",
+          "desc": "Open Zed Editor"
+        },
+        {
+          "keys": "Super + S",
+          "desc": "Open Steam"
+        },
+        {
+          "keys": "Super + Ctrl + C",
+          "desc": "Open OpenCode"
+        },
+        {
+          "keys": "Super + Ctrl + P",
+          "desc": "Open Perplexity"
+        },
+        {
+          "keys": "Super + Ctrl + Return",
+          "desc": "Run: kitty"
+        },
+        {
+          "keys": "Super + Shift + O",
+          "desc": "Open OBS Studio"
+        },
+        {
+          "keys": "Super + Alt + F",
+          "desc": "Toggle DP-1 Monitor Scale"
+        },
+        {
+          "keys": "Super + Alt + L",
+          "desc": "Lock the Screen: swaylock"
+        },
+        {
+          "keys": "Super + Alt + S",
+          "desc": "spawn-sh \"pkill orca || exec orca\""
+        },
+        {
+          "keys": "Vol Up",
+          "desc": "spawn-sh \"wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.1+ -l 1.0\""
+        },
+        {
+          "keys": "Vol Down",
+          "desc": "spawn-sh \"wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.1-\""
+        },
+        {
+          "keys": "Mute",
+          "desc": "spawn-sh \"wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle\""
+        },
+        {
+          "keys": "Mic Mute",
+          "desc": "spawn-sh \"wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle\""
+        },
+        {
+          "keys": "Play",
+          "desc": "spawn-sh \"playerctl play-pause\""
+        },
+        {
+          "keys": "Stop",
+          "desc": "spawn-sh \"playerctl stop\""
+        },
+        {
+          "keys": "Prev",
+          "desc": "spawn-sh \"playerctl previous\""
+        },
+        {
+          "keys": "Next",
+          "desc": "spawn-sh \"playerctl next\""
+        },
+        {
+          "keys": "Bright Up",
+          "desc": "Run: brightnessctl"
+        },
+        {
+          "keys": "Bright Down",
+          "desc": "Run: brightnessctl"
+        },
+        {
+          "keys": "Ctrl + Shift + S",
+          "desc": "Switch Desktop Shell"
+        },
+        {
+          "keys": "Super + E",
+          "desc": "Open Noctalia Shell Emoji Launcher"
+        }
+      ]
+    },
+    {
+      "title": "Window Management",
+      "binds": [
+        {
+          "keys": "Super + Q",
+          "desc": "Close Window"
+        },
+        {
+          "keys": "Super + Comma",
+          "desc": "Consume Window Into Column"
+        },
+        {
+          "keys": "Super + Period",
+          "desc": "Expel Window From Column"
+        },
+        {
+          "keys": "Super + Shift + F",
+          "desc": "Fullscreen Window"
+        }
+      ]
+    },
+    {
+      "title": "Column Navigation",
+      "binds": [
+        {
+          "keys": "Super + Left",
+          "desc": "Focus Column Left"
+        },
+        {
+          "keys": "Super + Right",
+          "desc": "Focus Column Right"
+        },
+        {
+          "keys": "Super + H",
+          "desc": "Focus Column Left"
+        },
+        {
+          "keys": "Super + L",
+          "desc": "Focus Column Right"
+        },
+        {
+          "keys": "Super + Home",
+          "desc": "Focus Column First"
+        },
+        {
+          "keys": "Super + End",
+          "desc": "Focus Column Last"
+        },
+        {
+          "keys": "Super + WheelScrollRight",
+          "desc": "Focus Column Right"
+        },
+        {
+          "keys": "Super + WheelScrollLeft",
+          "desc": "Focus Column Left"
+        },
+        {
+          "keys": "Super + Shift + WheelScrollDown",
+          "desc": "Focus Column Right"
+        },
+        {
+          "keys": "Super + Shift + WheelScrollUp",
+          "desc": "Focus Column Left"
+        }
+      ]
+    },
+    {
+      "title": "Window Focus",
+      "binds": [
+        {
+          "keys": "Super + Down",
+          "desc": "Focus Window Down"
+        },
+        {
+          "keys": "Super + Up",
+          "desc": "Focus Window Up"
+        },
+        {
+          "keys": "Super + J",
+          "desc": "Focus Window Down"
+        },
+        {
+          "keys": "Super + K",
+          "desc": "Focus Window Up"
+        }
+      ]
+    },
+    {
+      "title": "Workspace Navigation",
+      "binds": [
+        {
+          "keys": "Super + Ctrl + Down",
+          "desc": "Focus Workspace Down"
+        },
+        {
+          "keys": "Super + Ctrl + UP",
+          "desc": "Focus Workspace Up"
+        },
+        {
+          "keys": "Super + U",
+          "desc": "Focus Workspace Down"
+        },
+        {
+          "keys": "Super + I",
+          "desc": "Focus Workspace Up"
+        },
+        {
+          "keys": "Super + WheelScrollDown",
+          "desc": "Focus Workspace Down"
+        },
+        {
+          "keys": "Super + WheelScrollUp",
+          "desc": "Focus Workspace Up"
+        },
+        {
+          "keys": "Super + 1",
+          "desc": "Focus Workspace 1"
+        },
+        {
+          "keys": "Super + 2",
+          "desc": "Focus Workspace 2"
+        },
+        {
+          "keys": "Super + 3",
+          "desc": "Focus Workspace 3"
+        },
+        {
+          "keys": "Super + 4",
+          "desc": "Focus Workspace 4"
+        },
+        {
+          "keys": "Super + 5",
+          "desc": "Focus Workspace 5"
+        },
+        {
+          "keys": "Super + 6",
+          "desc": "Focus Workspace 6"
+        },
+        {
+          "keys": "Super + 7",
+          "desc": "Focus Workspace 7"
+        },
+        {
+          "keys": "Super + 8",
+          "desc": "Focus Workspace 8"
+        },
+        {
+          "keys": "Super + 9",
+          "desc": "Focus Workspace 9"
+        }
+      ]
+    },
+    {
+      "title": "Move Columns",
+      "binds": [
+        {
+          "keys": "Super + Shift + Left",
+          "desc": "Move Column Left"
+        },
+        {
+          "keys": "Super + Shift + Right",
+          "desc": "Move Column Right"
+        },
+        {
+          "keys": "Super + Ctrl + H",
+          "desc": "Move Column Left"
+        },
+        {
+          "keys": "Super + Ctrl + L",
+          "desc": "Move Column Right"
+        },
+        {
+          "keys": "Super + Ctrl + Home",
+          "desc": "Move Column To First"
+        },
+        {
+          "keys": "Super + Ctrl + End",
+          "desc": "Move Column To Last"
+        },
+        {
+          "keys": "Super + Shift + Ctrl + Left",
+          "desc": "Move Column To Monitor Left"
+        },
+        {
+          "keys": "Super + Shift + Ctrl + Down",
+          "desc": "Move Column To Monitor Down"
+        },
+        {
+          "keys": "Super + Shift + Ctrl + Up",
+          "desc": "Move Column To Monitor Up"
+        },
+        {
+          "keys": "Super + Shift + Ctrl + Right",
+          "desc": "Move Column To Monitor Right"
+        },
+        {
+          "keys": "Super + Shift + Ctrl + H",
+          "desc": "Move Column To Monitor Left"
+        },
+        {
+          "keys": "Super + Shift + Ctrl + J",
+          "desc": "Move Column To Monitor Down"
+        },
+        {
+          "keys": "Super + Shift + Ctrl + K",
+          "desc": "Move Column To Monitor Up"
+        },
+        {
+          "keys": "Super + Shift + Ctrl + L",
+          "desc": "Move Column To Monitor Right"
+        },
+        {
+          "keys": "Super + Ctrl + Page_Down",
+          "desc": "Move Column To Workspace Down"
+        },
+        {
+          "keys": "Super + Ctrl + Page_Up",
+          "desc": "Move Column To Workspace Up"
+        },
+        {
+          "keys": "Super + Ctrl + U",
+          "desc": "Move Column To Workspace Down"
+        },
+        {
+          "keys": "Super + Ctrl + I",
+          "desc": "Move Column To Workspace Up"
+        },
+        {
+          "keys": "Super + Ctrl + WheelScrollDown",
+          "desc": "Move Column To Workspace Down"
+        },
+        {
+          "keys": "Super + Ctrl + WheelScrollUp",
+          "desc": "Move Column To Workspace Up"
+        },
+        {
+          "keys": "Super + Ctrl + WheelScrollRight",
+          "desc": "Move Column Right"
+        },
+        {
+          "keys": "Super + Ctrl + WheelScrollLeft",
+          "desc": "Move Column Left"
+        },
+        {
+          "keys": "Super + Ctrl + Shift + WheelScrollDown",
+          "desc": "Move Column Right"
+        },
+        {
+          "keys": "Super + Ctrl + Shift + WheelScrollUp",
+          "desc": "Move Column Left"
+        },
+        {
+          "keys": "Super + Ctrl + 1",
+          "desc": "Move Column To Workspace 1"
+        },
+        {
+          "keys": "Super + Ctrl + 2",
+          "desc": "Move Column To Workspace 2"
+        },
+        {
+          "keys": "Super + Ctrl + 3",
+          "desc": "Move Column To Workspace 3"
+        },
+        {
+          "keys": "Super + Ctrl + 4",
+          "desc": "Move Column To Workspace 4"
+        },
+        {
+          "keys": "Super + Ctrl + 5",
+          "desc": "Move Column To Workspace 5"
+        },
+        {
+          "keys": "Super + Ctrl + 6",
+          "desc": "Move Column To Workspace 6"
+        },
+        {
+          "keys": "Super + Ctrl + 7",
+          "desc": "Move Column To Workspace 7"
+        },
+        {
+          "keys": "Super + Ctrl + 8",
+          "desc": "Move Column To Workspace 8"
+        },
+        {
+          "keys": "Super + Ctrl + 9",
+          "desc": "Move Column To Workspace 9"
+        }
+      ]
+    },
+    {
+      "title": "Move Windows",
+      "binds": [
+        {
+          "keys": "Super + Ctrl + J",
+          "desc": "Move Window Down"
+        },
+        {
+          "keys": "Super + Ctrl + K",
+          "desc": "Move Window Up"
+        },
+        {
+          "keys": "Super + Ctrl + Alt + Down",
+          "desc": "Move Window To Workspace Down"
+        },
+        {
+          "keys": "Super + Ctrl + Alt + UP",
+          "desc": "Move Window To Workspace Up"
+        }
+      ]
+    },
+    {
+      "title": "Column Management",
+      "binds": [
+        {
+          "keys": "Super + Ctrl + F",
+          "desc": "Maximize Column"
+        }
+      ]
+    },
+    {
+      "title": "Column Width",
+      "binds": [
+        {
+          "keys": "Super + R",
+          "desc": "Switch Preset Column Width"
+        },
+        {
+          "keys": "Super + Minus",
+          "desc": "Set Column Width \" 10%\""
+        },
+        {
+          "keys": "Super + Equal",
+          "desc": "Set Column Width \"+10%\""
+        }
+      ]
+    },
+    {
+      "title": "Window Size",
+      "binds": [
+        {
+          "keys": "Super + Ctrl + R",
+          "desc": "Reset Window Height"
+        }
+      ]
+    },
+    {
+      "title": "Screenshots",
+      "binds": [
+        {
+          "keys": "Super + Shift + S",
+          "desc": "Screenshot"
+        },
+        {
+          "keys": "Ctrl + PrtSc",
+          "desc": "Screenshot Screen"
+        },
+        {
+          "keys": "Alt + PrtSc",
+          "desc": "Screenshot Window"
+        }
+      ]
+    },
+    {
+      "title": "Power",
+      "binds": [
+        {
+          "keys": "Super + Shift + P",
+          "desc": "Power Off Monitors"
+        }
+      ]
+    },
+    {
+      "title": "System",
+      "binds": [
+        {
+          "keys": "Super + Shift + E",
+          "desc": "Quit"
+        },
+        {
+          "keys": "Ctrl + Alt + Delete",
+          "desc": "Quit"
+        }
+      ]
+    },
+    {
+      "title": "Other",
+      "binds": [
+        {
+          "keys": "Super + Shift + Slash",
+          "desc": "Show Hotkey Overlay"
+        },
+        {
+          "keys": "Super + X",
+          "desc": "Toggle Overview"
+        },
+        {
+          "keys": "Super + Ctrl + Left",
+          "desc": "Focus Monitor Left"
+        },
+        {
+          "keys": "Super + Shift + Down",
+          "desc": "Focus Monitor Down"
+        },
+        {
+          "keys": "Super + Shift + Up",
+          "desc": "Focus Monitor Up"
+        },
+        {
+          "keys": "Super + Ctrl + Right",
+          "desc": "Focus Monitor Right"
+        },
+        {
+          "keys": "Super + Shift + H",
+          "desc": "Focus Monitor Left"
+        },
+        {
+          "keys": "Super + Shift + J",
+          "desc": "Focus Monitor Down"
+        },
+        {
+          "keys": "Super + Shift + K",
+          "desc": "Focus Monitor Up"
+        },
+        {
+          "keys": "Super + Shift + L",
+          "desc": "Focus Monitor Right"
+        },
+        {
+          "keys": "Super + Shift + Page_Down",
+          "desc": "Move Workspace Down"
+        },
+        {
+          "keys": "Super + Shift + Page_Up",
+          "desc": "Move Workspace Up"
+        },
+        {
+          "keys": "Super + Shift + U",
+          "desc": "Move Workspace Down"
+        },
+        {
+          "keys": "Super + Shift + I",
+          "desc": "Move Workspace Up"
+        },
+        {
+          "keys": "Super + BracketLeft",
+          "desc": "Consume Or Expel Window Left"
+        },
+        {
+          "keys": "Super + BracketRight",
+          "desc": "Consume Or Expel Window Right"
+        },
+        {
+          "keys": "Super + Shift + R",
+          "desc": "Switch Preset Window Height"
+        },
+        {
+          "keys": "Super + C",
+          "desc": "Center Column"
+        },
+        {
+          "keys": "Super + Alt + C",
+          "desc": "Center Visible Columns"
+        },
+        {
+          "keys": "Super + Shift + Minus",
+          "desc": "Set Window Height \" 10%\""
+        },
+        {
+          "keys": "Super + Shift + Equal",
+          "desc": "Set Window Height \"+10%\""
+        },
+        {
+          "keys": "Super + W",
+          "desc": "Toggle Window Floating"
+        },
+        {
+          "keys": "Super + Shift + W",
+          "desc": "Switch Focus Between Floating And Tiling"
+        },
+        {
+          "keys": "Super + V",
+          "desc": "Toggle Column Tabbed Display"
+        },
+        {
+          "keys": "Super + Escape",
+          "desc": "Toggle Keyboard Shortcuts Inhibit"
+        }
+      ]
+    }
+  ],
+  "editorData": {
+    "categories": [
+      {
+        "id": "cat_1",
+        "title": "Applications",
+        "binds": [
+          {
+            "id": "bind_2",
+            "keys": "Super + Ctrl + Shift + Return",
+            "rawKeys": "Mod+Ctrl+Shift+Return",
+            "modifiers": [
+              "Super",
+              "Ctrl",
+              "Shift"
+            ],
+            "key": "Return",
+            "action": "spawn \"kitty\" \"--class=floating-kitty\" \"dcli\" \"sync\"",
+            "description": "Run: kitty",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 23,
+            "rawLine": "\n    Mod+Ctrl+Shift+Return { spawn \"kitty\" \"--class=floating-kitty\" \"dcli\" \"sync\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_3",
+            "keys": "Super + T",
+            "rawKeys": "Mod+T",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "T",
+            "action": "spawn \"kitty\"",
+            "description": "Open a Terminal: kitty",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 25,
+            "rawLine": "\n    Mod+T hotkey-overlay-title=\"Open a Terminal: kitty\" { spawn \"kitty\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_4",
+            "keys": "Super + Return",
+            "rawKeys": "Mod+Return",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "Return",
+            "action": "spawn \"kitty\"",
+            "description": "Open a Terminal: kitty",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 26,
+            "rawLine": "    Mod+Return hotkey-overlay-title=\"Open a Terminal: kitty\" { spawn \"kitty\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_5",
+            "keys": "Super + D",
+            "rawKeys": "Mod+D",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "D",
+            "action": "spawn \"vesktop\"",
+            "description": "Open Discord",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 27,
+            "rawLine": "    Mod+D hotkey-overlay-title=\"Open Discord\" { spawn \"vesktop\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_6",
+            "keys": "Super + F",
+            "rawKeys": "Mod+F",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "F",
+            "action": "spawn \"nemo\"",
+            "description": "Open Discord",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 28,
+            "rawLine": "    Mod+F hotkey-overlay-title=\"Open Discord\" { spawn \"nemo\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_7",
+            "keys": "Super + Y",
+            "rawKeys": "Mod+Y",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "Y",
+            "action": "spawn \"kitty\" \"yazi\"",
+            "description": "Open Yazi",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 29,
+            "rawLine": "    Mod+Y hotkey-overlay-title=\"Open Yazi\" { spawn \"kitty\" \"yazi\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_8",
+            "keys": "Super + Shift + A",
+            "rawKeys": "Mod+Shift+A",
+            "modifiers": [
+              "Super",
+              "Shift"
+            ],
+            "key": "A",
+            "action": "spawn \"kitty\" \"btop\"",
+            "description": "Open btop",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 30,
+            "rawLine": "    Mod+Shift+A hotkey-overlay-title=\"Open btop\" { spawn \"kitty\" \"btop\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_9",
+            "keys": "Super + Shift + N",
+            "rawKeys": "Mod+Shift+N",
+            "modifiers": [
+              "Super",
+              "Shift"
+            ],
+            "key": "N",
+            "action": "spawn \"obsidian\"",
+            "description": "Open Obsidian",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 31,
+            "rawLine": "    Mod+Shift+N hotkey-overlay-title=\"Open Obsidian\" { spawn \"obsidian\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_10",
+            "keys": "Super + G",
+            "rawKeys": "Mod+G",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "G",
+            "action": "spawn \"Telegram\"",
+            "description": "Open Telegram",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 32,
+            "rawLine": "    Mod+G hotkey-overlay-title=\"Open Telegram\" { spawn \"Telegram\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_11",
+            "keys": "Super + B",
+            "rawKeys": "Mod+B",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "B",
+            "action": "spawn \"zen-browser\"",
+            "description": "Open Zen Browser",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 33,
+            "rawLine": "    Mod+B hotkey-overlay-title=\"Open Zen Browser\" { spawn \"zen-browser\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_12",
+            "keys": "Super + Shift + Z",
+            "rawKeys": "Mod+Shift+Z",
+            "modifiers": [
+              "Super",
+              "Shift"
+            ],
+            "key": "Z",
+            "action": "spawn \"sh\" \"-c\" \"$HOME/.config/niri/scripts/zed-resize-fix.sh\"",
+            "description": "Open Zed Editor",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 34,
+            "rawLine": "    Mod+Shift+Z hotkey-overlay-title=\"Open Zed Editor\" { spawn \"sh\" \"-c\" \"$HOME/.config/niri/scripts/zed-resize-fix.sh\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_13",
+            "keys": "Super + S",
+            "rawKeys": "Mod+S",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "S",
+            "action": "spawn \"steam\"",
+            "description": "Open Steam",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 35,
+            "rawLine": "    Mod+S hotkey-overlay-title=\"Open Steam\" { spawn \"steam\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_14",
+            "keys": "Super + Ctrl + C",
+            "rawKeys": "Mod+Ctrl+C",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "C",
+            "action": "spawn \"kitty\" \"opencode\"",
+            "description": "Open OpenCode",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 36,
+            "rawLine": "    Mod+Ctrl+C hotkey-overlay-title=\"Open OpenCode\" { spawn \"kitty\" \"opencode\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_15",
+            "keys": "Super + Ctrl + P",
+            "rawKeys": "Mod+Ctrl+P",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "P",
+            "action": "spawn \"perplexity\"",
+            "description": "Open Perplexity",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 37,
+            "rawLine": "    Mod+Ctrl+P hotkey-overlay-title=\"Open Perplexity\" { spawn \"perplexity\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_16",
+            "keys": "Super + Ctrl + Return",
+            "rawKeys": "Mod+Ctrl+Return",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "Return",
+            "action": "spawn \"kitty\" \"--class=floating-kitty\"",
+            "description": "Run: kitty",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 38,
+            "rawLine": "    Mod+Ctrl+Return { spawn \"kitty\" \"--class=floating-kitty\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_17",
+            "keys": "Super + Shift + O",
+            "rawKeys": "Mod+Shift+O",
+            "modifiers": [
+              "Super",
+              "Shift"
+            ],
+            "key": "O",
+            "action": "spawn \"flatpak\" \"run\" \"com.obsproject.Studio\"",
+            "description": "Open OBS Studio",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 39,
+            "rawLine": "    Mod+Shift+O hotkey-overlay-title=\"Open OBS Studio\" { spawn \"flatpak\" \"run\" \"com.obsproject.Studio\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_18",
+            "keys": "Super + Alt + F",
+            "rawKeys": "Mod+Alt+F",
+            "modifiers": [
+              "Super",
+              "Alt"
+            ],
+            "key": "F",
+            "action": "spawn \"sh\" \"-c\" \"$HOME/.config/niri/scripts/toggle-dp1-scale.sh\"",
+            "description": "Toggle DP-1 Monitor Scale",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 40,
+            "rawLine": "    Mod+Alt+F hotkey-overlay-title=\"Toggle DP-1 Monitor Scale\" { spawn \"sh\" \"-c\" \"$HOME/.config/niri/scripts/toggle-dp1-scale.sh\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_19",
+            "keys": "Super + Alt + L",
+            "rawKeys": "Super+Alt+L",
+            "modifiers": [
+              "Super",
+              "Alt"
+            ],
+            "key": "L",
+            "action": "spawn \"swaylock\"",
+            "description": "Lock the Screen: swaylock",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 41,
+            "rawLine": "    Super+Alt+L hotkey-overlay-title=\"Lock the Screen: swaylock\" { spawn \"swaylock\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_20",
+            "keys": "Super + Alt + S",
+            "rawKeys": "Super+Alt+S",
+            "modifiers": [
+              "Super",
+              "Alt"
+            ],
+            "key": "S",
+            "action": "spawn-sh \"pkill orca || exec orca\"",
+            "description": "spawn-sh \"pkill orca || exec orca\"",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 45,
+            "rawLine": "    Super+Alt+S allow-when-locked=true hotkey-overlay-title=null { spawn-sh \"pkill orca || exec orca\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_21",
+            "keys": "Vol Up",
+            "rawKeys": "XF86AudioRaiseVolume",
+            "modifiers": [],
+            "key": "XF86AudioRaiseVolume",
+            "action": "spawn-sh \"wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.1+ -l 1.0\"",
+            "description": "spawn-sh \"wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.1+ -l 1.0\"",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 50,
+            "rawLine": "    XF86AudioRaiseVolume allow-when-locked=true { spawn-sh \"wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.1+ -l 1.0\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_22",
+            "keys": "Vol Down",
+            "rawKeys": "XF86AudioLowerVolume",
+            "modifiers": [],
+            "key": "XF86AudioLowerVolume",
+            "action": "spawn-sh \"wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.1-\"",
+            "description": "spawn-sh \"wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.1-\"",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 51,
+            "rawLine": "    XF86AudioLowerVolume allow-when-locked=true { spawn-sh \"wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.1-\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_23",
+            "keys": "Mute",
+            "rawKeys": "XF86AudioMute",
+            "modifiers": [],
+            "key": "XF86AudioMute",
+            "action": "spawn-sh \"wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle\"",
+            "description": "spawn-sh \"wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle\"",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 52,
+            "rawLine": "    XF86AudioMute        allow-when-locked=true { spawn-sh \"wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_24",
+            "keys": "Mic Mute",
+            "rawKeys": "XF86AudioMicMute",
+            "modifiers": [],
+            "key": "XF86AudioMicMute",
+            "action": "spawn-sh \"wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle\"",
+            "description": "spawn-sh \"wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle\"",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 53,
+            "rawLine": "    XF86AudioMicMute     allow-when-locked=true { spawn-sh \"wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_25",
+            "keys": "Play",
+            "rawKeys": "XF86AudioPlay",
+            "modifiers": [],
+            "key": "XF86AudioPlay",
+            "action": "spawn-sh \"playerctl play-pause\"",
+            "description": "spawn-sh \"playerctl play-pause\"",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 56,
+            "rawLine": "    XF86AudioPlay        allow-when-locked=true { spawn-sh \"playerctl play-pause\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_26",
+            "keys": "Stop",
+            "rawKeys": "XF86AudioStop",
+            "modifiers": [],
+            "key": "XF86AudioStop",
+            "action": "spawn-sh \"playerctl stop\"",
+            "description": "spawn-sh \"playerctl stop\"",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 57,
+            "rawLine": "    XF86AudioStop        allow-when-locked=true { spawn-sh \"playerctl stop\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_27",
+            "keys": "Prev",
+            "rawKeys": "XF86AudioPrev",
+            "modifiers": [],
+            "key": "XF86AudioPrev",
+            "action": "spawn-sh \"playerctl previous\"",
+            "description": "spawn-sh \"playerctl previous\"",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 58,
+            "rawLine": "    XF86AudioPrev        allow-when-locked=true { spawn-sh \"playerctl previous\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_28",
+            "keys": "Next",
+            "rawKeys": "XF86AudioNext",
+            "modifiers": [],
+            "key": "XF86AudioNext",
+            "action": "spawn-sh \"playerctl next\"",
+            "description": "spawn-sh \"playerctl next\"",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 59,
+            "rawLine": "    XF86AudioNext        allow-when-locked=true { spawn-sh \"playerctl next\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_29",
+            "keys": "Bright Up",
+            "rawKeys": "XF86MonBrightnessUp",
+            "modifiers": [],
+            "key": "XF86MonBrightnessUp",
+            "action": "spawn \"brightnessctl\" \"--class=backlight\" \"set\" \"+10%\"",
+            "description": "Run: brightnessctl",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 63,
+            "rawLine": "    XF86MonBrightnessUp allow-when-locked=true { spawn \"brightnessctl\" \"--class=backlight\" \"set\" \"+10%\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_30",
+            "keys": "Bright Down",
+            "rawKeys": "XF86MonBrightnessDown",
+            "modifiers": [],
+            "key": "XF86MonBrightnessDown",
+            "action": "spawn \"brightnessctl\" \"--class=backlight\" \"set\" \"10%-\"",
+            "description": "Run: brightnessctl",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 64,
+            "rawLine": "    XF86MonBrightnessDown allow-when-locked=true { spawn \"brightnessctl\" \"--class=backlight\" \"set\" \"10%-\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_136",
+            "keys": "Ctrl + Shift + S",
+            "rawKeys": "Ctrl+Shift+S",
+            "modifiers": [
+              "Ctrl",
+              "Shift"
+            ],
+            "key": "S",
+            "action": "spawn \"shell-switch\"",
+            "description": "Switch Desktop Shell",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 262,
+            "rawLine": "    Ctrl+Shift+S hotkey-overlay-title=\"Switch Desktop Shell\" { spawn \"shell-switch\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_137",
+            "keys": "Super + E",
+            "rawKeys": "Mod+E",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "E",
+            "action": "spawn \"qs\" \"-c\" \"noctalia-shell\" \"ipc\" \"call\" \"launcher\" \"emoji\"",
+            "description": "Open Noctalia Shell Emoji Launcher",
+            "sourceFile": "/home/don/.config/niri/shell-switcher-binds.kdl",
+            "lineNumber": 11,
+            "rawLine": "    Mod+E hotkey-overlay-title=\"Open Noctalia Shell Emoji Launcher\" { spawn \"qs\" \"-c\" \"noctalia-shell\" \"ipc\" \"call\" \"launcher\" \"emoji\"; }",
+            "status": "unchanged"
+          }
+        ]
+      },
+      {
+        "id": "cat_2",
+        "title": "Window Management",
+        "binds": [
+          {
+            "id": "bind_32",
+            "keys": "Super + Q",
+            "rawKeys": "Mod+Q",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "Q",
+            "action": "close-window",
+            "description": "Close Window",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 69,
+            "rawLine": "\n    Mod+Q repeat=false { close-window; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_113",
+            "keys": "Super + Comma",
+            "rawKeys": "Mod+Comma",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "Comma",
+            "action": "consume-window-into-column",
+            "description": "Consume Window Into Column",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 199,
+            "rawLine": "    Mod+Comma  { consume-window-into-column; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_114",
+            "keys": "Super + Period",
+            "rawKeys": "Mod+Period",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "Period",
+            "action": "expel-window-from-column",
+            "description": "Expel Window From Column",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 201,
+            "rawLine": "    Mod+Period { expel-window-from-column; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_119",
+            "keys": "Super + Shift + F",
+            "rawKeys": "Mod+Shift+F",
+            "modifiers": [
+              "Super",
+              "Shift"
+            ],
+            "key": "F",
+            "action": "fullscreen-window",
+            "description": "Fullscreen Window",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 208,
+            "rawLine": "    Mod+Shift+F { fullscreen-window; }",
+            "status": "unchanged"
+          }
+        ]
+      },
+      {
+        "id": "cat_3",
+        "title": "Column Navigation",
+        "binds": [
+          {
+            "id": "bind_33",
+            "keys": "Super + Left",
+            "rawKeys": "Mod+Left",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "Left",
+            "action": "focus-column-left",
+            "description": "Focus Column Left",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 70,
+            "rawLine": "\n    Mod+Left  { focus-column-left; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_36",
+            "keys": "Super + Right",
+            "rawKeys": "Mod+Right",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "Right",
+            "action": "focus-column-right",
+            "description": "Focus Column Right",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 73,
+            "rawLine": "    Mod+Right { focus-column-right; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_37",
+            "keys": "Super + H",
+            "rawKeys": "Mod+H",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "H",
+            "action": "focus-column-left",
+            "description": "Focus Column Left",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 74,
+            "rawLine": "    Mod+H     { focus-column-left; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_40",
+            "keys": "Super + L",
+            "rawKeys": "Mod+L",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "L",
+            "action": "focus-column-right",
+            "description": "Focus Column Right",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 77,
+            "rawLine": "    Mod+L     { focus-column-right; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_47",
+            "keys": "Super + Home",
+            "rawKeys": "Mod+Home",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "Home",
+            "action": "focus-column-first",
+            "description": "Focus Column First",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 92,
+            "rawLine": "\n    Mod+Home { focus-column-first; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_48",
+            "keys": "Super + End",
+            "rawKeys": "Mod+End",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "End",
+            "action": "focus-column-last",
+            "description": "Focus Column Last",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 93,
+            "rawLine": "    Mod+End  { focus-column-last; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_85",
+            "keys": "Super + WheelScrollRight",
+            "rawKeys": "Mod+WheelScrollRight",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "WheelScrollRight",
+            "action": "focus-column-right",
+            "description": "Focus Column Right",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 145,
+            "rawLine": "\n    Mod+WheelScrollRight      { focus-column-right; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_86",
+            "keys": "Super + WheelScrollLeft",
+            "rawKeys": "Mod+WheelScrollLeft",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "WheelScrollLeft",
+            "action": "focus-column-left",
+            "description": "Focus Column Left",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 146,
+            "rawLine": "    Mod+WheelScrollLeft       { focus-column-left; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_89",
+            "keys": "Super + Shift + WheelScrollDown",
+            "rawKeys": "Mod+Shift+WheelScrollDown",
+            "modifiers": [
+              "Super",
+              "Shift"
+            ],
+            "key": "WheelScrollDown",
+            "action": "focus-column-right",
+            "description": "Focus Column Right",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 151,
+            "rawLine": "    Mod+Shift+WheelScrollDown      { focus-column-right; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_90",
+            "keys": "Super + Shift + WheelScrollUp",
+            "rawKeys": "Mod+Shift+WheelScrollUp",
+            "modifiers": [
+              "Super",
+              "Shift"
+            ],
+            "key": "WheelScrollUp",
+            "action": "focus-column-left",
+            "description": "Focus Column Left",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 152,
+            "rawLine": "    Mod+Shift+WheelScrollUp        { focus-column-left; }",
+            "status": "unchanged"
+          }
+        ]
+      },
+      {
+        "id": "cat_4",
+        "title": "Window Focus",
+        "binds": [
+          {
+            "id": "bind_34",
+            "keys": "Super + Down",
+            "rawKeys": "Mod+Down",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "Down",
+            "action": "focus-window-down",
+            "description": "Focus Window Down",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 71,
+            "rawLine": "    Mod+Down  { focus-window-down; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_35",
+            "keys": "Super + Up",
+            "rawKeys": "Mod+Up",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "Up",
+            "action": "focus-window-up",
+            "description": "Focus Window Up",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 72,
+            "rawLine": "    Mod+Up    { focus-window-up; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_38",
+            "keys": "Super + J",
+            "rawKeys": "Mod+J",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "J",
+            "action": "focus-window-down",
+            "description": "Focus Window Down",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 75,
+            "rawLine": "    Mod+J     { focus-window-down; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_39",
+            "keys": "Super + K",
+            "rawKeys": "Mod+K",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "K",
+            "action": "focus-window-up",
+            "description": "Focus Window Up",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 76,
+            "rawLine": "    Mod+K     { focus-window-up; }",
+            "status": "unchanged"
+          }
+        ]
+      },
+      {
+        "id": "cat_5",
+        "title": "Workspace Navigation",
+        "binds": [
+          {
+            "id": "bind_67",
+            "keys": "Super + Ctrl + Down",
+            "rawKeys": "Mod+Ctrl+Down",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "Down",
+            "action": "focus-workspace-down",
+            "description": "Focus Workspace Down",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 118,
+            "rawLine": "\n    Mod+Ctrl+Down      { focus-workspace-down; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_68",
+            "keys": "Super + Ctrl + UP",
+            "rawKeys": "Mod+Ctrl+UP",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "UP",
+            "action": "focus-workspace-up",
+            "description": "Focus Workspace Up",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 119,
+            "rawLine": "    Mod+Ctrl+UP      { focus-workspace-up; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_69",
+            "keys": "Super + U",
+            "rawKeys": "Mod+U",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "U",
+            "action": "focus-workspace-down",
+            "description": "Focus Workspace Down",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 120,
+            "rawLine": "    Mod+U              { focus-workspace-down; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_70",
+            "keys": "Super + I",
+            "rawKeys": "Mod+I",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "I",
+            "action": "focus-workspace-up",
+            "description": "Focus Workspace Up",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 121,
+            "rawLine": "    Mod+I              { focus-workspace-up; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_81",
+            "keys": "Super + WheelScrollDown",
+            "rawKeys": "Mod+WheelScrollDown",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "WheelScrollDown",
+            "action": "focus-workspace-down",
+            "description": "Focus Workspace Down",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 141,
+            "rawLine": "    Mod+WheelScrollDown      cooldown-ms=150 { focus-workspace-down; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_82",
+            "keys": "Super + WheelScrollUp",
+            "rawKeys": "Mod+WheelScrollUp",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "WheelScrollUp",
+            "action": "focus-workspace-up",
+            "description": "Focus Workspace Up",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 142,
+            "rawLine": "    Mod+WheelScrollUp        cooldown-ms=150 { focus-workspace-up; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_93",
+            "keys": "Super + 1",
+            "rawKeys": "Mod+1",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "1",
+            "action": "focus-workspace 1",
+            "description": "Focus Workspace 1",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 171,
+            "rawLine": "    Mod+1 { focus-workspace 1; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_94",
+            "keys": "Super + 2",
+            "rawKeys": "Mod+2",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "2",
+            "action": "focus-workspace 2",
+            "description": "Focus Workspace 2",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 172,
+            "rawLine": "    Mod+2 { focus-workspace 2; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_95",
+            "keys": "Super + 3",
+            "rawKeys": "Mod+3",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "3",
+            "action": "focus-workspace 3",
+            "description": "Focus Workspace 3",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 173,
+            "rawLine": "    Mod+3 { focus-workspace 3; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_96",
+            "keys": "Super + 4",
+            "rawKeys": "Mod+4",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "4",
+            "action": "focus-workspace 4",
+            "description": "Focus Workspace 4",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 174,
+            "rawLine": "    Mod+4 { focus-workspace 4; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_97",
+            "keys": "Super + 5",
+            "rawKeys": "Mod+5",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "5",
+            "action": "focus-workspace 5",
+            "description": "Focus Workspace 5",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 175,
+            "rawLine": "    Mod+5 { focus-workspace 5; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_98",
+            "keys": "Super + 6",
+            "rawKeys": "Mod+6",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "6",
+            "action": "focus-workspace 6",
+            "description": "Focus Workspace 6",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 176,
+            "rawLine": "    Mod+6 { focus-workspace 6; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_99",
+            "keys": "Super + 7",
+            "rawKeys": "Mod+7",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "7",
+            "action": "focus-workspace 7",
+            "description": "Focus Workspace 7",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 177,
+            "rawLine": "    Mod+7 { focus-workspace 7; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_100",
+            "keys": "Super + 8",
+            "rawKeys": "Mod+8",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "8",
+            "action": "focus-workspace 8",
+            "description": "Focus Workspace 8",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 178,
+            "rawLine": "    Mod+8 { focus-workspace 8; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_101",
+            "keys": "Super + 9",
+            "rawKeys": "Mod+9",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "9",
+            "action": "focus-workspace 9",
+            "description": "Focus Workspace 9",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 179,
+            "rawLine": "    Mod+9 { focus-workspace 9; }",
+            "status": "unchanged"
+          }
+        ]
+      },
+      {
+        "id": "cat_6",
+        "title": "Move Columns",
+        "binds": [
+          {
+            "id": "bind_41",
+            "keys": "Super + Shift + Left",
+            "rawKeys": "Mod+Shift+Left",
+            "modifiers": [
+              "Super",
+              "Shift"
+            ],
+            "key": "Left",
+            "action": "move-column-left",
+            "description": "Move Column Left",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 78,
+            "rawLine": "\n    Mod+Shift+Left  { move-column-left; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_42",
+            "keys": "Super + Shift + Right",
+            "rawKeys": "Mod+Shift+Right",
+            "modifiers": [
+              "Super",
+              "Shift"
+            ],
+            "key": "Right",
+            "action": "move-column-right",
+            "description": "Move Column Right",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 79,
+            "rawLine": "    Mod+Shift+Right { move-column-right; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_43",
+            "keys": "Super + Ctrl + H",
+            "rawKeys": "Mod+Ctrl+H",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "H",
+            "action": "move-column-left",
+            "description": "Move Column Left",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 82,
+            "rawLine": "    Mod+Ctrl+H     { move-column-left; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_46",
+            "keys": "Super + Ctrl + L",
+            "rawKeys": "Mod+Ctrl+L",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "L",
+            "action": "move-column-right",
+            "description": "Move Column Right",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 85,
+            "rawLine": "    Mod+Ctrl+L     { move-column-right; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_49",
+            "keys": "Super + Ctrl + Home",
+            "rawKeys": "Mod+Ctrl+Home",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "Home",
+            "action": "move-column-to-first",
+            "description": "Move Column To First",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 94,
+            "rawLine": "    Mod+Ctrl+Home { move-column-to-first; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_50",
+            "keys": "Super + Ctrl + End",
+            "rawKeys": "Mod+Ctrl+End",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "End",
+            "action": "move-column-to-last",
+            "description": "Move Column To Last",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 95,
+            "rawLine": "    Mod+Ctrl+End  { move-column-to-last; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_59",
+            "keys": "Super + Shift + Ctrl + Left",
+            "rawKeys": "Mod+Shift+Ctrl+Left",
+            "modifiers": [
+              "Super",
+              "Ctrl",
+              "Shift"
+            ],
+            "key": "Left",
+            "action": "move-column-to-monitor-left",
+            "description": "Move Column To Monitor Left",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 104,
+            "rawLine": "\n    Mod+Shift+Ctrl+Left  { move-column-to-monitor-left; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_60",
+            "keys": "Super + Shift + Ctrl + Down",
+            "rawKeys": "Mod+Shift+Ctrl+Down",
+            "modifiers": [
+              "Super",
+              "Ctrl",
+              "Shift"
+            ],
+            "key": "Down",
+            "action": "move-column-to-monitor-down",
+            "description": "Move Column To Monitor Down",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 105,
+            "rawLine": "    Mod+Shift+Ctrl+Down  { move-column-to-monitor-down; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_61",
+            "keys": "Super + Shift + Ctrl + Up",
+            "rawKeys": "Mod+Shift+Ctrl+Up",
+            "modifiers": [
+              "Super",
+              "Ctrl",
+              "Shift"
+            ],
+            "key": "Up",
+            "action": "move-column-to-monitor-up",
+            "description": "Move Column To Monitor Up",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 106,
+            "rawLine": "    Mod+Shift+Ctrl+Up    { move-column-to-monitor-up; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_62",
+            "keys": "Super + Shift + Ctrl + Right",
+            "rawKeys": "Mod+Shift+Ctrl+Right",
+            "modifiers": [
+              "Super",
+              "Ctrl",
+              "Shift"
+            ],
+            "key": "Right",
+            "action": "move-column-to-monitor-right",
+            "description": "Move Column To Monitor Right",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 107,
+            "rawLine": "    Mod+Shift+Ctrl+Right { move-column-to-monitor-right; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_63",
+            "keys": "Super + Shift + Ctrl + H",
+            "rawKeys": "Mod+Shift+Ctrl+H",
+            "modifiers": [
+              "Super",
+              "Ctrl",
+              "Shift"
+            ],
+            "key": "H",
+            "action": "move-column-to-monitor-left",
+            "description": "Move Column To Monitor Left",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 108,
+            "rawLine": "    Mod+Shift+Ctrl+H     { move-column-to-monitor-left; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_64",
+            "keys": "Super + Shift + Ctrl + J",
+            "rawKeys": "Mod+Shift+Ctrl+J",
+            "modifiers": [
+              "Super",
+              "Ctrl",
+              "Shift"
+            ],
+            "key": "J",
+            "action": "move-column-to-monitor-down",
+            "description": "Move Column To Monitor Down",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 109,
+            "rawLine": "    Mod+Shift+Ctrl+J     { move-column-to-monitor-down; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_65",
+            "keys": "Super + Shift + Ctrl + K",
+            "rawKeys": "Mod+Shift+Ctrl+K",
+            "modifiers": [
+              "Super",
+              "Ctrl",
+              "Shift"
+            ],
+            "key": "K",
+            "action": "move-column-to-monitor-up",
+            "description": "Move Column To Monitor Up",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 110,
+            "rawLine": "    Mod+Shift+Ctrl+K     { move-column-to-monitor-up; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_66",
+            "keys": "Super + Shift + Ctrl + L",
+            "rawKeys": "Mod+Shift+Ctrl+L",
+            "modifiers": [
+              "Super",
+              "Ctrl",
+              "Shift"
+            ],
+            "key": "L",
+            "action": "move-column-to-monitor-right",
+            "description": "Move Column To Monitor Right",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 111,
+            "rawLine": "    Mod+Shift+Ctrl+L     { move-column-to-monitor-right; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_71",
+            "keys": "Super + Ctrl + Page_Down",
+            "rawKeys": "Mod+Ctrl+Page_Down",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "Page_Down",
+            "action": "move-column-to-workspace-down",
+            "description": "Move Column To Workspace Down",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 122,
+            "rawLine": "    Mod+Ctrl+Page_Down { move-column-to-workspace-down; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_72",
+            "keys": "Super + Ctrl + Page_Up",
+            "rawKeys": "Mod+Ctrl+Page_Up",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "Page_Up",
+            "action": "move-column-to-workspace-up",
+            "description": "Move Column To Workspace Up",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 123,
+            "rawLine": "    Mod+Ctrl+Page_Up   { move-column-to-workspace-up; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_73",
+            "keys": "Super + Ctrl + U",
+            "rawKeys": "Mod+Ctrl+U",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "U",
+            "action": "move-column-to-workspace-down",
+            "description": "Move Column To Workspace Down",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 124,
+            "rawLine": "    Mod+Ctrl+U         { move-column-to-workspace-down; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_74",
+            "keys": "Super + Ctrl + I",
+            "rawKeys": "Mod+Ctrl+I",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "I",
+            "action": "move-column-to-workspace-up",
+            "description": "Move Column To Workspace Up",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 125,
+            "rawLine": "    Mod+Ctrl+I         { move-column-to-workspace-up; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_83",
+            "keys": "Super + Ctrl + WheelScrollDown",
+            "rawKeys": "Mod+Ctrl+WheelScrollDown",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "WheelScrollDown",
+            "action": "move-column-to-workspace-down",
+            "description": "Move Column To Workspace Down",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 143,
+            "rawLine": "    Mod+Ctrl+WheelScrollDown cooldown-ms=150 { move-column-to-workspace-down; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_84",
+            "keys": "Super + Ctrl + WheelScrollUp",
+            "rawKeys": "Mod+Ctrl+WheelScrollUp",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "WheelScrollUp",
+            "action": "move-column-to-workspace-up",
+            "description": "Move Column To Workspace Up",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 144,
+            "rawLine": "    Mod+Ctrl+WheelScrollUp   cooldown-ms=150 { move-column-to-workspace-up; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_87",
+            "keys": "Super + Ctrl + WheelScrollRight",
+            "rawKeys": "Mod+Ctrl+WheelScrollRight",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "WheelScrollRight",
+            "action": "move-column-right",
+            "description": "Move Column Right",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 147,
+            "rawLine": "    Mod+Ctrl+WheelScrollRight { move-column-right; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_88",
+            "keys": "Super + Ctrl + WheelScrollLeft",
+            "rawKeys": "Mod+Ctrl+WheelScrollLeft",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "WheelScrollLeft",
+            "action": "move-column-left",
+            "description": "Move Column Left",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 148,
+            "rawLine": "    Mod+Ctrl+WheelScrollLeft  { move-column-left; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_91",
+            "keys": "Super + Ctrl + Shift + WheelScrollDown",
+            "rawKeys": "Mod+Ctrl+Shift+WheelScrollDown",
+            "modifiers": [
+              "Super",
+              "Ctrl",
+              "Shift"
+            ],
+            "key": "WheelScrollDown",
+            "action": "move-column-right",
+            "description": "Move Column Right",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 153,
+            "rawLine": "    Mod+Ctrl+Shift+WheelScrollDown { move-column-right; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_92",
+            "keys": "Super + Ctrl + Shift + WheelScrollUp",
+            "rawKeys": "Mod+Ctrl+Shift+WheelScrollUp",
+            "modifiers": [
+              "Super",
+              "Ctrl",
+              "Shift"
+            ],
+            "key": "WheelScrollUp",
+            "action": "move-column-left",
+            "description": "Move Column Left",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 154,
+            "rawLine": "    Mod+Ctrl+Shift+WheelScrollUp   { move-column-left; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_102",
+            "keys": "Super + Ctrl + 1",
+            "rawKeys": "Mod+Ctrl+1",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "1",
+            "action": "move-column-to-workspace 1",
+            "description": "Move Column To Workspace 1",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 180,
+            "rawLine": "    Mod+Ctrl+1 { move-column-to-workspace 1; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_103",
+            "keys": "Super + Ctrl + 2",
+            "rawKeys": "Mod+Ctrl+2",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "2",
+            "action": "move-column-to-workspace 2",
+            "description": "Move Column To Workspace 2",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 181,
+            "rawLine": "    Mod+Ctrl+2 { move-column-to-workspace 2; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_104",
+            "keys": "Super + Ctrl + 3",
+            "rawKeys": "Mod+Ctrl+3",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "3",
+            "action": "move-column-to-workspace 3",
+            "description": "Move Column To Workspace 3",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 182,
+            "rawLine": "    Mod+Ctrl+3 { move-column-to-workspace 3; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_105",
+            "keys": "Super + Ctrl + 4",
+            "rawKeys": "Mod+Ctrl+4",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "4",
+            "action": "move-column-to-workspace 4",
+            "description": "Move Column To Workspace 4",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 183,
+            "rawLine": "    Mod+Ctrl+4 { move-column-to-workspace 4; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_106",
+            "keys": "Super + Ctrl + 5",
+            "rawKeys": "Mod+Ctrl+5",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "5",
+            "action": "move-column-to-workspace 5",
+            "description": "Move Column To Workspace 5",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 184,
+            "rawLine": "    Mod+Ctrl+5 { move-column-to-workspace 5; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_107",
+            "keys": "Super + Ctrl + 6",
+            "rawKeys": "Mod+Ctrl+6",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "6",
+            "action": "move-column-to-workspace 6",
+            "description": "Move Column To Workspace 6",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 185,
+            "rawLine": "    Mod+Ctrl+6 { move-column-to-workspace 6; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_108",
+            "keys": "Super + Ctrl + 7",
+            "rawKeys": "Mod+Ctrl+7",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "7",
+            "action": "move-column-to-workspace 7",
+            "description": "Move Column To Workspace 7",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 186,
+            "rawLine": "    Mod+Ctrl+7 { move-column-to-workspace 7; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_109",
+            "keys": "Super + Ctrl + 8",
+            "rawKeys": "Mod+Ctrl+8",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "8",
+            "action": "move-column-to-workspace 8",
+            "description": "Move Column To Workspace 8",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 187,
+            "rawLine": "    Mod+Ctrl+8 { move-column-to-workspace 8; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_110",
+            "keys": "Super + Ctrl + 9",
+            "rawKeys": "Mod+Ctrl+9",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "9",
+            "action": "move-column-to-workspace 9",
+            "description": "Move Column To Workspace 9",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 188,
+            "rawLine": "    Mod+Ctrl+9 { move-column-to-workspace 9; }",
+            "status": "unchanged"
+          }
+        ]
+      },
+      {
+        "id": "cat_7",
+        "title": "Move Windows",
+        "binds": [
+          {
+            "id": "bind_44",
+            "keys": "Super + Ctrl + J",
+            "rawKeys": "Mod+Ctrl+J",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "J",
+            "action": "move-window-down",
+            "description": "Move Window Down",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 83,
+            "rawLine": "    Mod+Ctrl+J     { move-window-down; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_45",
+            "keys": "Super + Ctrl + K",
+            "rawKeys": "Mod+Ctrl+K",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "K",
+            "action": "move-window-up",
+            "description": "Move Window Up",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 84,
+            "rawLine": "    Mod+Ctrl+K     { move-window-up; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_75",
+            "keys": "Super + Ctrl + Alt + Down",
+            "rawKeys": "Mod+Ctrl+Alt+Down",
+            "modifiers": [
+              "Super",
+              "Ctrl",
+              "Alt"
+            ],
+            "key": "Down",
+            "action": "move-window-to-workspace-down",
+            "description": "Move Window To Workspace Down",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 129,
+            "rawLine": "    Mod+Ctrl+Alt+Down   { move-window-to-workspace-down; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_76",
+            "keys": "Super + Ctrl + Alt + UP",
+            "rawKeys": "Mod+Ctrl+Alt+UP",
+            "modifiers": [
+              "Super",
+              "Ctrl",
+              "Alt"
+            ],
+            "key": "UP",
+            "action": "move-window-to-workspace-up",
+            "description": "Move Window To Workspace Up",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 130,
+            "rawLine": "    Mod+Ctrl+Alt+UP     { move-window-to-workspace-up; }",
+            "status": "unchanged"
+          }
+        ]
+      },
+      {
+        "id": "cat_8",
+        "title": "Column Management",
+        "binds": [
+          {
+            "id": "bind_118",
+            "keys": "Super + Ctrl + F",
+            "rawKeys": "Mod+Ctrl+F",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "F",
+            "action": "maximize-column",
+            "description": "Maximize Column",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 207,
+            "rawLine": "    Mod+Ctrl+F { maximize-column; }",
+            "status": "unchanged"
+          }
+        ]
+      },
+      {
+        "id": "cat_9",
+        "title": "Column Width",
+        "binds": [
+          {
+            "id": "bind_115",
+            "keys": "Super + R",
+            "rawKeys": "Mod+R",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "R",
+            "action": "switch-preset-column-width",
+            "description": "Switch Preset Column Width",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 202,
+            "rawLine": "\n    Mod+R { switch-preset-column-width; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_122",
+            "keys": "Super + Minus",
+            "rawKeys": "Mod+Minus",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "Minus",
+            "action": "set-column-width \"-10%\"",
+            "description": "Set Column Width \" 10%\"",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 223,
+            "rawLine": "    Mod+Minus { set-column-width \"-10%\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_123",
+            "keys": "Super + Equal",
+            "rawKeys": "Mod+Equal",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "Equal",
+            "action": "set-column-width \"+10%\"",
+            "description": "Set Column Width \"+10%\"",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 224,
+            "rawLine": "    Mod+Equal { set-column-width \"+10%\"; }",
+            "status": "unchanged"
+          }
+        ]
+      },
+      {
+        "id": "cat_10",
+        "title": "Window Size",
+        "binds": [
+          {
+            "id": "bind_117",
+            "keys": "Super + Ctrl + R",
+            "rawKeys": "Mod+Ctrl+R",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "R",
+            "action": "reset-window-height",
+            "description": "Reset Window Height",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 206,
+            "rawLine": "    Mod+Ctrl+R { reset-window-height; }",
+            "status": "unchanged"
+          }
+        ]
+      },
+      {
+        "id": "cat_11",
+        "title": "Screenshots",
+        "binds": [
+          {
+            "id": "bind_129",
+            "keys": "Super + Shift + S",
+            "rawKeys": "Mod+Shift+S",
+            "modifiers": [
+              "Super",
+              "Shift"
+            ],
+            "key": "S",
+            "action": "screenshot",
+            "description": "Screenshot",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 242,
+            "rawLine": "\n    Mod+Shift+S { screenshot; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_130",
+            "keys": "Ctrl + PrtSc",
+            "rawKeys": "Ctrl+Print",
+            "modifiers": [
+              "Ctrl"
+            ],
+            "key": "Print",
+            "action": "screenshot-screen",
+            "description": "Screenshot Screen",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 243,
+            "rawLine": "    Ctrl+Print { screenshot-screen; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_131",
+            "keys": "Alt + PrtSc",
+            "rawKeys": "Alt+Print",
+            "modifiers": [
+              "Alt"
+            ],
+            "key": "Print",
+            "action": "screenshot-window",
+            "description": "Screenshot Window",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 244,
+            "rawLine": "    Alt+Print { screenshot-window; }",
+            "status": "unchanged"
+          }
+        ]
+      },
+      {
+        "id": "cat_12",
+        "title": "Power",
+        "binds": [
+          {
+            "id": "bind_135",
+            "keys": "Super + Shift + P",
+            "rawKeys": "Mod+Shift+P",
+            "modifiers": [
+              "Super",
+              "Shift"
+            ],
+            "key": "P",
+            "action": "power-off-monitors",
+            "description": "Power Off Monitors",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 259,
+            "rawLine": "    Mod+Shift+P { power-off-monitors; }",
+            "status": "unchanged"
+          }
+        ]
+      },
+      {
+        "id": "cat_13",
+        "title": "System",
+        "binds": [
+          {
+            "id": "bind_133",
+            "keys": "Super + Shift + E",
+            "rawKeys": "Mod+Shift+E",
+            "modifiers": [
+              "Super",
+              "Shift"
+            ],
+            "key": "E",
+            "action": "quit",
+            "description": "Quit",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 255,
+            "rawLine": "    Mod+Shift+E { quit; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_134",
+            "keys": "Ctrl + Alt + Delete",
+            "rawKeys": "Ctrl+Alt+Delete",
+            "modifiers": [
+              "Ctrl",
+              "Alt"
+            ],
+            "key": "Delete",
+            "action": "quit",
+            "description": "Quit",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 256,
+            "rawLine": "    Ctrl+Alt+Delete { quit; }",
+            "status": "unchanged"
+          }
+        ]
+      },
+      {
+        "id": "cat_14",
+        "title": "Other",
+        "binds": [
+          {
+            "id": "bind_1",
+            "keys": "Super + Shift + Slash",
+            "rawKeys": "Mod+Shift+Slash",
+            "modifiers": [
+              "Super",
+              "Shift"
+            ],
+            "key": "Slash",
+            "action": "show-hotkey-overlay",
+            "description": "Show Hotkey Overlay",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 13,
+            "rawLine": "    Mod+Shift+Slash { show-hotkey-overlay; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_31",
+            "keys": "Super + X",
+            "rawKeys": "Mod+X",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "X",
+            "action": "toggle-overview",
+            "description": "Toggle Overview",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 68,
+            "rawLine": "    Mod+X repeat=false { toggle-overview; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_51",
+            "keys": "Super + Ctrl + Left",
+            "rawKeys": "Mod+Ctrl+Left",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "Left",
+            "action": "focus-monitor-left",
+            "description": "Focus Monitor Left",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 96,
+            "rawLine": "\n    Mod+Ctrl+Left  { focus-monitor-left; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_52",
+            "keys": "Super + Shift + Down",
+            "rawKeys": "Mod+Shift+Down",
+            "modifiers": [
+              "Super",
+              "Shift"
+            ],
+            "key": "Down",
+            "action": "focus-monitor-down",
+            "description": "Focus Monitor Down",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 97,
+            "rawLine": "    Mod+Shift+Down  { focus-monitor-down; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_53",
+            "keys": "Super + Shift + Up",
+            "rawKeys": "Mod+Shift+Up",
+            "modifiers": [
+              "Super",
+              "Shift"
+            ],
+            "key": "Up",
+            "action": "focus-monitor-up",
+            "description": "Focus Monitor Up",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 98,
+            "rawLine": "    Mod+Shift+Up    { focus-monitor-up; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_54",
+            "keys": "Super + Ctrl + Right",
+            "rawKeys": "Mod+Ctrl+Right",
+            "modifiers": [
+              "Super",
+              "Ctrl"
+            ],
+            "key": "Right",
+            "action": "focus-monitor-right",
+            "description": "Focus Monitor Right",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 99,
+            "rawLine": "    Mod+Ctrl+Right { focus-monitor-right; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_55",
+            "keys": "Super + Shift + H",
+            "rawKeys": "Mod+Shift+H",
+            "modifiers": [
+              "Super",
+              "Shift"
+            ],
+            "key": "H",
+            "action": "focus-monitor-left",
+            "description": "Focus Monitor Left",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 100,
+            "rawLine": "    Mod+Shift+H     { focus-monitor-left; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_56",
+            "keys": "Super + Shift + J",
+            "rawKeys": "Mod+Shift+J",
+            "modifiers": [
+              "Super",
+              "Shift"
+            ],
+            "key": "J",
+            "action": "focus-monitor-down",
+            "description": "Focus Monitor Down",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 101,
+            "rawLine": "    Mod+Shift+J     { focus-monitor-down; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_57",
+            "keys": "Super + Shift + K",
+            "rawKeys": "Mod+Shift+K",
+            "modifiers": [
+              "Super",
+              "Shift"
+            ],
+            "key": "K",
+            "action": "focus-monitor-up",
+            "description": "Focus Monitor Up",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 102,
+            "rawLine": "    Mod+Shift+K     { focus-monitor-up; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_58",
+            "keys": "Super + Shift + L",
+            "rawKeys": "Mod+Shift+L",
+            "modifiers": [
+              "Super",
+              "Shift"
+            ],
+            "key": "L",
+            "action": "focus-monitor-right",
+            "description": "Focus Monitor Right",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 103,
+            "rawLine": "    Mod+Shift+L     { focus-monitor-right; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_77",
+            "keys": "Super + Shift + Page_Down",
+            "rawKeys": "Mod+Shift+Page_Down",
+            "modifiers": [
+              "Super",
+              "Shift"
+            ],
+            "key": "Page_Down",
+            "action": "move-workspace-down",
+            "description": "Move Workspace Down",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 131,
+            "rawLine": "    Mod+Shift+Page_Down { move-workspace-down; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_78",
+            "keys": "Super + Shift + Page_Up",
+            "rawKeys": "Mod+Shift+Page_Up",
+            "modifiers": [
+              "Super",
+              "Shift"
+            ],
+            "key": "Page_Up",
+            "action": "move-workspace-up",
+            "description": "Move Workspace Up",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 132,
+            "rawLine": "    Mod+Shift+Page_Up   { move-workspace-up; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_79",
+            "keys": "Super + Shift + U",
+            "rawKeys": "Mod+Shift+U",
+            "modifiers": [
+              "Super",
+              "Shift"
+            ],
+            "key": "U",
+            "action": "move-workspace-down",
+            "description": "Move Workspace Down",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 133,
+            "rawLine": "    Mod+Shift+U         { move-workspace-down; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_80",
+            "keys": "Super + Shift + I",
+            "rawKeys": "Mod+Shift+I",
+            "modifiers": [
+              "Super",
+              "Shift"
+            ],
+            "key": "I",
+            "action": "move-workspace-up",
+            "description": "Move Workspace Up",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 134,
+            "rawLine": "    Mod+Shift+I         { move-workspace-up; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_111",
+            "keys": "Super + BracketLeft",
+            "rawKeys": "Mod+BracketLeft",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "BracketLeft",
+            "action": "consume-or-expel-window-left",
+            "description": "Consume Or Expel Window Left",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 196,
+            "rawLine": "    Mod+BracketLeft  { consume-or-expel-window-left; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_112",
+            "keys": "Super + BracketRight",
+            "rawKeys": "Mod+BracketRight",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "BracketRight",
+            "action": "consume-or-expel-window-right",
+            "description": "Consume Or Expel Window Right",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 197,
+            "rawLine": "    Mod+BracketRight { consume-or-expel-window-right; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_116",
+            "keys": "Super + Shift + R",
+            "rawKeys": "Mod+Shift+R",
+            "modifiers": [
+              "Super",
+              "Shift"
+            ],
+            "key": "R",
+            "action": "switch-preset-window-height",
+            "description": "Switch Preset Window Height",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 205,
+            "rawLine": "    Mod+Shift+R { switch-preset-window-height; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_120",
+            "keys": "Super + C",
+            "rawKeys": "Mod+C",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "C",
+            "action": "center-column",
+            "description": "Center Column",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 212,
+            "rawLine": "\n    Mod+C { center-column; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_121",
+            "keys": "Super + Alt + C",
+            "rawKeys": "Mod+Alt+C",
+            "modifiers": [
+              "Super",
+              "Alt"
+            ],
+            "key": "C",
+            "action": "center-visible-columns",
+            "description": "Center Visible Columns",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 214,
+            "rawLine": "    Mod+Alt+C { center-visible-columns; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_124",
+            "keys": "Super + Shift + Minus",
+            "rawKeys": "Mod+Shift+Minus",
+            "modifiers": [
+              "Super",
+              "Shift"
+            ],
+            "key": "Minus",
+            "action": "set-window-height \"-10%\"",
+            "description": "Set Window Height \" 10%\"",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 226,
+            "rawLine": "    Mod+Shift+Minus { set-window-height \"-10%\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_125",
+            "keys": "Super + Shift + Equal",
+            "rawKeys": "Mod+Shift+Equal",
+            "modifiers": [
+              "Super",
+              "Shift"
+            ],
+            "key": "Equal",
+            "action": "set-window-height \"+10%\"",
+            "description": "Set Window Height \"+10%\"",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 227,
+            "rawLine": "    Mod+Shift+Equal { set-window-height \"+10%\"; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_126",
+            "keys": "Super + W",
+            "rawKeys": "Mod+W",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "W",
+            "action": "toggle-window-floating",
+            "description": "Toggle Window Floating",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 229,
+            "rawLine": "    Mod+W       { toggle-window-floating; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_127",
+            "keys": "Super + Shift + W",
+            "rawKeys": "Mod+Shift+W",
+            "modifiers": [
+              "Super",
+              "Shift"
+            ],
+            "key": "W",
+            "action": "switch-focus-between-floating-and-tiling",
+            "description": "Switch Focus Between Floating And Tiling",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 230,
+            "rawLine": "    Mod+Shift+W { switch-focus-between-floating-and-tiling; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_128",
+            "keys": "Super + V",
+            "rawKeys": "Mod+V",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "V",
+            "action": "toggle-column-tabbed-display",
+            "description": "Toggle Column Tabbed Display",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 234,
+            "rawLine": "    Mod+V { toggle-column-tabbed-display; }",
+            "status": "unchanged"
+          },
+          {
+            "id": "bind_132",
+            "keys": "Super + Escape",
+            "rawKeys": "Mod+Escape",
+            "modifiers": [
+              "Super"
+            ],
+            "key": "Escape",
+            "action": "toggle-keyboard-shortcuts-inhibit",
+            "description": "Toggle Keyboard Shortcuts Inhibit",
+            "sourceFile": "/home/don/.config/niri/binds.kdl",
+            "lineNumber": 253,
+            "rawLine": "    Mod+Escape allow-inhibiting=false { toggle-keyboard-shortcuts-inhibit; }",
+            "status": "unchanged"
+          }
+        ]
+      }
+    ],
+    "deletedBinds": [],
+    "deletedCategories": [],
+    "hasUnsavedChanges": false
+  },
+  "triggerToggle": 1769402272808
+}

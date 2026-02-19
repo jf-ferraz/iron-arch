@@ -1,0 +1,75 @@
+# btop theme using Noctalia/matugen colors
+# Auto-generated from ~/.config/noctalia/colors.json
+
+# Main background
+theme[main_bg]="#141318"
+
+# Main text color
+theme[main_fg]="#e5e1e9"
+
+# Title color for boxes
+theme[title]="#c8bfff"
+
+# Highlight color for keyboard shortcuts
+theme[hi_fg]="#c8bfff"
+
+# Background color of selected item in processes box
+theme[selected_bg]="#30285f"
+
+# Foreground color of selected item in processes box
+theme[selected_fg]="#e5e1e9"
+
+# Color of inactive/disabled text
+theme[inactive_fg]="#c9c5d0"
+
+# Misc colors for processes box
+theme[proc_misc]="#c9c3dc"
+
+# Box outline colors
+theme[cpu_box]="#48454f"
+theme[mem_box]="#48454f"
+theme[net_box]="#48454f"
+theme[proc_box]="#48454f"
+
+# Box divider line and small boxes line color
+theme[div_line]="#48454f"
+
+# Temperature graph colors
+theme[temp_start]="#c9c3dc"
+theme[temp_mid]="#c8bfff"
+theme[temp_end]="#ffb4ab"
+
+# CPU graph colors
+theme[cpu_start]="#c9c3dc"
+theme[cpu_mid]="#c8bfff"
+theme[cpu_end]="#ecb8ce"
+
+# Mem/Disk free meter
+theme[free_start]="#c9c3dc"
+theme[free_mid]="#c8bfff"
+theme[free_end]="#ecb8ce"
+
+# Mem/Disk cached meter
+theme[cached_start]="#c9c3dc"
+theme[cached_mid]="#c8bfff"
+theme[cached_end]="#ecb8ce"
+
+# Mem/Disk available meter
+theme[available_start]="#c9c3dc"
+theme[available_mid]="#c8bfff"
+theme[available_end]="#ecb8ce"
+
+# Mem/Disk used meter
+theme[used_start]="#c8bfff"
+theme[used_mid]="#30285f"
+theme[used_end]="#312e41"
+
+# Download graph colors
+theme[download_start]="#c9c3dc"
+theme[download_mid]="#c8bfff"
+theme[download_end]="#30285f"
+
+# Upload graph colors
+theme[upload_start]="#ecb8ce"
+theme[upload_mid]="#c8bfff"
+theme[upload_end]="#30285f"

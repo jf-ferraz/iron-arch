@@ -9,6 +9,7 @@ iron-core = { path = "../iron-core" }
 ratatui.workspace = true
 crossterm.workspace = true
 anyhow.workspace = true
+chrono.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

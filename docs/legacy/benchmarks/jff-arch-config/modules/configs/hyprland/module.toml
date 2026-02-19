@@ -1,0 +1,111 @@
+version = 1
+id = "hyprland"
+name = "Hyprland Config Module"
+kind = "config"
+status = "active"
+owner = "laraj"
+description = "Declarative Hyprland configuration split into composable include files and deployed via GNU Stow."
+
+[paths]
+root = "modules/configs/hyprland"
+stow_package = "modules/configs/hyprland/stow"
+entrypoint = "modules/configs/hyprland/stow/.config/hypr/hyprland.conf"
+host_overlay_base = "hosts"
+deploy_target = "~"
+
+[compat]
+os = ["arch-linux"]
+display_server = ["wayland"]
+requires = ["hyprland", "stow"]
+optional = ["waybar", "rofi", "hyprpaper", "hypridle", "wl-clipboard", "cliphist", "gnome-keyring"]
+
+[capabilities]
+provides = ["window-manager", "keybindings", "workspace-layout", "host-overrides"]
+conflicts_with = ["niri-active-session"]
+
+[[inputs]]
+name = "host_id"
+type = "string"
+required = true
+default = "desktop"
+description = "Host identifier used to select hosts/<host_id>/hyprland/overrides.conf."
+
+[[inputs]]
+name = "keyboard_layout"
+type = "string"
+required = false
+default = "us"
+description = "Keyboard layout written into 10-input.conf."
+
+[[inputs]]
+name = "monitor_policy"
+type = "string"
+required = false
+default = "preferred-auto"
+description = "Monitor strategy used in 20-monitors.conf."
+
+[[inputs]]
+name = "adopt"
+type = "bool"
+required = false
+default = false
+description = "Use stow --adopt to absorb pre-existing files into package layout."
+
+[[artifacts]]
+name = "main_config"
+kind = "file"
+path = "modules/configs/hyprland/stow/.config/hypr/hyprland.conf"
+role = "entrypoint"
+
+[[artifacts]]
+name = "fragments"
+kind = "fileset"
+path = "modules/configs/hyprland/stow/.config/hypr/*.conf"
+role = "config-fragments"
+
+[[artifacts]]
+name = "host_overlay_source"
+kind = "file"
+path = "hosts/<host_id>/hyprland/overrides.conf"
+role = "host-input"
+
+[[artifacts]]
+name = "host_overlay_rendered"
+kind = "file"
+path = "modules/configs/hyprland/stow/.config/hypr/host-overrides.conf"
+role = "generated"
+
+[[operations]]
+id = "lint"
+description = "Validate module metadata and required files."
+command = "sh -c 'test -f modules/configs/hyprland/stow/.config/hypr/hyprland.conf && test -f scripts/hypr-sync-host-overlay.sh && test -f scripts/deploy-hypr.sh'"
+
+[[operations]]
+id = "prepare-host-overlay"
+description = "Render host-specific override file; pass host using HOST_ID env or first arg."
+command = "scripts/hypr-sync-host-overlay.sh"
+
+[[operations]]
+id = "deploy"
+description = "Deploy Hyprland config with stow wrapper (safe preflight + optional adopt)."
+command = "scripts/deploy-hypr.sh"
+
+[[operations]]
+id = "deploy-dry-run"
+description = "Simulate deployment and detect stow conflicts without changing files."
+command = "scripts/deploy-hypr.sh --dry-run"
+
+[[operations]]
+id = "rollback"
+description = "Remove Hyprland symlinks managed by GNU Stow."
+command = "scripts/deploy-hypr.sh --rollback"
+
+[[operations]]
+id = "status"
+description = "Check whether deploy target entrypoint exists."
+command = "scripts/deploy-hypr.sh --status"
+
+[hooks]
+pre_apply = ["prepare-host-overlay"]
+post_apply = []
+rollback = ["rollback"]
