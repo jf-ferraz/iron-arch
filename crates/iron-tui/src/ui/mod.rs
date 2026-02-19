@@ -6,10 +6,15 @@ mod bundles;
 mod clean;
 mod config;
 mod dashboard;
+mod doctor;
 mod maintenance;
 mod modules;
+mod module_creator;
+mod profile_builder;
 pub mod operation_log;
 mod profiles;
+mod recovery;
+mod secrets;
 mod security;
 mod settings;
 pub mod theme;
@@ -26,10 +31,15 @@ pub use bundles::{render_bundle_detail, render_bundles};
 pub use clean::{render_clean_system, render_cleanup_preview, render_cleanup_results};
 pub use config::render_config_manager;
 pub use dashboard::render_dashboard;
+pub use doctor::render_doctor;
 pub use maintenance::render_system_maintenance;
 pub use modules::{render_module_detail, render_modules};
 pub use operation_log::render_operation_log;
+pub use module_creator::render_module_creator;
+pub use profile_builder::render_profile_builder;
 pub use profiles::{render_profile_detail, render_profiles};
+pub use recovery::render_recovery;
+pub use secrets::render_secrets;
 pub use security::render_security_modules;
 pub use settings::render_settings;
 pub use update::{render_sync, render_update_preview};
@@ -74,6 +84,11 @@ pub fn render(frame: &mut Frame, app: &App) {
         View::SecurityModules => render_security_modules(frame, layout[1], app),
         View::ConfigManager => render_config_manager(frame, layout[1], app),
         View::OperationLog => render_operation_log(frame, layout[1], app),
+        View::Doctor => render_doctor(frame, layout[1], app),
+        View::Secrets => render_secrets(frame, layout[1], app),
+        View::Recovery => render_recovery(frame, layout[1], app),
+        View::ProfileBuilder => render_profile_builder(frame, layout[1], app),
+        View::ModuleCreator => render_module_creator(frame, layout[1], app),
     }
 
     // Render footer

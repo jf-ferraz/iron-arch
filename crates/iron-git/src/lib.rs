@@ -117,16 +117,12 @@ pub struct DefaultGitManager {
 }
 
 impl DefaultGitManager {
-    /// Create a new git manager for the given repository
+    /// Create a new git manager for the given repository with a default resilient executor.
+    ///
+    /// The circuit breaker opens after 3 consecutive failures and stays open
+    /// for 60 seconds, preventing hangs from git operations in a broken environment.
     pub fn new(root: PathBuf) -> IronResult<Self> {
-        // Verify this is a git repository
-        if !root.join(".git").exists() {
-            return Err(GitError::NotARepository { path: root }.into());
-        }
-        Ok(Self {
-            root,
-            executor: None,
-        })
+        Self::with_resilience(root)
     }
 
     /// Create a git manager with a command executor for resilient operations
@@ -260,12 +256,9 @@ pub struct DefaultSecretsManager {
 }
 
 impl DefaultSecretsManager {
-    /// Create a new secrets manager
+    /// Create a new secrets manager with a default resilient executor.
     pub fn new(root: PathBuf) -> Self {
-        Self {
-            root,
-            executor: None,
-        }
+        Self::with_resilience(root)
     }
 
     /// Create a secrets manager with a command executor for resilient operations
@@ -1005,16 +998,16 @@ encrypted: secrets/token.txt
     }
 
     #[test]
-    fn test_git_manager_without_executor() {
+    fn test_git_manager_new_has_resilient_executor() {
         use tempfile::TempDir;
 
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let root = temp_dir.path().to_path_buf();
         std::fs::create_dir_all(root.join(".git")).expect("Failed to create .git");
 
-        // Test backward compatibility - new() should work without executor
+        // new() always initializes with a circuit-breaker executor
         let manager = DefaultGitManager::new(root).expect("Failed to create manager");
-        assert!(manager.executor.is_none());
+        assert!(manager.executor.is_some());
     }
 
     #[test]
@@ -1043,15 +1036,15 @@ encrypted: secrets/token.txt
     }
 
     #[test]
-    fn test_secrets_manager_without_executor() {
+    fn test_secrets_manager_new_has_resilient_executor() {
         use tempfile::TempDir;
 
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let root = temp_dir.path().to_path_buf();
 
-        // Test backward compatibility - new() should work without executor
+        // new() always initializes with a circuit-breaker executor
         let manager = DefaultSecretsManager::new(root);
-        assert!(manager.executor.is_none());
+        assert!(manager.executor.is_some());
     }
 
     // ==========================================================================

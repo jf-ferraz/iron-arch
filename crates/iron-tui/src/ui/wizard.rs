@@ -2,7 +2,7 @@
 
 use crate::app::App;
 use crate::ui::theme;
-use crate::wizard::{InputMode, WizardStep};
+use crate::wizard::{BundleSummary, InputMode, ProfileSummary, WizardStep};
 use ratatui::prelude::*;
 use ratatui::widgets::{Paragraph, Wrap};
 
@@ -155,8 +155,17 @@ fn render_wizard_host_setup(frame: &mut Frame, area: Rect, app: &App) {
 
 /// Render bundle selection step
 fn render_wizard_bundle_selection(frame: &mut Frame, area: Rect, app: &App) {
-    let bundles = &app.wizard.available_bundles;
     let selected_idx = app.wizard.selected_bundle_index;
+    // Use rich summaries if available, else fall back to plain names
+    let summaries: Vec<BundleSummary> = if !app.wizard.bundle_summaries.is_empty() {
+        app.wizard.bundle_summaries.clone()
+    } else {
+        app.wizard
+            .available_bundles
+            .iter()
+            .map(|n| BundleSummary { name: n.clone(), ..Default::default() })
+            .collect()
+    };
 
     let mut text = vec![
         Line::from(""),
@@ -172,27 +181,21 @@ fn render_wizard_bundle_selection(frame: &mut Frame, area: Rect, app: &App) {
         Line::from(""),
     ];
 
-    if bundles.is_empty() {
+    if summaries.is_empty() {
         text.push(Line::from(Span::styled(
-            "No bundles found. Create bundles in your config directory.",
+            "No bundles found. Create `bundles/<name>/bundle.toml` in your config directory.",
             Style::default().fg(theme::YELLOW),
         )));
     } else {
-        for (i, bundle) in bundles.iter().enumerate() {
-            let prefix = if i == selected_idx {
-                "  ● "
-            } else {
-                "  ○ "
-            };
+        for (i, summary) in summaries.iter().enumerate() {
+            let prefix = if i == selected_idx { "  ● " } else { "  ○ " };
             let style = if i == selected_idx {
-                Style::default()
-                    .fg(theme::GREEN)
-                    .add_modifier(Modifier::BOLD)
+                Style::default().fg(theme::GREEN).add_modifier(Modifier::BOLD)
             } else {
-                Style::default()
+                Style::default().fg(theme::TEXT)
             };
             text.push(Line::from(Span::styled(
-                format!("{}{}", prefix, bundle),
+                format!("{}{}", prefix, summary.display_line()),
                 style,
             )));
         }
@@ -213,8 +216,17 @@ fn render_wizard_bundle_selection(frame: &mut Frame, area: Rect, app: &App) {
 
 /// Render profile selection step
 fn render_wizard_profile_selection(frame: &mut Frame, area: Rect, app: &App) {
-    let profiles = &app.wizard.available_profiles;
     let selected_idx = app.wizard.selected_profile_index;
+    // Use rich summaries if available, else fall back to plain names
+    let summaries: Vec<ProfileSummary> = if !app.wizard.profile_summaries.is_empty() {
+        app.wizard.profile_summaries.clone()
+    } else {
+        app.wizard
+            .available_profiles
+            .iter()
+            .map(|n| ProfileSummary { name: n.clone(), description: String::new() })
+            .collect()
+    };
 
     let mut text = vec![
         Line::from(""),
@@ -230,27 +242,26 @@ fn render_wizard_profile_selection(frame: &mut Frame, area: Rect, app: &App) {
         Line::from(""),
     ];
 
-    if profiles.is_empty() {
+    if summaries.is_empty() {
         text.push(Line::from(Span::styled(
-            "No profiles found. Create profiles in your config directory.",
+            "No profiles found. You can create one later with [n] from the Profiles screen.",
             Style::default().fg(theme::YELLOW),
         )));
     } else {
-        for (i, profile) in profiles.iter().enumerate() {
-            let prefix = if i == selected_idx {
-                "  ● "
-            } else {
-                "  ○ "
-            };
+        for (i, summary) in summaries.iter().enumerate() {
+            let prefix = if i == selected_idx { "  ● " } else { "  ○ " };
             let style = if i == selected_idx {
-                Style::default()
-                    .fg(theme::GREEN)
-                    .add_modifier(Modifier::BOLD)
+                Style::default().fg(theme::GREEN).add_modifier(Modifier::BOLD)
             } else {
-                Style::default()
+                Style::default().fg(theme::TEXT)
+            };
+            let display = if summary.description.is_empty() {
+                summary.name.clone()
+            } else {
+                format!("{} — {}", summary.name, summary.description)
             };
             text.push(Line::from(Span::styled(
-                format!("{}{}", prefix, profile),
+                format!("{}{}", prefix, display),
                 style,
             )));
         }
@@ -258,7 +269,7 @@ fn render_wizard_profile_selection(frame: &mut Frame, area: Rect, app: &App) {
 
     text.push(Line::from(""));
     text.push(Line::from(Span::styled(
-        "Use ↑/↓ to select, Enter to continue",
+        "Use ↑/↓ to select, Enter to continue (profile is optional)",
         Style::default().fg(theme::SUBTEXT),
     )));
 

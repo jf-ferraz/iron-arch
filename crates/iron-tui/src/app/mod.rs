@@ -120,6 +120,58 @@ pub struct App {
     // -------------------------------------------------------------------------
     /// Active progress tracker for long-running operations
     pub progress: Option<ProgressTracker>,
+    // -------------------------------------------------------------------------
+    // Module Conflict State (Phase 2.4)
+    // -------------------------------------------------------------------------
+    /// Conflicts for the currently-selected module (populated on ModuleDetail nav)
+    pub module_conflicts: Vec<String>,
+    // -------------------------------------------------------------------------
+    // Secrets State (Phase 4.1)
+    // -------------------------------------------------------------------------
+    /// Secrets encryption status string (matches SecretsStatus enum variant name)
+    pub secrets_status: Option<String>,
+    /// List of encrypted files tracked by git-crypt
+    pub encrypted_files: Vec<std::path::PathBuf>,
+    // -------------------------------------------------------------------------
+    // Recovery State (Phase 4.2)
+    // -------------------------------------------------------------------------
+    /// Timestamp of the last backup/export, if known
+    pub last_backup: Option<chrono::DateTime<chrono::Utc>>,
+    // -------------------------------------------------------------------------
+    // Snapshot State (Phase 2.2)
+    // -------------------------------------------------------------------------
+    /// Detected snapshot backend (Timeshift, Snapper, or None)
+    pub snapshot_backend: iron_core::snapshot::SnapshotBackend,
+    // -------------------------------------------------------------------------
+    // Profile Builder State (Phase 4.4)
+    // -------------------------------------------------------------------------
+    /// Current step in the profile builder wizard (0=name, 1=modules, 2=preview, 3=done)
+    pub profile_builder_step: usize,
+    /// Name being entered in the profile builder
+    pub profile_builder_name: String,
+    /// Description being entered in the profile builder
+    pub profile_builder_description: String,
+    /// Module IDs checked in the profile builder module selection step
+    pub profile_builder_selected_modules: Vec<String>,
+    /// Cursor position within the module checklist
+    pub profile_builder_module_cursor: usize,
+    /// Whether profile name input is in edit mode
+    pub profile_builder_editing: bool,
+    /// Whether description input is in focus (vs name)
+    pub profile_builder_editing_desc: bool,
+    // -------------------------------------------------------------------------
+    // Module Creator State (Phase 5.1)
+    // -------------------------------------------------------------------------
+    /// Current step in the module creator wizard
+    pub module_creator_step: usize,
+    /// Module name being entered
+    pub module_creator_name: String,
+    /// Module description being entered
+    pub module_creator_description: String,
+    /// Packages being entered (comma-separated raw input)
+    pub module_creator_packages: String,
+    /// Whether name field is active (vs description/packages)
+    pub module_creator_active_field: usize, // 0=name, 1=desc, 2=packages
 }
 
 /// Available views
@@ -161,6 +213,16 @@ pub enum View {
     ConfigManager,
     /// Operation log viewer (JSONL)
     OperationLog,
+    /// System health checks (Doctor)
+    Doctor,
+    /// Secrets management (git-crypt/age)
+    Secrets,
+    /// Recovery and backup
+    Recovery,
+    /// Profile builder wizard ([n] from Profiles)
+    ProfileBuilder,
+    /// Module creator wizard ([n] from Modules)
+    ModuleCreator,
 }
 
 /// Actions that require confirmation
@@ -241,6 +303,23 @@ impl App {
             operation_filter: OperationFilter::default(),
             // Progress dialog
             progress: None,
+            module_conflicts: Vec::new(),
+            secrets_status: None,
+            encrypted_files: Vec::new(),
+            last_backup: None,
+            snapshot_backend: iron_core::snapshot::detect_backend(),
+            profile_builder_step: 0,
+            profile_builder_name: String::new(),
+            profile_builder_description: String::new(),
+            profile_builder_selected_modules: Vec::new(),
+            profile_builder_module_cursor: 0,
+            profile_builder_editing: false,
+            profile_builder_editing_desc: false,
+            module_creator_step: 0,
+            module_creator_name: String::new(),
+            module_creator_description: String::new(),
+            module_creator_packages: String::new(),
+            module_creator_active_field: 0,
         }
     }
 
@@ -250,6 +329,10 @@ impl App {
         self.view = view;
         self.selected_index = 0;
         self.clear_messages();
+        // Pre-load conflict data whenever entering module detail
+        if matches!(view, View::ModuleDetail) {
+            self.load_module_conflicts();
+        }
     }
 
     /// Go back to previous view

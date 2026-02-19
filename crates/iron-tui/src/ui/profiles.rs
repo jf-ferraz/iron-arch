@@ -12,10 +12,17 @@ pub fn render_profiles(frame: &mut Frame, area: Rect, app: &App) {
     if app.profiles.is_empty() {
         let empty = Paragraph::new(vec![
             Line::from(""),
-            Line::from(Span::styled("No profiles found", Style::default().fg(theme::SUBTEXT))),
+            Line::from(Span::styled(
+                "No profiles found.",
+                Style::default().fg(theme::SUBTEXT).add_modifier(Modifier::BOLD),
+            )),
             Line::from(""),
             Line::from(Span::styled(
-                "Profiles are defined inside your bundles.",
+                "Press [n] to create your first profile,",
+                Style::default().fg(theme::GREEN),
+            )),
+            Line::from(Span::styled(
+                "or create `profiles/<name>/profile.toml` in your config directory.",
                 Style::default().fg(theme::OVERLAY),
             )),
         ])

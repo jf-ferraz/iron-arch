@@ -23,6 +23,8 @@ pub mod resilience;
 pub mod services;
 pub mod snapshot;
 pub mod state;
+pub mod system_service;
+pub mod templates;
 pub mod validation;
 
 #[cfg(test)]
@@ -62,6 +64,9 @@ pub use validation::{
 
 // Filesystem abstraction for testing
 pub use fs_trait::{FileSystem, FsResult, MockFileSystem, RealFileSystem};
+
+// System service abstraction
+pub use system_service::{NoopSystemService, SystemService};
 
 // Resilience patterns
 pub use resilience::{

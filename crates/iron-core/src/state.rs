@@ -276,13 +276,30 @@ impl IronState {
         }
     }
 
-    /// Save state to file
+    /// Save state to file using an atomic write (write → fsync → rename).
+    ///
+    /// Atomic rename prevents a corrupt `state.json` if the process is killed
+    /// or power is lost mid-write. The temporary file is placed next to the
+    /// target so that the rename stays on the same filesystem (required for
+    /// atomic behaviour on Linux).
     pub fn save(&self, path: &PathBuf) -> anyhow::Result<()> {
+        use std::io::Write;
+
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
+
         let content = serde_json::to_string_pretty(self)?;
-        std::fs::write(path, content)?;
+
+        let temp_path = path.with_extension("iron-tmp");
+        {
+            let mut file = std::fs::File::create(&temp_path)?;
+            file.write_all(content.as_bytes())?;
+            file.sync_all()?;
+        }
+
+        std::fs::rename(&temp_path, path)?;
+
         Ok(())
     }
 

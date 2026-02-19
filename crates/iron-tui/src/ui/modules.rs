@@ -12,10 +12,17 @@ pub fn render_modules(frame: &mut Frame, area: Rect, app: &App) {
     if app.modules.is_empty() {
         let empty = Paragraph::new(vec![
             Line::from(""),
-            Line::from(Span::styled("No modules found", Style::default().fg(theme::SUBTEXT))),
+            Line::from(Span::styled(
+                "No modules found.",
+                Style::default().fg(theme::SUBTEXT).add_modifier(Modifier::BOLD),
+            )),
             Line::from(""),
             Line::from(Span::styled(
-                "Modules are loaded from your active bundle and profiles.",
+                "Press [n] to create your first module,",
+                Style::default().fg(theme::GREEN),
+            )),
+            Line::from(Span::styled(
+                "or activate a bundle/profile that contains modules.",
                 Style::default().fg(theme::OVERLAY),
             )),
         ])
@@ -72,10 +79,18 @@ pub fn render_module_detail(frame: &mut Frame, area: Rect, app: &App) {
     };
 
     let is_active = app.is_module_active(&module.id);
+    let has_conflicts = !is_active && !app.module_conflicts.is_empty();
     let status = if is_active { "Enabled" } else { "Disabled" };
+    let status_color = if is_active {
+        theme::GREEN
+    } else if has_conflicts {
+        theme::RED
+    } else {
+        theme::OVERLAY
+    };
     let desc = module.description.as_deref().unwrap_or("No description");
 
-    let text = vec![
+    let mut text = vec![
         Line::from(""),
         Line::from(vec![
             Span::styled("ID          ", Style::default().fg(theme::SUBTEXT)),
@@ -91,14 +106,38 @@ pub fn render_module_detail(frame: &mut Frame, area: Rect, app: &App) {
         ]),
         Line::from(vec![
             Span::styled("Status      ", Style::default().fg(theme::SUBTEXT)),
-            Span::styled(
-                status,
-                Style::default().fg(if is_active { theme::GREEN } else { theme::OVERLAY }),
-            ),
+            Span::styled(status, Style::default().fg(status_color)),
         ]),
-        Line::from(""),
-        Line::from(Span::styled("Packages:", Style::default().fg(theme::YELLOW).bold())),
     ];
+
+    // Show conflict warnings prominently
+    if has_conflicts {
+        text.push(Line::from(""));
+        text.push(Line::from(Span::styled(
+            "Conflicts:",
+            Style::default().fg(theme::RED).bold(),
+        )));
+        // Deduplicate by module name (format is "module_id:path" or just "module_id")
+        let mut seen = std::collections::HashSet::new();
+        for conflict in &app.module_conflicts {
+            let module_name = conflict.split(':').next().unwrap_or(conflict.as_str());
+            if seen.insert(module_name) {
+                let detail = if conflict.contains(':') {
+                    format!("  [!!] {} (shared dotfile: {})", module_name, &conflict[module_name.len() + 1..])
+                } else {
+                    format!("  [!!] {} (explicit conflict)", module_name)
+                };
+                text.push(Line::from(Span::styled(detail, Style::default().fg(theme::RED))));
+            }
+        }
+        text.push(Line::from(Span::styled(
+            "  Disable conflicting module(s) first, then enable this one.",
+            Style::default().fg(theme::SUBTEXT),
+        )));
+    }
+
+    text.push(Line::from(""));
+    text.push(Line::from(Span::styled("Packages:", Style::default().fg(theme::YELLOW).bold())));
 
     let mut lines = text;
     if module.packages.is_empty() {
@@ -128,9 +167,14 @@ pub fn render_module_detail(frame: &mut Frame, area: Rect, app: &App) {
         }
     }
     lines.push(Line::from(""));
+    let hint = if has_conflicts {
+        "[Esc] Back  [e] Blocked (resolve conflicts first)"
+    } else {
+        "[Esc] Back  [e] Toggle"
+    };
     lines.push(Line::from(Span::styled(
-        "[Esc] Back  [e] Toggle",
-        Style::default().fg(theme::SUBTEXT),
+        hint,
+        Style::default().fg(if has_conflicts { theme::RED } else { theme::SUBTEXT }),
     )));
 
     let title = format!("Module: {}", module.id);

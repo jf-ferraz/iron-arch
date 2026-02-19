@@ -73,8 +73,22 @@ impl App {
                 self.switch_bundle(id.clone());
             }
             ConfirmAction::RemoveBundle(id) => {
-                // Bundle removal not yet implemented
-                self.set_warning(format!("Bundle removal not yet implemented: {}", id));
+                if let Some(ref sm) = self.state_manager {
+                    let bundle_service = DefaultBundleService::new(&self.config_dir, sm.clone());
+                    match bundle_service.deactivate(&id) {
+                        Ok(()) => {
+                            self.bundles = bundle_service.discover().unwrap_or_default();
+                            self.active_bundle = None;
+                            self.active_modules = sm.active_modules();
+                            self.set_status(format!("Deactivated bundle: {}", id));
+                        }
+                        Err(e) => {
+                            self.set_error(format!("Failed to deactivate bundle: {}", e));
+                        }
+                    }
+                } else {
+                    self.set_error("No state manager available");
+                }
             }
             ConfirmAction::EnableModule(ref id) => {
                 if let Some(ref sm) = self.state_manager {
@@ -84,7 +98,7 @@ impl App {
                             self.set_status(format!("Enabled module: {}", id));
                         }
                         Err(e) => {
-                            self.set_error(format!("Failed to enable module: {:?}", e));
+                            self.set_error(format!("Failed to enable module: {}", e));
                         }
                     }
                 }
@@ -97,7 +111,7 @@ impl App {
                             self.set_status(format!("Disabled module: {}", id));
                         }
                         Err(e) => {
-                            self.set_error(format!("Failed to disable module: {:?}", e));
+                            self.set_error(format!("Failed to disable module: {}", e));
                         }
                     }
                 }
@@ -122,12 +136,47 @@ impl App {
         if let Some(module) = self.selected_module() {
             let module_id = module.id.clone();
             let is_active = self.is_module_active(&module_id);
+            if !is_active {
+                // Check for conflicts before allowing enable
+                if !self.module_conflicts.is_empty() {
+                    let names: Vec<&str> = self
+                        .module_conflicts
+                        .iter()
+                        .map(|c| c.split(':').next().unwrap_or(c.as_str()))
+                        .collect::<std::collections::HashSet<_>>()
+                        .into_iter()
+                        .collect();
+                    self.set_error(format!(
+                        "Cannot enable '{}': conflicts with {}. Resolve conflict first.",
+                        module_id,
+                        names.join(", ")
+                    ));
+                    return;
+                }
+            }
             let action = if is_active {
                 ConfirmAction::DisableModule(module_id)
             } else {
                 ConfirmAction::EnableModule(module_id)
             };
             self.request_confirm(action);
+        }
+    }
+
+    /// Load conflict data for the currently selected module into `self.module_conflicts`.
+    pub fn load_module_conflicts(&mut self) {
+        self.module_conflicts.clear();
+        if let Some(module) = self.selected_module() {
+            let module_id = module.id.clone();
+            if let Some(ref sm) = self.state_manager {
+                let module_service =
+                    iron_core::services::DefaultModuleService::new(&self.config_dir, sm.clone());
+                if let Ok(conflicts) =
+                    iron_core::services::ModuleService::check_conflicts(&module_service, &module_id)
+                {
+                    self.module_conflicts = conflicts;
+                }
+            }
         }
     }
 
@@ -156,7 +205,7 @@ impl App {
                     self.set_status(format!("Activated profile: {}", profile));
                 }
                 Err(e) => {
-                    self.set_error(format!("Failed to activate profile: {:?}", e));
+                    self.set_error(format!("Failed to activate profile: {}", e));
                 }
             }
         }
@@ -172,7 +221,7 @@ impl App {
                 self.pending_updates = updates;
             }
             Err(e) => {
-                self.set_error(format!("Failed to check updates: {:?}", e));
+                self.set_error(format!("Failed to check updates: {}", e));
                 return;
             }
         }
@@ -371,7 +420,7 @@ impl App {
             if let Some(ref current) = self.active_bundle
                 && let Err(e) = bundle_service.deactivate(&current.id)
             {
-                self.set_error(format!("Failed to deactivate current bundle: {:?}", e));
+                self.set_error(format!("Failed to deactivate current bundle: {}", e));
                 return;
             }
 
@@ -385,7 +434,7 @@ impl App {
                     self.set_status(format!("Switched to bundle: {}", bundle_id));
                 }
                 Err(e) => {
-                    self.set_error(format!("Failed to activate bundle: {:?}", e));
+                    self.set_error(format!("Failed to activate bundle: {}", e));
                 }
             }
         } else {
@@ -393,21 +442,27 @@ impl App {
         }
     }
 
-    /// Run system update (placeholder)
+    /// Run system update via the injected package manager.
     pub fn run_system_update(&mut self) {
-        // TODO: Integrate with pacman service when available
-        self.set_info("System update started (dry-run mode)");
+        self.set_info("Running system update...");
 
-        // Collect package names for post-update checks
-        let package_names: Vec<String> = self.pending_updates.iter().map(|p| p.name.clone()).collect();
+        // Collect package names for post-update checks before update starts
+        let package_names: Vec<String> =
+            self.pending_updates.iter().map(|p| p.name.clone()).collect();
 
-        // In a real implementation, this would:
-        // 1. Run pacman -Syu or use the PacmanService
-        // 2. Show progress in the UpdatePreview view
-        // 3. Handle errors and rollbacks
+        // Execute the real upgrade (preview=false → actually install)
+        match self.package_manager.upgrade(false) {
+            Ok(_preview) => {
+                self.set_status("System update completed successfully");
+            }
+            Err(e) => {
+                self.set_error(format!("System update failed: {}", e));
+                return;
+            }
+        }
 
         // Run post-update detection checks (Phase 2.4)
-        // This detects .pacnew/.pacsave files, reboot requirements, and failed services
+        // Detects .pacnew/.pacsave conflicts, reboot requirements, failed services
         self.run_post_update_checks(&package_names);
     }
 
@@ -508,9 +563,7 @@ impl App {
 
         let service = DefaultCleanupService::new();
 
-        // Run with dry_run=false for real cleanup
-        // For safety, we run dry_run=true in TUI (user can use CLI for actual cleanup)
-        let summary = service.execute(&self.cleanup_categories, true);
+        let summary = service.execute(&self.cleanup_categories, false);
 
         if summary.failed > 0 {
             self.set_warning(format!(
@@ -644,6 +697,114 @@ impl App {
             }
         }
     }
+
+    // =========================================================================
+    // Profile Builder (Phase 4.4)
+    // =========================================================================
+
+    /// Open the profile builder wizard, resetting state
+    pub fn open_profile_builder(&mut self) {
+        self.profile_builder_step = 0;
+        self.profile_builder_name = String::new();
+        self.profile_builder_description = String::new();
+        self.profile_builder_selected_modules = Vec::new();
+        self.profile_builder_module_cursor = 0;
+        self.profile_builder_editing = true;
+        self.profile_builder_editing_desc = false;
+        self.navigate(crate::app::View::ProfileBuilder);
+    }
+
+    /// Finalise and write the new profile to disk
+    pub fn create_profile_from_builder(&mut self) {
+        let name = self.profile_builder_name.trim().to_string();
+        if name.is_empty() {
+            self.set_error("Profile name cannot be empty");
+            return;
+        }
+
+        let profile_dir = self.config_dir.join("profiles").join(&name);
+        if let Err(e) = std::fs::create_dir_all(&profile_dir) {
+            self.set_error(format!("Failed to create profile directory: {}", e));
+            return;
+        }
+
+        let desc = self.profile_builder_description.trim().to_string();
+        let desc_opt = if desc.is_empty() { None } else { Some(desc.as_str()) };
+        let module_ids: Vec<&str> = self.profile_builder_selected_modules
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
+        let toml_content = iron_core::templates::profile_toml(&name, desc_opt, &module_ids);
+
+        let profile_path = profile_dir.join("profile.toml");
+        if let Err(e) = std::fs::write(&profile_path, toml_content) {
+            self.set_error(format!("Failed to write profile.toml: {}", e));
+            return;
+        }
+
+        // Reload profiles (clear first to avoid duplicates)
+        self.profiles.clear();
+        self.load_profiles();
+        self.set_status(format!("Created profile: {}", name));
+        self.navigate(crate::app::View::Profiles);
+    }
+
+    // =========================================================================
+    // Module Creator (Phase 5.1)
+    // =========================================================================
+
+    /// Open the module creator wizard, resetting state
+    pub fn open_module_creator(&mut self) {
+        self.module_creator_step = 0;
+        self.module_creator_name = String::new();
+        self.module_creator_description = String::new();
+        self.module_creator_packages = String::new();
+        self.module_creator_active_field = 0;
+        self.navigate(crate::app::View::ModuleCreator);
+    }
+
+    /// Write module.toml to disk and navigate back to Modules
+    pub fn create_module_from_creator(&mut self) {
+        let id = self.module_creator_name.trim().to_string();
+        if id.is_empty() {
+            self.set_error("Module ID cannot be empty");
+            return;
+        }
+
+        let module_dir = self.config_dir.join("modules").join(&id);
+        if let Err(e) = std::fs::create_dir_all(&module_dir) {
+            self.set_error(format!("Failed to create module directory: {}", e));
+            return;
+        }
+
+        let desc = self.module_creator_description.trim().to_string();
+        let desc_opt = if desc.is_empty() { None } else { Some(desc.as_str()) };
+
+        let pkgs_raw: Vec<String> = if self.module_creator_packages.trim().is_empty() {
+            vec![]
+        } else {
+            self.module_creator_packages
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        };
+        let pkgs: Vec<&str> = pkgs_raw.iter().map(|s| s.as_str()).collect();
+
+        let toml_content = iron_core::templates::module_toml(&id, desc_opt, &pkgs);
+
+        let module_path = module_dir.join("module.toml");
+        if let Err(e) = std::fs::write(&module_path, toml_content) {
+            self.set_error(format!("Failed to write module.toml: {}", e));
+            return;
+        }
+
+        // Reload modules
+        self.modules.clear();
+        self.load_modules();
+        self.set_status(format!("Created module: {}", id));
+        self.navigate(crate::app::View::Modules);
+    }
 }
 
 #[cfg(test)]
@@ -726,14 +887,16 @@ mod tests {
     }
 
     #[test]
-    fn test_execute_confirm_action_remove_bundle_not_implemented() {
+    fn test_execute_confirm_action_remove_bundle_no_state_manager() {
+        // Without a state manager the action should report an error
         let mut app = App::default();
+        app.state_manager = None;
         app.confirm_action = Some(ConfirmAction::RemoveBundle("hyprland".to_string()));
 
         app.execute_confirm_action();
 
-        assert!(app.status_text().is_some());
-        assert!(app.status_text().unwrap().contains("not yet implemented"));
+        assert!(app.error_text().is_some());
+        assert!(app.error_text().unwrap().contains("No state manager"));
     }
 
     #[test]
@@ -767,8 +930,8 @@ mod tests {
 
         app.execute_confirm_action();
 
-        assert!(app.status_text().is_some());
-        assert!(app.status_text().unwrap().contains("update started"));
+        // With NoopPackageManager the upgrade succeeds; confirm_action is consumed
+        assert!(app.confirm_action.is_none());
     }
 
     // ==========================================================================
@@ -1321,8 +1484,9 @@ depends = []
 
         app.run_system_update();
 
+        // With NoopPackageManager upgrade() returns Ok(()) → status shows "completed"
         assert!(app.status_text().is_some());
-        assert!(app.status_text().unwrap().contains("dry-run"));
+        assert!(app.status_text().unwrap().contains("completed"));
     }
 
     // ==========================================================================

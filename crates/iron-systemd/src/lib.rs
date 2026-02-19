@@ -126,12 +126,12 @@ pub struct DefaultServiceManager {
 }
 
 impl DefaultServiceManager {
-    /// Create a new service manager
+    /// Create a new service manager with a default resilient executor.
+    ///
+    /// The circuit breaker opens after 3 consecutive failures and stays open
+    /// for 60 seconds, preventing hangs from a broken systemd environment.
     pub fn new(scope: ServiceScope) -> Self {
-        Self {
-            scope,
-            executor: None,
-        }
+        Self::with_resilience(scope)
     }
 
     /// Create a service manager for user services
@@ -998,23 +998,23 @@ sshd.service               loaded active running OpenSSH Daemon"#;
     }
 
     #[test]
-    fn test_service_manager_without_executor() {
-        // Test backward compatibility - new() should work without executor
+    fn test_service_manager_new_has_resilient_executor() {
+        // new() always initializes with a circuit-breaker executor
         let manager = DefaultServiceManager::new(ServiceScope::User);
-        assert!(manager.executor.is_none());
+        assert!(manager.executor.is_some());
     }
 
     #[test]
-    fn test_service_manager_user_without_executor() {
+    fn test_service_manager_user_has_resilient_executor() {
         let manager = DefaultServiceManager::user();
-        assert!(manager.executor.is_none());
+        assert!(manager.executor.is_some());
         assert_eq!(manager.scope, ServiceScope::User);
     }
 
     #[test]
-    fn test_service_manager_system_without_executor() {
+    fn test_service_manager_system_has_resilient_executor() {
         let manager = DefaultServiceManager::system();
-        assert!(manager.executor.is_none());
+        assert!(manager.executor.is_some());
         assert_eq!(manager.scope, ServiceScope::System);
     }
 }

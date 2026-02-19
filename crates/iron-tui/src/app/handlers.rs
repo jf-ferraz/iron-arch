@@ -49,6 +49,18 @@ impl App {
             return;
         }
 
+        // Profile Builder handling
+        if self.view == View::ProfileBuilder {
+            self.handle_profile_builder_key(key);
+            return;
+        }
+
+        // Module Creator handling
+        if self.view == View::ModuleCreator {
+            self.handle_module_creator_key(key);
+            return;
+        }
+
         // View-specific key handling (actions only, falls through for navigation)
         let handled = match self.view {
             View::UpdatePreview => match key.code {
@@ -180,8 +192,7 @@ impl App {
                     true
                 }
                 KeyCode::Char('d') => {
-                    // Doctor not yet implemented, show info message
-                    self.set_info("System Doctor coming soon");
+                    self.navigate(View::Doctor);
                     true
                 }
                 // Card navigation
@@ -202,7 +213,7 @@ impl App {
                     match self.selected_index {
                         0 => self.navigate(View::UpdatePreview),
                         1 => self.navigate(View::CleanSystem),
-                        2 => self.set_info("System Doctor coming soon"),
+                        2 => self.navigate(View::Doctor),
                         _ => {}
                     }
                     true
@@ -341,6 +352,8 @@ impl App {
             KeyCode::Char('s') => self.navigate(View::Settings),
             KeyCode::Char('w') => self.navigate(View::SetupWizard),  // Re-enter wizard
             KeyCode::Char('y') => self.navigate(View::Sync),         // Git sync
+            KeyCode::Char('S') => self.navigate(View::Secrets),      // Shift+S = Secrets
+            KeyCode::Char('R') => self.navigate(View::Recovery),     // Shift+R = Recovery
 
             // List navigation
             KeyCode::Up | KeyCode::Char('k') => self.select_previous(),
@@ -358,6 +371,15 @@ impl App {
             KeyCode::Char('a') => {
                 if matches!(self.view, View::Bundles | View::BundleDetail) {
                     self.activate_selected_bundle();
+                }
+            }
+
+            // New item wizard (context-sensitive)
+            KeyCode::Char('n') => {
+                if matches!(self.view, View::Profiles | View::ProfileDetail) {
+                    self.open_profile_builder();
+                } else if matches!(self.view, View::Modules | View::ModuleDetail) {
+                    self.open_module_creator();
                 }
             }
 
@@ -460,6 +482,138 @@ impl App {
         }
     }
 
+    /// Handle keys for the Profile Builder wizard
+    pub fn handle_profile_builder_key(&mut self, key: crossterm::event::KeyEvent) {
+        use crossterm::event::KeyCode;
+        match self.profile_builder_step {
+            // Step 0: name/description input
+            0 => match key.code {
+                KeyCode::Esc => {
+                    self.navigate(View::Profiles);
+                }
+                KeyCode::Tab => {
+                    self.profile_builder_editing_desc = !self.profile_builder_editing_desc;
+                }
+                KeyCode::Enter => {
+                    if self.profile_builder_name.trim().is_empty() {
+                        self.set_error("Profile name is required");
+                    } else {
+                        self.profile_builder_step = 1;
+                    }
+                }
+                KeyCode::Backspace => {
+                    if self.profile_builder_editing_desc {
+                        self.profile_builder_description.pop();
+                    } else {
+                        self.profile_builder_name.pop();
+                    }
+                }
+                KeyCode::Char(c) => {
+                    if self.profile_builder_editing_desc {
+                        self.profile_builder_description.push(c);
+                    } else {
+                        // Only allow valid identifier chars in name
+                        if c.is_alphanumeric() || c == '-' || c == '_' {
+                            self.profile_builder_name.push(c);
+                        }
+                    }
+                }
+                _ => {}
+            },
+            // Step 1: module checklist
+            1 => match key.code {
+                KeyCode::Esc => {
+                    self.profile_builder_step = 0;
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    if self.profile_builder_module_cursor > 0 {
+                        self.profile_builder_module_cursor -= 1;
+                    }
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    if self.profile_builder_module_cursor + 1 < self.modules.len() {
+                        self.profile_builder_module_cursor += 1;
+                    }
+                }
+                KeyCode::Char(' ') => {
+                    if let Some(module) = self.modules.get(self.profile_builder_module_cursor) {
+                        let id = module.id.clone();
+                        if let Some(pos) = self.profile_builder_selected_modules.iter().position(|m| m == &id) {
+                            self.profile_builder_selected_modules.remove(pos);
+                        } else {
+                            self.profile_builder_selected_modules.push(id);
+                        }
+                    }
+                }
+                KeyCode::Enter => {
+                    self.profile_builder_step = 2;
+                }
+                _ => {}
+            },
+            // Step 2: preview
+            _ => match key.code {
+                KeyCode::Esc => {
+                    self.profile_builder_step = 1;
+                }
+                KeyCode::Enter => {
+                    self.create_profile_from_builder();
+                }
+                _ => {}
+            },
+        }
+    }
+
+    /// Handle keys for the Module Creator wizard
+    pub fn handle_module_creator_key(&mut self, key: crossterm::event::KeyEvent) {
+        use crossterm::event::KeyCode;
+        match self.module_creator_step {
+            0 => match key.code {
+                KeyCode::Esc => {
+                    self.navigate(View::Modules);
+                }
+                KeyCode::Tab => {
+                    self.module_creator_active_field =
+                        (self.module_creator_active_field + 1) % 3;
+                }
+                KeyCode::Enter => {
+                    if self.module_creator_name.trim().is_empty() {
+                        self.set_error("Module ID is required");
+                    } else {
+                        self.module_creator_step = 1;
+                    }
+                }
+                KeyCode::Backspace => {
+                    match self.module_creator_active_field {
+                        0 => { self.module_creator_name.pop(); }
+                        1 => { self.module_creator_description.pop(); }
+                        _ => { self.module_creator_packages.pop(); }
+                    }
+                }
+                KeyCode::Char(c) => {
+                    match self.module_creator_active_field {
+                        0 => {
+                            if c.is_alphanumeric() || c == '-' || c == '_' {
+                                self.module_creator_name.push(c);
+                            }
+                        }
+                        1 => { self.module_creator_description.push(c); }
+                        _ => { self.module_creator_packages.push(c); }
+                    }
+                }
+                _ => {}
+            },
+            _ => match key.code {
+                KeyCode::Esc => {
+                    self.module_creator_step = 0;
+                }
+                KeyCode::Enter => {
+                    self.create_module_from_creator();
+                }
+                _ => {}
+            },
+        }
+    }
+
     /// Cycle to next view
     fn cycle_view_forward(&mut self) {
         let next = match self.view {
@@ -477,6 +631,11 @@ impl App {
             View::OperationLog => View::Settings,
             // SetupWizard exits to Dashboard (special case)
             View::SetupWizard => View::Dashboard,
+            // New Phase-4 views cycle back to Dashboard
+            View::Doctor | View::Secrets | View::Recovery => View::Dashboard,
+            // Wizard sub-views go back to their parent list
+            View::ProfileBuilder => View::Profiles,
+            View::ModuleCreator => View::Modules,
         };
         self.navigate(next);
     }
@@ -498,6 +657,11 @@ impl App {
             View::OperationLog => View::Settings,
             // SetupWizard exits to Dashboard (special case)
             View::SetupWizard => View::Dashboard,
+            // New Phase-4 views cycle back to Dashboard
+            View::Doctor | View::Secrets | View::Recovery => View::Dashboard,
+            // Wizard sub-views go back to their parent list
+            View::ProfileBuilder => View::Profiles,
+            View::ModuleCreator => View::Modules,
         };
         self.navigate(prev);
     }

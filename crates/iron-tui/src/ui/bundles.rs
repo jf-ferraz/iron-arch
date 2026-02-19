@@ -12,10 +12,17 @@ pub fn render_bundles(frame: &mut Frame, area: Rect, app: &App) {
     if app.bundles.is_empty() {
         let empty = Paragraph::new(vec![
             Line::from(""),
-            Line::from(Span::styled("No bundles found", Style::default().fg(theme::SUBTEXT))),
+            Line::from(Span::styled(
+                "No bundles found.",
+                Style::default().fg(theme::SUBTEXT).add_modifier(Modifier::BOLD),
+            )),
             Line::from(""),
             Line::from(Span::styled(
-                "Add bundle directories to your config path.",
+                "Create `bundles/hyprland/bundle.toml` in your config directory,",
+                Style::default().fg(theme::OVERLAY),
+            )),
+            Line::from(Span::styled(
+                "or run the setup wizard with [w] to get started.",
                 Style::default().fg(theme::OVERLAY),
             )),
         ])

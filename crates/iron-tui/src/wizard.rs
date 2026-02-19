@@ -2,8 +2,51 @@
 //!
 //! Multi-step wizard for first-time setup and configuration.
 
-use iron_core::services::{BundleService, DefaultBundleService, StateManager};
+use iron_core::services::{
+    BundleService, DefaultBundleService, DefaultModuleService, DefaultProfileService,
+    ProfileService, StateManager,
+};
 use std::path::Path;
+
+/// Summary of a bundle for display in the setup wizard.
+#[derive(Debug, Clone, Default)]
+pub struct BundleSummary {
+    /// Bundle identifier
+    pub name: String,
+    /// Human-readable description
+    pub description: String,
+    /// Total number of packages (official + AUR)
+    pub package_count: usize,
+}
+
+impl BundleSummary {
+    /// Format for display: `name — description (N packages)`
+    pub fn display_line(&self) -> String {
+        if self.description.is_empty() {
+            if self.package_count > 0 {
+                format!("{} ({} packages)", self.name, self.package_count)
+            } else {
+                self.name.clone()
+            }
+        } else if self.package_count > 0 {
+            format!(
+                "{} — {} ({} packages)",
+                self.name, self.description, self.package_count
+            )
+        } else {
+            format!("{} — {}", self.name, self.description)
+        }
+    }
+}
+
+/// Summary of a profile for display in the setup wizard.
+#[derive(Debug, Clone, Default)]
+pub struct ProfileSummary {
+    /// Profile identifier
+    pub name: String,
+    /// Human-readable description
+    pub description: String,
+}
 
 /// Wizard state machine
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -38,10 +81,14 @@ pub struct WizardState {
     pub error: Option<String>,
     /// Is processing
     pub processing: bool,
-    /// Available bundles (cached)
+    /// Available bundles (cached) — plain names for backward compatibility
     pub available_bundles: Vec<String>,
+    /// Available bundle summaries with descriptions and package counts
+    pub bundle_summaries: Vec<BundleSummary>,
     /// Available profiles (cached)
     pub available_profiles: Vec<String>,
+    /// Available profile summaries with descriptions
+    pub profile_summaries: Vec<ProfileSummary>,
 }
 
 impl WizardState {
@@ -145,9 +192,31 @@ impl WizardState {
         }
     }
 
-    /// Load available bundles from config dir
+    /// Load available bundles from config dir, populating both name list and summaries.
     pub fn load_bundles(&mut self, config_dir: &Path) {
         self.available_bundles.clear();
+        self.bundle_summaries.clear();
+
+        let state_manager = StateManager::new(config_dir.to_path_buf()).ok();
+
+        if let Some(sm) = state_manager {
+            let service = DefaultBundleService::new(config_dir, sm);
+            if let Ok(bundles) = service.discover()
+                && !bundles.is_empty()
+            {
+                for bundle in &bundles {
+                    self.available_bundles.push(bundle.id.clone());
+                    self.bundle_summaries.push(BundleSummary {
+                        name: bundle.id.clone(),
+                        description: bundle.description.clone().unwrap_or_default(),
+                        package_count: bundle.packages.len() + bundle.aur_packages.len(),
+                    });
+                }
+                return;
+            }
+        }
+
+        // Fallback: scan directory names only (no descriptions)
         let bundles_dir = config_dir.join("bundles");
         if bundles_dir.exists()
             && let Ok(entries) = std::fs::read_dir(&bundles_dir)
@@ -157,15 +226,42 @@ impl WizardState {
                     && let Some(name) = entry.file_name().to_str()
                 {
                     self.available_bundles.push(name.to_string());
+                    self.bundle_summaries.push(BundleSummary {
+                        name: name.to_string(),
+                        ..Default::default()
+                    });
                 }
             }
         }
         self.available_bundles.sort();
+        self.bundle_summaries.sort_by(|a, b| a.name.cmp(&b.name));
     }
 
-    /// Load available profiles from config dir
+    /// Load available profiles from config dir, populating both name list and summaries.
     pub fn load_profiles(&mut self, config_dir: &Path) {
         self.available_profiles.clear();
+        self.profile_summaries.clear();
+
+        let state_manager = StateManager::new(config_dir.to_path_buf()).ok();
+
+        if let Some(sm) = state_manager {
+            let module_service = DefaultModuleService::new(config_dir, sm.clone());
+            let service = DefaultProfileService::new(config_dir, sm, module_service);
+            if let Ok(profiles) = service.discover()
+                && !profiles.is_empty()
+            {
+                for profile in &profiles {
+                    self.available_profiles.push(profile.id.clone());
+                    self.profile_summaries.push(ProfileSummary {
+                        name: profile.id.clone(),
+                        description: profile.description.clone().unwrap_or_default(),
+                    });
+                }
+                return;
+            }
+        }
+
+        // Fallback: scan directory names only (no descriptions)
         let profiles_dir = config_dir.join("profiles");
         if profiles_dir.exists()
             && let Ok(entries) = std::fs::read_dir(&profiles_dir)
@@ -175,10 +271,15 @@ impl WizardState {
                     && let Some(name) = entry.file_name().to_str()
                 {
                     self.available_profiles.push(name.to_string());
+                    self.profile_summaries.push(ProfileSummary {
+                        name: name.to_string(),
+                        ..Default::default()
+                    });
                 }
             }
         }
         self.available_profiles.sort();
+        self.profile_summaries.sort_by(|a, b| a.name.cmp(&b.name));
     }
 
     /// Select next bundle

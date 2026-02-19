@@ -264,13 +264,18 @@ impl ModuleService for DefaultModuleService {
             }
         }
 
-        // Check dotfile target conflicts
-        let module_targets: Vec<String> =
-            module.dotfiles.iter().map(|d| d.target.clone()).collect();
+        // Check dotfile target conflicts — normalize paths so that
+        // "~/.config/nvim" and "/home/user/.config/nvim" compare equal.
+        let module_targets: Vec<PathBuf> = module
+            .dotfiles
+            .iter()
+            .map(|d| expand_home(Path::new(&d.target)))
+            .collect();
 
         for enabled_mod in &enabled {
             for df in &enabled_mod.dotfiles {
-                if module_targets.contains(&df.target) {
+                let target = expand_home(Path::new(&df.target));
+                if module_targets.contains(&target) {
                     conflicts.push(format!("{}:{}", enabled_mod.id, df.target));
                 }
             }

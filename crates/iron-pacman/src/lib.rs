@@ -74,13 +74,12 @@ pub struct DefaultPackageManager {
 }
 
 impl DefaultPackageManager {
-    /// Create a new package manager
+    /// Create a new package manager with a default resilient executor.
+    ///
+    /// The circuit breaker opens after 3 consecutive failures and stays open
+    /// for 60 seconds, preventing hangs from a broken pacman environment.
     pub fn new() -> Self {
-        Self {
-            aur_helper: detect_aur_helper(),
-            dry_run: false,
-            executor: None,
-        }
+        Self::with_resilience()
     }
 
     /// Create a package manager with specific options
@@ -1814,10 +1813,10 @@ Validated By    : Signature"#;
     }
 
     #[test]
-    fn test_package_manager_without_executor() {
-        // Test backward compatibility - new() should work without executor
+    fn test_package_manager_new_has_resilient_executor() {
+        // new() always initializes with a circuit-breaker executor
         let pm = DefaultPackageManager::new();
-        assert!(pm.executor.is_none());
+        assert!(pm.executor.is_some());
     }
 
     #[test]

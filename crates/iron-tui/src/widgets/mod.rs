@@ -41,6 +41,11 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App) {
         View::SecurityModules => ("Security", "[!]"),
         View::ConfigManager => ("Config Manager", "[#]"),
         View::OperationLog => ("Operation Log", "[L]"),
+        View::Doctor => ("System Doctor", "[D]"),
+        View::Secrets => ("Secrets", "[S]"),
+        View::Recovery => ("Recovery", "[R]"),
+        View::ProfileBuilder => ("New Profile", "[n]"),
+        View::ModuleCreator => ("New Module", "[n]"),
     };
 
     // Build header content
@@ -211,6 +216,30 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
             ("[r]", "Refresh"),
             ("[Esc]", "Back"),
         ],
+        View::Doctor => vec![("[r]", "Re-run"), ("[Esc]", "Back")],
+        View::Secrets => vec![
+            ("[i]", "Init"),
+            ("[u]", "Unlock"),
+            ("[l]", "Lock"),
+            ("[Esc]", "Back"),
+        ],
+        View::Recovery => vec![
+            ("[g]", "install.sh"),
+            ("[e]", "Export"),
+            ("[s]", "Snapshot"),
+            ("[Esc]", "Back"),
+        ],
+        View::ProfileBuilder => vec![
+            ("[Tab]", "Switch field"),
+            ("[Space]", "Toggle"),
+            ("[Enter]", "Next/Create"),
+            ("[Esc]", "Back"),
+        ],
+        View::ModuleCreator => vec![
+            ("[Tab]", "Switch field"),
+            ("[Enter]", "Preview/Create"),
+            ("[Esc]", "Back"),
+        ],
     };
 
     let mut spans: Vec<Span> = vec![Span::raw("  ")];
@@ -225,13 +254,35 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
         ));
     }
 
-    let footer_line = Line::from(spans);
+    let keybinding_line = Line::from(spans);
+
+    // Active config status line
+    let bundle_name = app
+        .active_bundle
+        .as_ref()
+        .map(|b| b.id.clone())
+        .unwrap_or_else(|| "—".to_string());
+    let profile_name = app.active_profile.clone().unwrap_or_else(|| "—".to_string());
+    let host_name = app.current_host.clone().unwrap_or_else(|| "—".to_string());
+
+    let status_line = Line::from(vec![
+        Span::raw("  "),
+        Span::styled("Active:", Style::default().fg(theme::OVERLAY)),
+        Span::raw(" "),
+        Span::styled(bundle_name, Style::default().fg(theme::TEXT)),
+        Span::styled("/", Style::default().fg(theme::OVERLAY)),
+        Span::styled(profile_name, Style::default().fg(theme::TEXT)),
+        Span::raw("   "),
+        Span::styled("Host:", Style::default().fg(theme::OVERLAY)),
+        Span::raw(" "),
+        Span::styled(host_name, Style::default().fg(theme::TEXT)),
+    ]);
 
     let block = Block::default()
         .borders(Borders::TOP)
         .border_style(Style::default().fg(theme::OVERLAY));
 
-    let para = Paragraph::new(footer_line).block(block);
+    let para = Paragraph::new(vec![keybinding_line, status_line]).block(block);
 
     frame.render_widget(para, area);
 }
@@ -328,14 +379,41 @@ fn get_view_keybindings(view: View) -> Vec<(&'static str, &'static str)> {
             ("Enter", "Select/Continue"),
             ("h/l", "Prev/next step"),
         ],
+        View::Doctor => vec![
+            ("r", "Re-run checks"),
+        ],
+        View::Secrets => vec![
+            ("i", "Init git-crypt"),
+            ("u", "Unlock secrets"),
+            ("l", "Lock secrets"),
+            ("a", "Add GPG key"),
+        ],
+        View::Recovery => vec![
+            ("g", "Generate install.sh"),
+            ("e", "Export config bundle"),
+            ("i", "Import from backup"),
+            ("r", "Recovery wizard"),
+            ("s", "Create snapshot"),
+        ],
+        View::ProfileBuilder => vec![
+            ("Tab", "Switch field"),
+            ("Space", "Toggle module"),
+            ("Enter", "Next step / Create"),
+            ("Esc", "Cancel / Previous step"),
+        ],
+        View::ModuleCreator => vec![
+            ("Tab", "Switch field"),
+            ("Enter", "Preview / Create"),
+            ("Esc", "Cancel / Previous step"),
+        ],
     }
 }
 
 /// Render help overlay with view-specific keybindings
 pub fn render_help_overlay(frame: &mut Frame, area: Rect, app: &App) {
-    // Calculate centered popup area
-    let popup_width = 55.min(area.width.saturating_sub(4));
-    let popup_height = 24.min(area.height.saturating_sub(4));
+    // Calculate centered popup area — Dashboard needs extra height for concepts section
+    let popup_width = 60.min(area.width.saturating_sub(4));
+    let popup_height = 34.min(area.height.saturating_sub(4));
 
     let popup_area = centered_rect(popup_width, popup_height, area);
 
@@ -360,6 +438,11 @@ pub fn render_help_overlay(frame: &mut Frame, area: Rect, app: &App) {
         View::OperationLog => "Operation Log",
         View::SecurityModules => "Security Modules",
         View::Settings => "Settings",
+        View::Doctor => "System Doctor",
+        View::Secrets => "Secrets",
+        View::Recovery => "Recovery",
+        View::ProfileBuilder => "New Profile",
+        View::ModuleCreator => "New Module",
         _ => "View",
     };
 
@@ -402,6 +485,28 @@ pub fn render_help_overlay(frame: &mut Frame, area: Rect, app: &App) {
     help_text.push(Line::from("  q           Quit"));
     help_text.push(Line::from("  Ctrl+C      Force quit"));
     help_text.push(Line::from(""));
+
+    // On Dashboard, append the Iron concept hierarchy at the end
+    if app.view == View::Dashboard {
+        help_text.push(Line::from(Span::styled(
+            "Iron Concepts:",
+            Style::default().fg(theme::MAUVE),
+        )));
+        help_text.push(Line::from("  HOST     Your machine (e.g. desktop-arch)"));
+        help_text.push(Line::from("    └─ BUNDLE  Desktop environment (Hyprland, KDE…)"));
+        help_text.push(Line::from("         └─ PROFILE  Dotfile collection for a workflow"));
+        help_text.push(Line::from("              └─ MODULE  Single app config (nvim, kitty…)"));
+        help_text.push(Line::from(""));
+        help_text.push(Line::from(Span::styled(
+            "  Configure a HOST, then activate a BUNDLE.",
+            Style::default().fg(theme::SUBTEXT),
+        )));
+        help_text.push(Line::from(Span::styled(
+            "  Modules inside bundles/profiles are symlinked.",
+            Style::default().fg(theme::SUBTEXT),
+        )));
+        help_text.push(Line::from(""));
+    }
 
     help_text.push(Line::from(Span::styled(
         "Press any key to close",
@@ -690,6 +795,11 @@ mod tests {
                 View::SecurityModules => "Security Modules",
                 View::ConfigManager => "Config Manager",
                 View::OperationLog => "Operation Log",
+                View::Doctor => "System Doctor",
+                View::Secrets => "Secrets",
+                View::Recovery => "Recovery",
+                View::ProfileBuilder => "New Profile",
+                View::ModuleCreator => "New Module",
             };
             assert_eq!(name, expected_name);
         }

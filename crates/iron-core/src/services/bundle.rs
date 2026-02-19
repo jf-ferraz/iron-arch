@@ -3,11 +3,14 @@
 //! Provides bundle discovery, installation, activation, and switching.
 
 use crate::bundle::{Bundle, BundleState};
+use crate::packages::{NoopPackageManager, PackageManager};
 use crate::services::state::StateManager;
+use crate::system_service::{NoopSystemService, SystemService};
 use crate::validation::expand_home;
 use crate::{IronResult, StateError};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 /// Bundle service trait
 pub trait BundleService {
@@ -42,15 +45,36 @@ pub struct DefaultBundleService {
     bundles_dir: PathBuf,
     /// State manager
     state_manager: StateManager,
+    /// Package manager for installing/removing packages
+    package_manager: Arc<dyn PackageManager>,
+    /// Service manager for enabling/disabling system services
+    service_manager: Arc<dyn SystemService>,
 }
 
 impl DefaultBundleService {
-    /// Create a new bundle service
+    /// Create a new bundle service with no-op package/service managers.
+    ///
+    /// Use [`with_package_manager`] and [`with_service_manager`] to inject
+    /// real implementations before use.
     pub fn new(iron_root: &Path, state_manager: StateManager) -> Self {
         Self {
             bundles_dir: iron_root.join("bundles"),
             state_manager,
+            package_manager: Arc::new(NoopPackageManager),
+            service_manager: Arc::new(NoopSystemService),
         }
+    }
+
+    /// Inject a package manager (builder pattern).
+    pub fn with_package_manager(mut self, pm: Arc<dyn PackageManager>) -> Self {
+        self.package_manager = pm;
+        self
+    }
+
+    /// Inject a service manager (builder pattern).
+    pub fn with_service_manager(mut self, sm: Arc<dyn SystemService>) -> Self {
+        self.service_manager = sm;
+        self
     }
 
     /// Get bundle config path
@@ -70,9 +94,28 @@ impl DefaultBundleService {
             .ok_or_else(|| StateError::NoActiveHost.into())
     }
 
-    /// Install bundle packages (placeholder - would call iron-pacman)
-    fn install_packages(&self, _bundle: &Bundle) -> IronResult<()> {
-        // TODO: Integrate with iron-pacman PackageManager
+    /// Install bundle packages via the injected package manager.
+    fn install_packages(&self, bundle: &Bundle) -> IronResult<()> {
+        let mut all_packages = bundle.packages.clone();
+        all_packages.extend(bundle.aur_packages.iter().cloned());
+        if !all_packages.is_empty() {
+            self.package_manager.install(&all_packages)?;
+        }
+        Ok(())
+    }
+
+    /// Remove bundle packages via the injected package manager.
+    ///
+    /// Note: not called during deactivation by default — packages may be shared
+    /// with other bundles. Called explicitly when the user asks to uninstall.
+    #[allow(dead_code)]
+    fn remove_packages(&self, bundle: &Bundle) -> IronResult<()> {
+        let mut all_packages = bundle.packages.clone();
+        all_packages.extend(bundle.aur_packages.iter().cloned());
+        if !all_packages.is_empty() {
+            // remove_deps=false: don't auto-remove dependencies (other bundles may need them)
+            self.package_manager.remove(&all_packages, false)?;
+        }
         Ok(())
     }
 
@@ -92,7 +135,9 @@ impl DefaultBundleService {
             .filter_map(|e| e.ok())
             .filter(|e| e.file_type().is_file())
         {
-            let relative = entry.path().strip_prefix(&dotfiles_dir).unwrap();
+            let Ok(relative) = entry.path().strip_prefix(&dotfiles_dir) else {
+                continue;
+            };
             let relative_str = format!("~/.{}", relative.display());
             let target = expand_home(Path::new(&relative_str));
 
@@ -134,7 +179,9 @@ impl DefaultBundleService {
             .filter_map(|e| e.ok())
             .filter(|e| e.file_type().is_file())
         {
-            let relative = entry.path().strip_prefix(&dotfiles_dir).unwrap();
+            let Ok(relative) = entry.path().strip_prefix(&dotfiles_dir) else {
+                continue;
+            };
             let relative_str = format!("~/.{}", relative.display());
             let target = expand_home(Path::new(&relative_str));
 
@@ -152,15 +199,32 @@ impl DefaultBundleService {
         Ok(())
     }
 
-    /// Enable bundle services
-    fn enable_services(&self, _bundle: &Bundle) -> IronResult<()> {
-        // TODO: Integrate with iron-systemd ServiceManager
+    /// Enable and start bundle services via the injected service manager.
+    ///
+    /// Failures are logged as warnings rather than errors — systemd may not be
+    /// available in containers/VMs and bundle activation should still succeed.
+    fn enable_services(&self, bundle: &Bundle) -> IronResult<()> {
+        for service in &bundle.services {
+            if let Err(e) = self.service_manager.enable_service(service) {
+                tracing::warn!("Failed to enable service '{}': {}", service, e);
+            }
+            if let Err(e) = self.service_manager.start_service(service) {
+                tracing::warn!("Failed to start service '{}': {}", service, e);
+            }
+        }
         Ok(())
     }
 
-    /// Disable bundle services
-    fn disable_services(&self, _bundle: &Bundle) -> IronResult<()> {
-        // TODO: Integrate with iron-systemd ServiceManager
+    /// Stop and disable bundle services via the injected service manager.
+    fn disable_services(&self, bundle: &Bundle) -> IronResult<()> {
+        for service in &bundle.services {
+            if let Err(e) = self.service_manager.stop_service(service) {
+                tracing::warn!("Failed to stop service '{}': {}", service, e);
+            }
+            if let Err(e) = self.service_manager.disable_service(service) {
+                tracing::warn!("Failed to disable service '{}': {}", service, e);
+            }
+        }
         Ok(())
     }
 }
@@ -300,7 +364,9 @@ impl BundleService for DefaultBundleService {
                 .filter_map(|e| e.ok())
                 .filter(|e| e.file_type().is_file())
             {
-                let relative = entry.path().strip_prefix(&dotfiles_dir).unwrap();
+                let Ok(relative) = entry.path().strip_prefix(&dotfiles_dir) else {
+                    continue;
+                };
                 let relative_str = format!("~/.{}", relative.display());
                 let target = expand_home(Path::new(&relative_str));
 
