@@ -20,9 +20,10 @@ impl App {
                 // Get active bundle for current host
                 if let Some(ref host_id) = self.current_host {
                     if let Some(bundle_id) = sm.active_bundle(host_id) {
-                        // Load bundles via BundleService
+                        // Load bundles via BundleService (with real package manager)
                         let bundle_service =
-                            DefaultBundleService::new(&self.config_dir, sm.clone());
+                            DefaultBundleService::new(&self.config_dir, sm.clone())
+                                .with_package_manager(self.package_manager.clone());
                         self.bundles = bundle_service.discover().unwrap_or_default();
                         self.active_bundle =
                             self.bundles.iter().find(|b| b.id == bundle_id).cloned();
@@ -45,7 +46,8 @@ impl App {
         if self.bundles.is_empty()
             && let Some(ref sm) = self.state_manager
         {
-            let bundle_service = DefaultBundleService::new(&self.config_dir, sm.clone());
+            let bundle_service = DefaultBundleService::new(&self.config_dir, sm.clone())
+                .with_package_manager(self.package_manager.clone());
             self.bundles = bundle_service.discover().unwrap_or_default();
         }
 
@@ -74,7 +76,8 @@ impl App {
             }
             ConfirmAction::RemoveBundle(id) => {
                 if let Some(ref sm) = self.state_manager {
-                    let bundle_service = DefaultBundleService::new(&self.config_dir, sm.clone());
+                    let bundle_service = DefaultBundleService::new(&self.config_dir, sm.clone())
+                        .with_package_manager(self.package_manager.clone());
                     match bundle_service.deactivate(&id) {
                         Ok(()) => {
                             self.bundles = bundle_service.discover().unwrap_or_default();
@@ -414,7 +417,8 @@ impl App {
     /// Switch to a different bundle
     pub fn switch_bundle(&mut self, bundle_id: String) {
         if let Some(ref sm) = self.state_manager {
-            let bundle_service = DefaultBundleService::new(&self.config_dir, sm.clone());
+            let bundle_service = DefaultBundleService::new(&self.config_dir, sm.clone())
+                .with_package_manager(self.package_manager.clone());
 
             // Deactivate current bundle if any
             if let Some(ref current) = self.active_bundle

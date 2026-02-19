@@ -70,6 +70,10 @@ pub struct App {
     pub show_confirm: bool,
     /// Confirm action pending
     pub confirm_action: Option<ConfirmAction>,
+    /// Confirmation dialog style (risk-differentiated)
+    pub confirm_style: ConfirmStyle,
+    /// Typed confirmation input buffer (for Critical risk)
+    pub confirm_typed_input: String,
     /// Wizard state
     pub wizard: WizardState,
     /// Host name input
@@ -244,6 +248,18 @@ pub enum ConfirmAction {
     Quit,
 }
 
+/// Confirmation dialog style based on risk level
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ConfirmStyle {
+    /// Simple Y/N confirmation (Low/Medium risk)
+    #[default]
+    Simple,
+    /// Enhanced warning with prominent risk display (High risk)
+    EnhancedWarning,
+    /// Requires typing "CONFIRM" to proceed (Critical risk)
+    TypedConfirmation,
+}
+
 /// System health status
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HealthStatus {
@@ -280,6 +296,8 @@ impl App {
             show_help: false,
             show_confirm: false,
             confirm_action: None,
+            confirm_style: ConfirmStyle::default(),
+            confirm_typed_input: String::new(),
             wizard: WizardState::new(),
             host_input: TextInput::new(""),
             package_manager,
@@ -348,6 +366,16 @@ impl App {
 
     /// Request confirmation for an action
     pub fn request_confirm(&mut self, action: ConfirmAction) {
+        // Determine confirmation style based on action and risk level
+        self.confirm_style = match &action {
+            ConfirmAction::RunUpdate => match self.update_risk {
+                RiskLevel::Critical => ConfirmStyle::TypedConfirmation,
+                RiskLevel::High => ConfirmStyle::EnhancedWarning,
+                _ => ConfirmStyle::Simple,
+            },
+            _ => ConfirmStyle::Simple,
+        };
+        self.confirm_typed_input.clear();
         self.confirm_action = Some(action);
         self.show_confirm = true;
     }

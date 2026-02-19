@@ -525,8 +525,10 @@ pub fn render_help_overlay(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(para, popup_area);
 }
 
-/// Render confirm dialog
+/// Render confirm dialog (risk-differentiated)
 pub fn render_confirm_dialog(frame: &mut Frame, area: Rect, app: &App) {
+    use crate::app::ConfirmStyle;
+
     let message = match &app.confirm_action {
         Some(ConfirmAction::SwitchBundle(id)) => format!("Switch to bundle '{}'?", id),
         Some(ConfirmAction::RemoveBundle(id)) => format!("Remove bundle '{}'?", id),
@@ -538,38 +540,150 @@ pub fn render_confirm_dialog(frame: &mut Frame, area: Rect, app: &App) {
         None => "Confirm action?".to_string(),
     };
 
-    // Calculate centered popup area
-    let popup_width = 40.min(area.width.saturating_sub(4));
-    let popup_height = 7;
+    match app.confirm_style {
+        ConfirmStyle::TypedConfirmation => {
+            // CRITICAL risk: large dialog with typed input
+            let popup_width = 52.min(area.width.saturating_sub(4));
+            let popup_height = 12;
+            let popup_area = centered_rect(popup_width, popup_height, area);
+            frame.render_widget(Clear, popup_area);
 
-    let popup_area = centered_rect(popup_width, popup_height, area);
+            // Build lines manually to handle complex spans
+            let mut confirm_text = vec![
+                Line::from(""),
+                Line::from(Span::styled(
+                    "!! CRITICAL RISK UPDATE !!",
+                    Style::default().fg(theme::RED).bold(),
+                )),
+                Line::from(""),
+                Line::from(message),
+                Line::from(""),
+                Line::from(Span::styled(
+                    "Snapshot recommended before proceeding.",
+                    Style::default().fg(theme::YELLOW),
+                )),
+                Line::from(""),
+                Line::from(Span::styled(
+                    "Type CONFIRM to proceed:",
+                    Style::default().fg(theme::TEXT),
+                )),
+            ];
 
-    // Clear the background
-    frame.render_widget(Clear, popup_area);
+            // Build the input line with per-character coloring
+            if app.confirm_typed_input.is_empty() {
+                confirm_text.push(Line::from(Span::styled(
+                    "> _",
+                    Style::default().fg(theme::OVERLAY),
+                )));
+            } else {
+                let target = "CONFIRM";
+                let mut spans_vec: Vec<Span> = vec![Span::raw("> ")];
+                for (i, ch) in app.confirm_typed_input.chars().enumerate() {
+                    let color = if target.chars().nth(i) == Some(ch) {
+                        theme::GREEN
+                    } else {
+                        theme::RED
+                    };
+                    spans_vec.push(Span::styled(
+                        ch.to_string(),
+                        Style::default().fg(color).bold(),
+                    ));
+                }
+                spans_vec.push(Span::styled("_", Style::default().fg(theme::OVERLAY)));
+                confirm_text.push(Line::from(spans_vec));
+            }
 
-    let confirm_text = vec![
-        Line::from(""),
-        Line::from(message),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("[Y]", Style::default().fg(theme::GREEN).bold()),
-            Span::raw(" Yes  "),
-            Span::styled("[N]", Style::default().fg(theme::RED).bold()),
-            Span::raw(" No"),
-        ]),
-    ];
+            confirm_text.push(Line::from(""));
+            confirm_text.push(Line::from(Span::styled(
+                "[Esc] Cancel",
+                Style::default().fg(theme::OVERLAY),
+            )));
 
-    let block = Block::default()
-        .title(" Confirm ")
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme::YELLOW));
+            let block = Block::default()
+                .title(" !! CRITICAL !! ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme::RED).bold());
 
-    let para = Paragraph::new(confirm_text)
-        .block(block)
-        .alignment(Alignment::Center)
-        .wrap(Wrap { trim: true });
+            let para = Paragraph::new(confirm_text)
+                .block(block)
+                .alignment(Alignment::Center)
+                .wrap(Wrap { trim: true });
 
-    frame.render_widget(para, popup_area);
+            frame.render_widget(para, popup_area);
+        }
+        ConfirmStyle::EnhancedWarning => {
+            // HIGH risk: Y/N with prominent warning
+            let popup_width = 48.min(area.width.saturating_sub(4));
+            let popup_height = 10;
+            let popup_area = centered_rect(popup_width, popup_height, area);
+            frame.render_widget(Clear, popup_area);
+
+            let confirm_text = vec![
+                Line::from(""),
+                Line::from(Span::styled(
+                    "! HIGH RISK UPDATE !",
+                    Style::default().fg(theme::YELLOW).bold(),
+                )),
+                Line::from(""),
+                Line::from(message),
+                Line::from(""),
+                Line::from(Span::styled(
+                    "Review changes carefully before proceeding.",
+                    Style::default().fg(theme::YELLOW),
+                )),
+                Line::from(""),
+                Line::from(vec![
+                    Span::styled("[Y]", Style::default().fg(theme::GREEN).bold()),
+                    Span::raw(" Yes  "),
+                    Span::styled("[N]", Style::default().fg(theme::RED).bold()),
+                    Span::raw(" No"),
+                ]),
+            ];
+
+            let block = Block::default()
+                .title(" ! Warning ! ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme::YELLOW).bold());
+
+            let para = Paragraph::new(confirm_text)
+                .block(block)
+                .alignment(Alignment::Center)
+                .wrap(Wrap { trim: true });
+
+            frame.render_widget(para, popup_area);
+        }
+        ConfirmStyle::Simple => {
+            // LOW/MEDIUM risk: standard Y/N dialog
+            let popup_width = 40.min(area.width.saturating_sub(4));
+            let popup_height = 7;
+            let popup_area = centered_rect(popup_width, popup_height, area);
+            frame.render_widget(Clear, popup_area);
+
+            let confirm_text = vec![
+                Line::from(""),
+                Line::from(message),
+                Line::from(""),
+                Line::from(vec![
+                    Span::styled("[Y]", Style::default().fg(theme::GREEN).bold()),
+                    Span::raw(" Yes  "),
+                    Span::styled("[N]", Style::default().fg(theme::RED).bold()),
+                    Span::raw(" No"),
+                ]),
+            ];
+
+            let block = Block::default()
+                .title(" Confirm ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme::YELLOW));
+
+            let para = Paragraph::new(confirm_text)
+                .block(block)
+                .alignment(Alignment::Center)
+                .wrap(Wrap { trim: true });
+
+            frame.render_widget(para, popup_area);
+        }
+    }
 }
 
 /// Helper function to create a centered rect

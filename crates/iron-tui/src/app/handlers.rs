@@ -2,7 +2,7 @@
 //!
 //! Contains all keyboard input handling logic.
 
-use super::{App, ConfirmAction, View};
+use super::{App, ConfirmAction, ConfirmStyle, View};
 use crate::wizard::WizardStep;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -26,19 +26,50 @@ impl App {
             return;
         }
 
-        // Confirm dialog
+        // Confirm dialog (risk-differentiated)
         if self.show_confirm {
-            match key.code {
-                KeyCode::Char('y') | KeyCode::Enter => {
-                    self.execute_confirm_action();
-                    self.show_confirm = false;
-                    self.confirm_action = None;
+            match self.confirm_style {
+                ConfirmStyle::TypedConfirmation => {
+                    // Critical risk: user must type "CONFIRM" and press Enter
+                    match key.code {
+                        KeyCode::Char(c) => {
+                            self.confirm_typed_input.push(c);
+                        }
+                        KeyCode::Backspace => {
+                            self.confirm_typed_input.pop();
+                        }
+                        KeyCode::Enter => {
+                            if self.confirm_typed_input == "CONFIRM" {
+                                self.execute_confirm_action();
+                                self.show_confirm = false;
+                                self.confirm_action = None;
+                                self.confirm_typed_input.clear();
+                            }
+                            // If text doesn't match, ignore Enter (don't dismiss)
+                        }
+                        KeyCode::Esc => {
+                            self.show_confirm = false;
+                            self.confirm_action = None;
+                            self.confirm_typed_input.clear();
+                        }
+                        _ => {}
+                    }
                 }
-                KeyCode::Char('n') | KeyCode::Esc => {
-                    self.show_confirm = false;
-                    self.confirm_action = None;
+                ConfirmStyle::EnhancedWarning | ConfirmStyle::Simple => {
+                    // High/Medium/Low risk: Y/N confirmation
+                    match key.code {
+                        KeyCode::Char('y') | KeyCode::Enter => {
+                            self.execute_confirm_action();
+                            self.show_confirm = false;
+                            self.confirm_action = None;
+                        }
+                        KeyCode::Char('n') | KeyCode::Esc => {
+                            self.show_confirm = false;
+                            self.confirm_action = None;
+                        }
+                        _ => {}
+                    }
                 }
-                _ => {}
             }
             return;
         }
@@ -1198,6 +1229,165 @@ mod tests {
         app.confirm_action = Some(ConfirmAction::Quit);
 
         app.handle_key(create_key_event(KeyCode::Esc));
+
+        assert!(!app.show_confirm);
+        assert!(app.confirm_action.is_none());
+    }
+
+    // =============================================================================
+    // Risk-Differentiated Confirm Dialog Tests
+    // =============================================================================
+
+    #[test]
+    fn test_request_confirm_sets_simple_for_low_risk_update() {
+        use iron_core::RiskLevel;
+
+        let mut app = App::default();
+        app.update_risk = RiskLevel::Low;
+        app.request_confirm(ConfirmAction::RunUpdate);
+
+        assert_eq!(app.confirm_style, ConfirmStyle::Simple);
+        assert!(app.show_confirm);
+    }
+
+    #[test]
+    fn test_request_confirm_sets_enhanced_for_high_risk_update() {
+        use iron_core::RiskLevel;
+
+        let mut app = App::default();
+        app.update_risk = RiskLevel::High;
+        app.request_confirm(ConfirmAction::RunUpdate);
+
+        assert_eq!(app.confirm_style, ConfirmStyle::EnhancedWarning);
+        assert!(app.show_confirm);
+    }
+
+    #[test]
+    fn test_request_confirm_sets_typed_for_critical_risk_update() {
+        use iron_core::RiskLevel;
+
+        let mut app = App::default();
+        app.update_risk = RiskLevel::Critical;
+        app.request_confirm(ConfirmAction::RunUpdate);
+
+        assert_eq!(app.confirm_style, ConfirmStyle::TypedConfirmation);
+        assert!(app.show_confirm);
+    }
+
+    #[test]
+    fn test_request_confirm_sets_simple_for_non_update_actions() {
+
+        let mut app = App::default();
+        app.request_confirm(ConfirmAction::Quit);
+        assert_eq!(app.confirm_style, ConfirmStyle::Simple);
+
+        app.show_confirm = false;
+        app.request_confirm(ConfirmAction::EnableModule("test".to_string()));
+        assert_eq!(app.confirm_style, ConfirmStyle::Simple);
+    }
+
+    #[test]
+    fn test_typed_confirm_accepts_correct_input() {
+
+        let mut app = App::default();
+        app.show_confirm = true;
+        app.confirm_style = ConfirmStyle::TypedConfirmation;
+        app.confirm_action = Some(ConfirmAction::Quit);
+
+        // Type "CONFIRM"
+        for ch in "CONFIRM".chars() {
+            app.handle_key(create_key_event(KeyCode::Char(ch)));
+        }
+        assert!(app.show_confirm); // Still showing until Enter
+
+        app.handle_key(create_key_event(KeyCode::Enter));
+
+        assert!(!app.show_confirm);
+        assert!(app.confirm_action.is_none());
+    }
+
+    #[test]
+    fn test_typed_confirm_rejects_wrong_input() {
+
+        let mut app = App::default();
+        app.show_confirm = true;
+        app.confirm_style = ConfirmStyle::TypedConfirmation;
+        app.confirm_action = Some(ConfirmAction::Quit);
+
+        // Type "WRONG"
+        for ch in "WRONG".chars() {
+            app.handle_key(create_key_event(KeyCode::Char(ch)));
+        }
+        app.handle_key(create_key_event(KeyCode::Enter));
+
+        // Should still be showing - not dismissed
+        assert!(app.show_confirm);
+        assert!(app.confirm_action.is_some());
+    }
+
+    #[test]
+    fn test_typed_confirm_escape_cancels() {
+
+        let mut app = App::default();
+        app.show_confirm = true;
+        app.confirm_style = ConfirmStyle::TypedConfirmation;
+        app.confirm_action = Some(ConfirmAction::Quit);
+
+        // Type partial input then escape
+        app.handle_key(create_key_event(KeyCode::Char('C')));
+        app.handle_key(create_key_event(KeyCode::Char('O')));
+        app.handle_key(create_key_event(KeyCode::Esc));
+
+        assert!(!app.show_confirm);
+        assert!(app.confirm_action.is_none());
+        assert!(app.confirm_typed_input.is_empty());
+    }
+
+    #[test]
+    fn test_typed_confirm_backspace_deletes() {
+
+        let mut app = App::default();
+        app.show_confirm = true;
+        app.confirm_style = ConfirmStyle::TypedConfirmation;
+        app.confirm_action = Some(ConfirmAction::Quit);
+
+        app.handle_key(create_key_event(KeyCode::Char('C')));
+        app.handle_key(create_key_event(KeyCode::Char('X'))); // wrong char
+        app.handle_key(create_key_event(KeyCode::Backspace));  // delete it
+        assert_eq!(app.confirm_typed_input, "C");
+
+        // Continue with correct input
+        for ch in "ONFIRM".chars() {
+            app.handle_key(create_key_event(KeyCode::Char(ch)));
+        }
+        app.handle_key(create_key_event(KeyCode::Enter));
+
+        assert!(!app.show_confirm);
+    }
+
+    #[test]
+    fn test_enhanced_warning_y_executes() {
+
+        let mut app = App::default();
+        app.show_confirm = true;
+        app.confirm_style = ConfirmStyle::EnhancedWarning;
+        app.confirm_action = Some(ConfirmAction::Quit);
+
+        app.handle_key(create_key_event(KeyCode::Char('y')));
+
+        assert!(!app.show_confirm);
+        assert!(app.confirm_action.is_none());
+    }
+
+    #[test]
+    fn test_enhanced_warning_n_cancels() {
+
+        let mut app = App::default();
+        app.show_confirm = true;
+        app.confirm_style = ConfirmStyle::EnhancedWarning;
+        app.confirm_action = Some(ConfirmAction::Quit);
+
+        app.handle_key(create_key_event(KeyCode::Char('n')));
 
         assert!(!app.show_confirm);
         assert!(app.confirm_action.is_none());
