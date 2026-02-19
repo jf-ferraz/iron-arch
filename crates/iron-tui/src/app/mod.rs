@@ -8,11 +8,13 @@ mod handlers;
 use crate::message::{MessageLevel, StatusMessage};
 use crate::widgets::ProgressTracker;
 use crate::wizard::{TextInput, WizardState};
+use crate::ui::operation_log::OperationFilter;
 use iron_core::{
     ArchNewsItem, Bundle, Module, NoopPackageManager, PackageManager, PackageUpdate, Profile,
     RiskLevel,
     services::StateManager,
     services::clean::{CleanupCategory, CleanupPreview, CleanupSummary},
+    services::sync::SyncInfo,
     services::update::{PostUpdateResult, PreflightResult, UnacknowledgedNews},
 };
 use std::path::PathBuf;
@@ -104,6 +106,16 @@ pub struct App {
     /// Whether cleanup is in preview mode (vs execution mode)
     pub cleanup_preview_mode: bool,
     // -------------------------------------------------------------------------
+    // Sync State
+    // -------------------------------------------------------------------------
+    /// Cached sync info from git
+    pub sync_info: Option<SyncInfo>,
+    // -------------------------------------------------------------------------
+    // Operation Log State
+    // -------------------------------------------------------------------------
+    /// Active operation filter
+    pub operation_filter: OperationFilter,
+    // -------------------------------------------------------------------------
     // Progress Dialog State
     // -------------------------------------------------------------------------
     /// Active progress tracker for long-running operations
@@ -139,6 +151,10 @@ pub enum View {
     SystemMaintenance,
     /// System cleanup with category selection
     CleanSystem,
+    /// Cleanup preview (detailed pre-execution view)
+    CleanupPreview,
+    /// Cleanup execution results
+    CleanupResults,
     /// Security module management
     SecurityModules,
     /// Configuration and dotfile management
@@ -219,6 +235,10 @@ impl App {
             cleanup_previews: Vec::new(),
             cleanup_summary: None,
             cleanup_preview_mode: true,
+            // Sync state
+            sync_info: None,
+            // Operation log state
+            operation_filter: OperationFilter::default(),
             // Progress dialog
             progress: None,
         }

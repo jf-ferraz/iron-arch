@@ -25,11 +25,11 @@ pub struct Cli {
     pub format: OutputFormat,
 
     /// Verbose output (show details)
-    #[arg(short, long, global = true)]
+    #[arg(short, long, global = true, conflicts_with = "quiet")]
     pub verbose: bool,
 
     /// Quiet output (minimal)
-    #[arg(short, long, global = true)]
+    #[arg(short, long, global = true, conflicts_with = "verbose")]
     pub quiet: bool,
 
     /// No color output

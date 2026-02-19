@@ -155,6 +155,19 @@ impl App {
                 }
                 _ => false,
             },
+            // CleanupPreview view handlers
+            View::CleanupPreview => match key.code {
+                // Execute cleanup from preview
+                KeyCode::Char('c') => {
+                    if !self.cleanup_categories.is_empty() {
+                        self.request_confirm(ConfirmAction::RunCleanup);
+                    }
+                    true
+                }
+                _ => false,
+            },
+            // CleanupResults — read-only, Esc handled globally
+            View::CleanupResults => false,
             // SystemMaintenance view handlers
             View::SystemMaintenance => match key.code {
                 // Quick shortcuts to actions
@@ -207,13 +220,11 @@ impl App {
                     true
                 }
                 KeyCode::Enter => {
-                    // TODO: View diff
-                    self.set_info("Diff viewer coming soon");
+                    self.set_info("Diff viewer: use 'diff' command on the files shown");
                     true
                 }
                 KeyCode::Char('r') => {
-                    // TODO: Mark resolved
-                    self.set_info("Mark resolved coming soon");
+                    self.refresh_config_conflicts();
                     true
                 }
                 _ => false,
@@ -229,13 +240,7 @@ impl App {
                     true
                 }
                 KeyCode::Char('f') => {
-                    // TODO: Filter dialog
-                    self.set_info("Filter coming soon");
-                    true
-                }
-                KeyCode::Char('/') => {
-                    // TODO: Search
-                    self.set_info("Search coming soon");
+                    self.cycle_operation_filter();
                     true
                 }
                 _ => false,
@@ -256,8 +261,8 @@ impl App {
                     true
                 }
                 KeyCode::Char('i') => {
-                    // TODO: Install module
-                    self.set_info("Module installation coming soon");
+                    // Install = same as enable for now
+                    self.toggle_selected_module();
                     true
                 }
                 _ => false,
@@ -297,18 +302,15 @@ impl App {
             // Sync view handlers
             View::Sync => match key.code {
                 KeyCode::Char('p') => {
-                    // TODO: Implement git push
-                    self.set_status("Git push not yet implemented");
+                    self.sync_push();
                     true
                 }
                 KeyCode::Char('f') => {
-                    // TODO: Implement git fetch/pull
-                    self.set_status("Git pull not yet implemented");
+                    self.sync_pull();
                     true
                 }
                 KeyCode::Char('s') => {
-                    // TODO: Implement git status refresh
-                    self.set_status("Refreshing git status...");
+                    self.refresh_sync_status();
                     true
                 }
                 _ => false,
@@ -347,9 +349,17 @@ impl App {
             KeyCode::Home => self.selected_index = 0,
             KeyCode::End => self.select_last(),
 
-            // Module/Bundle actions
-            KeyCode::Char('e') => self.toggle_selected_module(),
-            KeyCode::Char('a') => self.activate_selected_bundle(),
+            // Module/Bundle actions (scoped to relevant views)
+            KeyCode::Char('e') => {
+                if matches!(self.view, View::Modules | View::ModuleDetail | View::SecurityModules) {
+                    self.toggle_selected_module();
+                }
+            }
+            KeyCode::Char('a') => {
+                if matches!(self.view, View::Bundles | View::BundleDetail) {
+                    self.activate_selected_bundle();
+                }
+            }
 
             // Refresh
             KeyCode::Char('r') => self.refresh_current_view(),
@@ -462,7 +472,8 @@ impl App {
             View::Sync => View::Settings,
             View::Settings => View::Dashboard,
             // Sub-views cycle to their parent
-            View::CleanSystem | View::SecurityModules | View::ConfigManager => View::SystemMaintenance,
+            View::CleanSystem | View::CleanupPreview | View::CleanupResults
+            | View::SecurityModules | View::ConfigManager => View::SystemMaintenance,
             View::OperationLog => View::Settings,
             // SetupWizard exits to Dashboard (special case)
             View::SetupWizard => View::Dashboard,
@@ -482,7 +493,8 @@ impl App {
             View::Profiles | View::ProfileDetail => View::Bundles,
             View::Bundles | View::BundleDetail => View::Dashboard,
             // Sub-views cycle to their parent
-            View::CleanSystem | View::SecurityModules | View::ConfigManager => View::SystemMaintenance,
+            View::CleanSystem | View::CleanupPreview | View::CleanupResults
+            | View::SecurityModules | View::ConfigManager => View::SystemMaintenance,
             View::OperationLog => View::Settings,
             // SetupWizard exits to Dashboard (special case)
             View::SetupWizard => View::Dashboard,

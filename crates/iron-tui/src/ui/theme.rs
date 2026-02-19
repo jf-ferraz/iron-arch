@@ -1,59 +1,60 @@
 //! Iron TUI Theme
 //!
 //! Centralized color palette and styling utilities for consistent UI.
-//! Based on Catppuccin Mocha color scheme with purple accent.
+//! Uses terminal default ANSI colors so the TUI adapts to the user's
+//! terminal colorscheme (Catppuccin, Dracula, Gruvbox, Solarized, etc.).
 
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders};
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Color Palette (Catppuccin Mocha)
+// Color Palette (Terminal ANSI — respects user's colorscheme)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Deep background for panels
-pub const SURFACE: Color = Color::Rgb(30, 30, 46);
+/// Transparent — no forced background; terminal default shows through
+pub const SURFACE: Color = Color::Reset;
 
-/// Lighter background for hover/selection
-pub const SURFACE_HOVER: Color = Color::Rgb(45, 45, 65);
+/// Subtle selection highlight (ANSI 256 dark gray)
+pub const SURFACE_HOVER: Color = Color::Indexed(236);
 
 /// Border and separator color
-pub const OVERLAY: Color = Color::Rgb(49, 50, 68);
+pub const OVERLAY: Color = Color::DarkGray;
 
 /// Primary text
-pub const TEXT: Color = Color::Rgb(205, 214, 244);
+pub const TEXT: Color = Color::White;
 
 /// Secondary/dimmed text
-pub const SUBTEXT: Color = Color::Rgb(166, 173, 200);
+pub const SUBTEXT: Color = Color::Gray;
 
 /// Success/ok state
-pub const GREEN: Color = Color::Rgb(166, 227, 161);
+pub const GREEN: Color = Color::Green;
 
 /// Warning state
-pub const YELLOW: Color = Color::Rgb(249, 226, 175);
+pub const YELLOW: Color = Color::Yellow;
 
 /// Error/critical state
-pub const RED: Color = Color::Rgb(243, 139, 168);
+pub const RED: Color = Color::Red;
 
 /// Info/link color
-pub const BLUE: Color = Color::Rgb(137, 180, 250);
+pub const BLUE: Color = Color::Blue;
 
-/// Primary accent (purple/mauve)
-pub const MAUVE: Color = Color::Rgb(203, 166, 247);
+/// Primary accent (cyan — works on both light and dark terminals)
+pub const MAUVE: Color = Color::Cyan;
 
-/// Secondary accent (teal)
-pub const TEAL: Color = Color::Rgb(148, 226, 213);
+/// Secondary accent
+pub const TEAL: Color = Color::Cyan;
 
-/// Tertiary accent (peach/orange)
-pub const PEACH: Color = Color::Rgb(250, 179, 135);
+/// Tertiary accent (yellow-ish highlight for editable values)
+pub const PEACH: Color = Color::LightYellow;
 
-/// Lavender accent
-pub const LAVENDER: Color = Color::Rgb(180, 190, 254);
+/// Value display color
+pub const LAVENDER: Color = Color::LightCyan;
 
-/// Pink accent
-pub const PINK: Color = Color::Rgb(245, 194, 231);
+/// Pink accent (magenta in ANSI)
+pub const PINK: Color = Color::Magenta;
 
 /// Sky blue accent
-pub const SKY: Color = Color::Rgb(137, 220, 235);
+pub const SKY: Color = Color::LightBlue;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Icons
@@ -95,7 +96,6 @@ pub fn themed_block(title: &str, accent: Color) -> Block<'_> {
         .title_style(Style::default().fg(accent).bold())
         .borders(Borders::ALL)
         .border_style(Style::default().fg(OVERLAY))
-        .style(Style::default().bg(SURFACE))
 }
 
 /// Create a themed block with an icon prefix
@@ -105,7 +105,6 @@ pub fn themed_block_with_icon<'a>(icon: &'a str, title: &'a str, accent: Color) 
         .title_style(Style::default().fg(accent).bold())
         .borders(Borders::ALL)
         .border_style(Style::default().fg(OVERLAY))
-        .style(Style::default().bg(SURFACE))
 }
 
 /// Create a minimal block with just borders
@@ -113,7 +112,6 @@ pub fn minimal_block() -> Block<'static> {
     Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(OVERLAY))
-        .style(Style::default().bg(SURFACE))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -207,7 +205,7 @@ pub fn key_hint(key: &str, label: &str) -> Vec<Span<'static>> {
     vec![
         Span::styled(
             format!(" {} ", key),
-            Style::default().fg(SURFACE).bg(MAUVE).bold(),
+            Style::default().fg(Color::Black).bg(MAUVE).bold(),
         ),
         Span::styled(format!(" {}  ", label), Style::default().fg(SUBTEXT)),
     ]

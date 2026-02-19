@@ -8,12 +8,13 @@ mod config;
 mod dashboard;
 mod maintenance;
 mod modules;
-mod operation_log;
+pub mod operation_log;
 mod profiles;
 mod security;
 mod settings;
 pub mod theme;
 mod update;
+pub mod utils;
 mod wizard;
 
 use crate::app::{App, View};
@@ -66,6 +67,8 @@ pub fn render(frame: &mut Frame, app: &App) {
         View::Settings => render_settings(frame, layout[1], app),
         // Phase 3: System Cleanup
         View::CleanSystem => render_clean_system(frame, layout[1], app),
+        View::CleanupPreview => clean::render_cleanup_preview(frame, layout[1], app),
+        View::CleanupResults => clean::render_cleanup_results(frame, layout[1], app),
         // Phase 4-5 views
         View::SystemMaintenance => render_system_maintenance(frame, layout[1], app),
         View::SecurityModules => render_security_modules(frame, layout[1], app),

@@ -1,0 +1,16 @@
+# UFW Firewall Module
+# Simple iptables frontend for host-based firewall
+
+id = "ufw"
+name = "UFW Firewall"
+description = "Uncomplicated Firewall - simple iptables frontend"
+kind = "SystemUtil"
+
+packages = ["ufw"]
+aur_packages = []
+conflicts = ["firewalld"]
+depends = []
+dotfiles = []
+
+[hooks]
+post_install = "sudo ufw default deny incoming && sudo ufw default allow outgoing && sudo ufw enable"

@@ -11,9 +11,10 @@
 //! - Developer cache (aggressive)
 
 use crate::app::App;
+use crate::ui::theme;
 use iron_core::services::clean::{format_bytes, CleanupCategory};
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph, Row, Table};
+use ratatui::widgets::{Block, Borders, Cell, List, ListItem, Paragraph, Row, Table};
 
 /// Render the system cleanup view
 pub fn render_clean_system(frame: &mut Frame, area: Rect, app: &App) {
@@ -43,20 +44,18 @@ fn render_header(frame: &mut Frame, area: Rect, app: &App) {
     };
 
     let mode_color = if app.cleanup_preview_mode {
-        Color::Cyan
+        theme::BLUE
     } else {
-        Color::Green
+        theme::GREEN
     };
 
     let header_text = Line::from(vec![
-        Span::styled("System Cleanup", Style::default().fg(Color::White).bold()),
+        Span::styled("System Cleanup", Style::default().fg(theme::TEXT).bold()),
         Span::raw("  │  "),
         Span::styled(mode_text, Style::default().fg(mode_color)),
     ]);
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Blue));
+    let block = theme::themed_block("Cleanup", theme::PEACH);
 
     let paragraph = Paragraph::new(header_text)
         .block(block)
@@ -67,10 +66,7 @@ fn render_header(frame: &mut Frame, area: Rect, app: &App) {
 
 /// Render category selection list
 fn render_categories(frame: &mut Frame, area: Rect, app: &App) {
-    let block = Block::default()
-        .title(" Select Categories ")
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Blue));
+    let block = theme::themed_block("Select Categories", theme::PEACH);
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -105,24 +101,24 @@ fn render_categories(frame: &mut Frame, area: Rect, app: &App) {
 
             // Style based on selection state
             let style = if is_highlighted {
-                Style::default().bg(Color::DarkGray).fg(Color::White)
+                theme::selected()
             } else if cat.is_aggressive() {
-                Style::default().fg(Color::Yellow)
+                Style::default().fg(theme::YELLOW)
             } else {
-                Style::default().fg(Color::White)
+                theme::unselected()
             };
 
             let checkbox_style = if is_selected {
-                Style::default().fg(Color::Green)
+                Style::default().fg(theme::GREEN)
             } else {
-                Style::default().fg(Color::DarkGray)
+                Style::default().fg(theme::OVERLAY)
             };
 
             Row::new(vec![
                 Cell::from(checkbox).style(checkbox_style),
                 Cell::from(name),
-                Cell::from(space).style(Style::default().fg(Color::Cyan)),
-                Cell::from(details).style(Style::default().fg(Color::Gray)),
+                Cell::from(space).style(Style::default().fg(theme::LAVENDER)),
+                Cell::from(details).style(Style::default().fg(theme::SUBTEXT)),
             ])
             .style(style)
         })
@@ -138,7 +134,7 @@ fn render_categories(frame: &mut Frame, area: Rect, app: &App) {
     let table = Table::new(rows, widths)
         .header(
             Row::new(vec!["", "Category", "Space", "Details"])
-                .style(Style::default().fg(Color::Yellow).bold())
+                .style(Style::default().fg(theme::YELLOW).bold())
                 .bottom_margin(1),
         )
         .column_spacing(2);
@@ -148,10 +144,7 @@ fn render_categories(frame: &mut Frame, area: Rect, app: &App) {
 
 /// Render summary section
 fn render_summary(frame: &mut Frame, area: Rect, app: &App) {
-    let block = Block::default()
-        .title(" Summary ")
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Blue));
+    let block = theme::themed_block("Summary", theme::PEACH);
 
     let selected_count = app.cleanup_categories.len();
     let total_space = app.cleanup_total_space();
@@ -166,26 +159,26 @@ fn render_summary(frame: &mut Frame, area: Rect, app: &App) {
             Span::styled(
                 format!("{} categories", selected_count),
                 Style::default().fg(if selected_count > 0 {
-                    Color::Green
+                    theme::GREEN
                 } else {
-                    Color::Gray
+                    theme::SUBTEXT
                 }),
             ),
             Span::raw("  │  "),
             Span::raw("Total reclaimable: "),
             Span::styled(
                 format_bytes(total_space),
-                Style::default().fg(Color::Cyan).bold(),
+                Style::default().fg(theme::LAVENDER).bold(),
             ),
         ]),
     ];
 
     if has_aggressive {
         lines.push(Line::from(vec![
-            Span::styled("⚠ ", Style::default().fg(Color::Yellow)),
+            Span::styled("⚠ ", Style::default().fg(theme::YELLOW)),
             Span::styled(
                 "Aggressive categories selected - may affect application data",
-                Style::default().fg(Color::Yellow),
+                Style::default().fg(theme::YELLOW),
             ),
         ]));
     }
@@ -193,11 +186,11 @@ fn render_summary(frame: &mut Frame, area: Rect, app: &App) {
     // Show execution results if available
     if let Some(ref summary) = app.cleanup_summary {
         lines.push(Line::from(vec![
-            Span::styled("✓ ", Style::default().fg(Color::Green)),
+            Span::styled("✓ ", Style::default().fg(theme::GREEN)),
             Span::raw("Last run: "),
             Span::styled(
                 format!("{} cleaned", summary.space_formatted()),
-                Style::default().fg(Color::Green),
+                Style::default().fg(theme::GREEN),
             ),
             Span::raw(format!(
                 " ({} succeeded, {} failed)",
@@ -235,16 +228,14 @@ fn render_help(frame: &mut Frame, area: Rect, app: &App) {
             vec![
                 Span::styled(
                     format!("[{}]", key),
-                    Style::default().fg(Color::Yellow),
+                    Style::default().fg(theme::YELLOW),
                 ),
                 Span::raw(format!(" {}  ", action)),
             ]
         })
         .collect();
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray));
+    let block = theme::minimal_block();
 
     let paragraph = Paragraph::new(Line::from(help_spans))
         .block(block)
@@ -255,10 +246,7 @@ fn render_help(frame: &mut Frame, area: Rect, app: &App) {
 
 /// Render cleanup preview results (detailed view before execution)
 pub fn render_cleanup_preview(frame: &mut Frame, area: Rect, app: &App) {
-    let block = Block::default()
-        .title(" Cleanup Preview - Review Before Execution ")
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Yellow));
+    let block = theme::themed_block("Cleanup Preview - Review Before Execution", theme::YELLOW);
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -285,7 +273,7 @@ pub fn render_cleanup_preview(frame: &mut Frame, area: Rect, app: &App) {
                 preview.items_count,
                 preview.details
             );
-            ListItem::new(text).style(Style::default().fg(Color::White))
+            ListItem::new(text).style(Style::default().fg(theme::TEXT))
         })
         .collect();
 
@@ -304,12 +292,12 @@ pub fn render_cleanup_preview(frame: &mut Frame, area: Rect, app: &App) {
         let warning_block = Block::default()
             .title(" Warnings ")
             .borders(Borders::TOP)
-            .border_style(Style::default().fg(Color::Yellow));
+            .border_style(Style::default().fg(theme::YELLOW));
 
         let warning_text = warnings
             .iter()
             .map(|w| Line::from(vec![
-                Span::styled("⚠ ", Style::default().fg(Color::Yellow)),
+                Span::styled("⚠ ", Style::default().fg(theme::YELLOW)),
                 Span::raw(w.as_str()),
             ]))
             .collect::<Vec<_>>();
@@ -327,15 +315,12 @@ pub fn render_cleanup_results(frame: &mut Frame, area: Rect, app: &App) {
     };
 
     let title_color = if summary.failed > 0 {
-        Color::Yellow
+        theme::YELLOW
     } else {
-        Color::Green
+        theme::GREEN
     };
 
-    let block = Block::default()
-        .title(" Cleanup Results ")
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(title_color));
+    let block = theme::themed_block("Cleanup Results", title_color);
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -345,9 +330,9 @@ pub fn render_cleanup_results(frame: &mut Frame, area: Rect, app: &App) {
         .iter()
         .map(|result| {
             let (icon, color) = if result.success {
-                ("✓", Color::Green)
+                ("✓", theme::GREEN)
             } else {
-                ("✗", Color::Red)
+                ("✗", theme::RED)
             };
 
             let text = if result.success {
@@ -374,8 +359,6 @@ pub fn render_cleanup_results(frame: &mut Frame, area: Rect, app: &App) {
     let list = List::new(items);
     frame.render_widget(list, inner);
 }
-
-use ratatui::widgets::Cell;
 
 #[cfg(test)]
 mod tests {

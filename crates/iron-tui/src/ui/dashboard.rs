@@ -3,65 +3,24 @@
 //! A clean, professional dashboard for the Iron TUI application.
 
 use crate::app::{App, HealthStatus};
-use chrono::{DateTime, Utc};
+use crate::ui::utils::format_relative_time;
+use chrono::Utc;
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::{Block, Paragraph};
+use crate::ui::theme;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper Functions
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Format a DateTime as a relative time string (e.g., "3 days ago", "never")
-fn format_relative_time(time: Option<DateTime<Utc>>) -> String {
-    match time {
-        Some(dt) => {
-            let now = Utc::now();
-            let duration = now.signed_duration_since(dt);
-
-            if duration.num_minutes() < 1 {
-                "just now".to_string()
-            } else if duration.num_minutes() < 60 {
-                let mins = duration.num_minutes();
-                format!("{} min{} ago", mins, if mins == 1 { "" } else { "s" })
-            } else if duration.num_hours() < 24 {
-                let hours = duration.num_hours();
-                format!("{} hour{} ago", hours, if hours == 1 { "" } else { "s" })
-            } else if duration.num_days() < 7 {
-                let days = duration.num_days();
-                format!("{} day{} ago", days, if days == 1 { "" } else { "s" })
-            } else if duration.num_weeks() < 4 {
-                let weeks = duration.num_weeks();
-                format!("{} week{} ago", weeks, if weeks == 1 { "" } else { "s" })
-            } else {
-                let months = duration.num_days() / 30;
-                if months < 12 {
-                    format!("{} month{} ago", months, if months == 1 { "" } else { "s" })
-                } else {
-                    "over a year ago".to_string()
-                }
-            }
-        }
-        None => "never".to_string(),
-    }
-}
-
-/// Create a simple bordered block with title
+/// Create a simple bordered block with title (uses theme)
 fn simple_block(title: &str) -> Block<'_> {
-    Block::default()
-        .title(format!(" {} ", title))
-        .title_style(Style::default().fg(Color::Cyan).bold())
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray))
+    theme::themed_block(title, theme::MAUVE)
 }
 
-/// Create a mini progress bar string
+/// Create a mini progress bar string (uses theme)
 fn progress_bar(current: usize, total: usize, width: usize) -> String {
-    if total == 0 {
-        return "-".repeat(width);
-    }
-    let filled = (current * width) / total.max(1);
-    let empty = width.saturating_sub(filled);
-    format!("{}{}", "#".repeat(filled), "-".repeat(empty))
+    theme::mini_progress_bar(current, total, width)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -116,9 +75,9 @@ fn render_system_status(frame: &mut Frame, area: Rect, app: &App) {
 
     // Determine health status and styling
     let (icon, status_text, status_color, desc) = match app.system_health() {
-        HealthStatus::Ok => ("[OK]", "Healthy", Color::Green, "All systems operational"),
-        HealthStatus::Warning => ("[!!]", "Attention", Color::Yellow, "Updates or issues pending"),
-        HealthStatus::Error => ("[XX]", "Critical", Color::Red, "Action required"),
+        HealthStatus::Ok => ("[OK]", "Healthy", theme::GREEN, "All systems operational"),
+        HealthStatus::Warning => ("[!!]", "Attention", theme::YELLOW, "Updates or issues pending"),
+        HealthStatus::Error => ("[XX]", "Critical", theme::RED, "Action required"),
     };
 
     let packages = app.package_count();
@@ -128,25 +87,25 @@ fn render_system_status(frame: &mut Frame, area: Rect, app: &App) {
     let status_line = Line::from(vec![
         Span::styled(format!(" {} ", icon), Style::default().fg(status_color).bold()),
         Span::styled(status_text, Style::default().fg(status_color).bold()),
-        Span::styled(format!("  {}", desc), Style::default().fg(Color::Gray)),
+        Span::styled(format!("  {}", desc), Style::default().fg(theme::SUBTEXT)),
     ]);
 
     let packages_line = Line::from(vec![
-        Span::styled("   Packages   ", Style::default().fg(Color::Gray)),
-        Span::styled(format!("{}", packages), Style::default().fg(Color::White).bold()),
-        Span::styled(" installed", Style::default().fg(Color::Gray)),
+        Span::styled("   Packages   ", Style::default().fg(theme::SUBTEXT)),
+        Span::styled(format!("{}", packages), Style::default().fg(theme::TEXT).bold()),
+        Span::styled(" installed", Style::default().fg(theme::SUBTEXT)),
     ]);
 
     let updates_line = if updates > 0 {
         Line::from(vec![
-            Span::styled("   Updates    ", Style::default().fg(Color::Gray)),
-            Span::styled(format!("{}", updates), Style::default().fg(Color::Yellow).bold()),
-            Span::styled(" available", Style::default().fg(Color::Gray)),
+            Span::styled("   Updates    ", Style::default().fg(theme::SUBTEXT)),
+            Span::styled(format!("{}", updates), Style::default().fg(theme::YELLOW).bold()),
+            Span::styled(" available", Style::default().fg(theme::SUBTEXT)),
         ])
     } else {
         Line::from(vec![
-            Span::styled("   Updates    ", Style::default().fg(Color::Gray)),
-            Span::styled("[OK] up to date", Style::default().fg(Color::Green)),
+            Span::styled("   Updates    ", Style::default().fg(theme::SUBTEXT)),
+            Span::styled("[OK] up to date", Style::default().fg(theme::GREEN)),
         ])
     };
 
@@ -182,43 +141,43 @@ fn render_quick_stats(frame: &mut Frame, area: Rect, app: &App) {
 
     // Color code based on age
     let update_color = if last_update.is_none() {
-        Color::DarkGray
+        theme::OVERLAY
     } else {
         let days = last_update
             .map(|t| Utc::now().signed_duration_since(t).num_days())
             .unwrap_or(999);
         if days <= 1 {
-            Color::Green
+            theme::GREEN
         } else if days <= 7 {
-            Color::Yellow
+            theme::YELLOW
         } else {
-            Color::Red
+            theme::RED
         }
     };
 
     let clean_color = if last_clean.is_none() {
-        Color::DarkGray
+        theme::OVERLAY
     } else {
         let days = last_clean
             .map(|t| Utc::now().signed_duration_since(t).num_days())
             .unwrap_or(999);
         if days <= 7 {
-            Color::Green
+            theme::GREEN
         } else if days <= 30 {
-            Color::Yellow
+            theme::YELLOW
         } else {
-            Color::Red
+            theme::RED
         }
     };
 
     let content = vec![
         Line::from(""),
         Line::from(vec![
-            Span::styled("   Last Update   ", Style::default().fg(Color::Gray)),
+            Span::styled("   Last Update   ", Style::default().fg(theme::SUBTEXT)),
             Span::styled(update_str, Style::default().fg(update_color)),
         ]),
         Line::from(vec![
-            Span::styled("   Last Cleanup  ", Style::default().fg(Color::Gray)),
+            Span::styled("   Last Cleanup  ", Style::default().fg(theme::SUBTEXT)),
             Span::styled(clean_str, Style::default().fg(clean_color)),
         ]),
     ];
@@ -235,34 +194,34 @@ fn render_quick_actions(frame: &mut Frame, area: Rect) {
     // Row 1: Navigation
     let row1 = Line::from(vec![
         Span::raw("  "),
-        Span::styled("[b]", Style::default().fg(Color::Cyan).bold()),
-        Span::styled(" Bundles  ", Style::default().fg(Color::Gray)),
-        Span::styled("[p]", Style::default().fg(Color::Cyan).bold()),
-        Span::styled(" Profiles  ", Style::default().fg(Color::Gray)),
-        Span::styled("[m]", Style::default().fg(Color::Cyan).bold()),
-        Span::styled(" Modules", Style::default().fg(Color::Gray)),
+        Span::styled("[b]", Style::default().fg(theme::MAUVE).bold()),
+        Span::styled(" Bundles  ", Style::default().fg(theme::SUBTEXT)),
+        Span::styled("[p]", Style::default().fg(theme::MAUVE).bold()),
+        Span::styled(" Profiles  ", Style::default().fg(theme::SUBTEXT)),
+        Span::styled("[m]", Style::default().fg(theme::MAUVE).bold()),
+        Span::styled(" Modules", Style::default().fg(theme::SUBTEXT)),
     ]);
 
     // Row 2: Actions
     let row2 = Line::from(vec![
         Span::raw("  "),
-        Span::styled("[u]", Style::default().fg(Color::Cyan).bold()),
-        Span::styled(" Update   ", Style::default().fg(Color::Gray)),
-        Span::styled("[x]", Style::default().fg(Color::Cyan).bold()),
-        Span::styled(" Maintain  ", Style::default().fg(Color::Gray)),
-        Span::styled("[l]", Style::default().fg(Color::Cyan).bold()),
-        Span::styled(" Cleanup", Style::default().fg(Color::Gray)),
+        Span::styled("[u]", Style::default().fg(theme::MAUVE).bold()),
+        Span::styled(" Update   ", Style::default().fg(theme::SUBTEXT)),
+        Span::styled("[x]", Style::default().fg(theme::MAUVE).bold()),
+        Span::styled(" Maintain  ", Style::default().fg(theme::SUBTEXT)),
+        Span::styled("[l]", Style::default().fg(theme::MAUVE).bold()),
+        Span::styled(" Cleanup", Style::default().fg(theme::SUBTEXT)),
     ]);
 
     // Row 3: Tools
     let row3 = Line::from(vec![
         Span::raw("  "),
-        Span::styled("[y]", Style::default().fg(Color::Cyan).bold()),
-        Span::styled(" Sync     ", Style::default().fg(Color::Gray)),
-        Span::styled("[s]", Style::default().fg(Color::Cyan).bold()),
-        Span::styled(" Settings  ", Style::default().fg(Color::Gray)),
-        Span::styled("[?]", Style::default().fg(Color::Cyan).bold()),
-        Span::styled(" Help", Style::default().fg(Color::Gray)),
+        Span::styled("[y]", Style::default().fg(theme::MAUVE).bold()),
+        Span::styled(" Sync     ", Style::default().fg(theme::SUBTEXT)),
+        Span::styled("[s]", Style::default().fg(theme::MAUVE).bold()),
+        Span::styled(" Settings  ", Style::default().fg(theme::SUBTEXT)),
+        Span::styled("[?]", Style::default().fg(theme::MAUVE).bold()),
+        Span::styled(" Help", Style::default().fg(theme::SUBTEXT)),
     ]);
 
     let content = vec![Line::from(""), row1, row2, row3];
@@ -280,9 +239,9 @@ fn render_active_config(frame: &mut Frame, area: Rect, app: &App) {
         .active_bundle
         .as_ref()
         .map(|b| b.id.as_str())
-        .unwrap_or("-");
+        .unwrap_or("not set");
 
-    let profile = app.active_profile.as_deref().unwrap_or("-");
+    let profile = app.active_profile.as_deref().unwrap_or("not set");
     let modules = app.enabled_module_count();
     let total_modules = app.modules.len();
 
@@ -292,48 +251,48 @@ fn render_active_config(frame: &mut Frame, area: Rect, app: &App) {
     let content = vec![
         Line::from(""),
         Line::from(vec![
-            Span::styled("  Bundle    ", Style::default().fg(Color::Gray)),
+            Span::styled("  Bundle    ", Style::default().fg(theme::SUBTEXT)),
             Span::styled(
                 bundle,
                 Style::default()
-                    .fg(if bundle == "-" {
-                        Color::DarkGray
+                    .fg(if bundle == "not set" {
+                        theme::OVERLAY
                     } else {
-                        Color::White
+                        theme::TEXT
                     })
                     .bold(),
             ),
         ]),
         Line::from(vec![
-            Span::styled("  Profile   ", Style::default().fg(Color::Gray)),
+            Span::styled("  Profile   ", Style::default().fg(theme::SUBTEXT)),
             Span::styled(
                 profile,
                 Style::default()
-                    .fg(if profile == "-" {
-                        Color::DarkGray
+                    .fg(if profile == "not set" {
+                        theme::OVERLAY
                     } else {
-                        Color::White
+                        theme::TEXT
                     })
                     .bold(),
             ),
         ]),
         Line::from(""),
         Line::from(vec![
-            Span::styled("  Modules   ", Style::default().fg(Color::Gray)),
-            Span::styled(module_bar, Style::default().fg(Color::Cyan)),
+            Span::styled("  Modules   ", Style::default().fg(theme::SUBTEXT)),
+            Span::styled(module_bar, Style::default().fg(theme::MAUVE)),
             Span::styled(
                 format!(" {}/{}", modules, total_modules),
-                Style::default().fg(Color::White),
+                Style::default().fg(theme::TEXT),
             ),
         ]),
         Line::from(vec![
-            Span::styled("  Pending   ", Style::default().fg(Color::Gray)),
+            Span::styled("  Pending   ", Style::default().fg(theme::SUBTEXT)),
             Span::styled(
                 format!("{} updates", app.pending_update_count()),
                 Style::default().fg(if app.pending_update_count() > 0 {
-                    Color::Yellow
+                    theme::YELLOW
                 } else {
-                    Color::Green
+                    theme::GREEN
                 }),
             ),
         ]),
@@ -355,16 +314,16 @@ fn render_alerts(frame: &mut Frame, area: Rect, app: &App) {
 
     if updates > 0 {
         content.push(Line::from(vec![
-            Span::styled("  [!] ", Style::default().fg(Color::Yellow)),
+            Span::styled("  [!] ", Style::default().fg(theme::YELLOW)),
             Span::styled(
                 format!("{} package updates available", updates),
-                Style::default().fg(Color::Yellow),
+                Style::default().fg(theme::YELLOW),
             ),
         ]));
         content.push(Line::from(vec![
-            Span::styled("      Press ", Style::default().fg(Color::Gray)),
-            Span::styled("[u]", Style::default().fg(Color::Cyan).bold()),
-            Span::styled(" to review updates", Style::default().fg(Color::Gray)),
+            Span::styled("      Press ", Style::default().fg(theme::SUBTEXT)),
+            Span::styled("[u]", Style::default().fg(theme::MAUVE).bold()),
+            Span::styled(" to review updates", Style::default().fg(theme::SUBTEXT)),
         ]));
     }
 
@@ -375,23 +334,32 @@ fn render_alerts(frame: &mut Frame, area: Rect, app: &App) {
             content.push(Line::from(""));
         }
         content.push(Line::from(vec![
-            Span::styled("  [i] ", Style::default().fg(Color::Magenta)),
+            Span::styled("  [i] ", Style::default().fg(theme::PINK)),
             Span::styled(
                 format!("{} Arch news requiring attention", news_count),
-                Style::default().fg(Color::Magenta),
+                Style::default().fg(theme::PINK),
             ),
         ]));
     }
 
-    // If no alerts
+    // If no alerts, show all-clear or onboarding nudge
     if !has_alerts && news_count == 0 {
-        content.push(Line::from(vec![
-            Span::styled("  [OK] ", Style::default().fg(Color::Green)),
-            Span::styled(
-                "All clear - no pending notifications",
-                Style::default().fg(Color::Green),
-            ),
-        ]));
+        if app.active_bundle.is_none() && app.modules.is_empty() {
+            content.push(Line::from(vec![
+                Span::styled("  ", Style::default()),
+                Span::styled("Press ", Style::default().fg(theme::SUBTEXT)),
+                Span::styled("[w]", Style::default().fg(theme::MAUVE).bold()),
+                Span::styled(" to get started", Style::default().fg(theme::SUBTEXT)),
+            ]));
+        } else {
+            content.push(Line::from(vec![
+                Span::styled("  [OK] ", Style::default().fg(theme::GREEN)),
+                Span::styled(
+                    "All clear - no pending notifications",
+                    Style::default().fg(theme::GREEN),
+                ),
+            ]));
+        }
     }
 
     frame.render_widget(Paragraph::new(content), inner);

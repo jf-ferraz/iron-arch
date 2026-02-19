@@ -81,14 +81,25 @@ fn main() -> Result<()> {
         }
         None => {
             // No command = show welcome message
-            ctx.output.header("Welcome to Iron");
-            ctx.output
-                .info("Less is More - Turning your Arch into Iron");
-            ctx.output.raw("");
-            ctx.output.info("Run 'iron --help' for CLI commands");
-            ctx.output
-                .info("Run 'iron init' to initialize Iron on this host");
-            ctx.output.info("Run 'iron go' to launch the TUI dashboard");
+            if matches!(cli.format, cli::OutputFormat::Json) {
+                // Structured JSON for machine consumption
+                let welcome = serde_json::json!({
+                    "name": "iron",
+                    "description": "Less is More - Turning your Arch into Iron",
+                    "version": env!("CARGO_PKG_VERSION"),
+                    "hint": "Run 'iron --help' for CLI commands, 'iron go' for TUI"
+                });
+                println!("{}", serde_json::to_string_pretty(&welcome).unwrap_or_default());
+            } else {
+                ctx.output.header("Welcome to Iron");
+                ctx.output
+                    .info("Less is More - Turning your Arch into Iron");
+                ctx.output.raw("");
+                ctx.output.info("Run 'iron --help' for CLI commands");
+                ctx.output
+                    .info("Run 'iron init' to initialize Iron on this host");
+                ctx.output.info("Run 'iron go' to launch the TUI dashboard");
+            }
             Ok(())
         }
     }

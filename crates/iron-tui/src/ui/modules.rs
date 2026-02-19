@@ -1,11 +1,30 @@
 //! Module view rendering
 
 use crate::app::App;
+use crate::ui::theme;
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap};
+use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 
 /// Render the modules list view
 pub fn render_modules(frame: &mut Frame, area: Rect, app: &App) {
+    let block = theme::themed_block("Modules", theme::MAUVE);
+
+    if app.modules.is_empty() {
+        let empty = Paragraph::new(vec![
+            Line::from(""),
+            Line::from(Span::styled("No modules found", Style::default().fg(theme::SUBTEXT))),
+            Line::from(""),
+            Line::from(Span::styled(
+                "Modules are loaded from your active bundle and profiles.",
+                Style::default().fg(theme::OVERLAY),
+            )),
+        ])
+        .block(block)
+        .alignment(Alignment::Center);
+        frame.render_widget(empty, area);
+        return;
+    }
+
     let items: Vec<ListItem> = app
         .modules
         .iter()
@@ -17,26 +36,25 @@ pub fn render_modules(frame: &mut Frame, area: Rect, app: &App) {
             let content = format!("{} {} - {}", status, module.id, desc);
 
             let style = if i == app.selected_index {
-                Style::default().bg(Color::DarkGray).fg(Color::White)
+                theme::selected()
             } else if is_active {
-                Style::default().fg(Color::Green)
+                Style::default().fg(theme::GREEN)
             } else {
-                Style::default()
+                theme::unselected()
             };
 
             ListItem::new(content).style(style)
         })
         .collect();
 
-    let block = Block::default()
-        .title(" Modules ")
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
-
-    let list = List::new(items).block(block);
+    let list = List::new(items)
+        .block(block)
+        .highlight_symbol("▸ ");
 
     let mut state = ListState::default();
-    state.select(Some(app.selected_index));
+    if !app.modules.is_empty() {
+        state.select(Some(app.selected_index));
+    }
 
     frame.render_stateful_widget(list, area, &mut state);
 }
@@ -46,9 +64,7 @@ pub fn render_module_detail(frame: &mut Frame, area: Rect, app: &App) {
     let module = match app.selected_module() {
         Some(m) => m,
         None => {
-            let block = Block::default()
-                .title(" Module Detail ")
-                .borders(Borders::ALL);
+            let block = theme::themed_block("Module Detail", theme::MAUVE);
             let para = Paragraph::new("No module selected").block(block);
             frame.render_widget(para, area);
             return;
@@ -60,32 +76,65 @@ pub fn render_module_detail(frame: &mut Frame, area: Rect, app: &App) {
     let desc = module.description.as_deref().unwrap_or("No description");
 
     let text = vec![
-        Line::from(format!("ID: {}", module.id)),
-        Line::from(format!("Description: {}", desc)),
-        Line::from(format!("Kind: {:?}", module.kind)),
-        Line::from(format!("Status: {}", status)),
         Line::from(""),
-        Line::from("Packages:"),
+        Line::from(vec![
+            Span::styled("ID          ", Style::default().fg(theme::SUBTEXT)),
+            Span::styled(module.id.as_str(), Style::default().fg(theme::TEXT).bold()),
+        ]),
+        Line::from(vec![
+            Span::styled("Description ", Style::default().fg(theme::SUBTEXT)),
+            Span::styled(desc, Style::default().fg(theme::LAVENDER)),
+        ]),
+        Line::from(vec![
+            Span::styled("Kind        ", Style::default().fg(theme::SUBTEXT)),
+            Span::styled(format!("{:?}", module.kind), Style::default().fg(theme::LAVENDER)),
+        ]),
+        Line::from(vec![
+            Span::styled("Status      ", Style::default().fg(theme::SUBTEXT)),
+            Span::styled(
+                status,
+                Style::default().fg(if is_active { theme::GREEN } else { theme::OVERLAY }),
+            ),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled("Packages:", Style::default().fg(theme::YELLOW).bold())),
     ];
 
     let mut lines = text;
-    for pkg in &module.packages {
-        lines.push(Line::from(format!("  - {}", pkg)));
+    if module.packages.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  No packages",
+            Style::default().fg(theme::OVERLAY).italic(),
+        )));
+    } else {
+        for pkg in &module.packages {
+            lines.push(Line::from(format!("  - {}", pkg)));
+        }
     }
 
     lines.push(Line::from(""));
-    lines.push(Line::from("Dotfiles:"));
-    for mapping in &module.dotfiles {
-        lines.push(Line::from(format!(
-            "  {} -> {}",
-            mapping.source, mapping.target
+    lines.push(Line::from(Span::styled("Dotfiles:", Style::default().fg(theme::YELLOW).bold())));
+    if module.dotfiles.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  No dotfile mappings",
+            Style::default().fg(theme::OVERLAY).italic(),
         )));
+    } else {
+        for mapping in &module.dotfiles {
+            lines.push(Line::from(format!(
+                "  {} -> {}",
+                mapping.source, mapping.target
+            )));
+        }
     }
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "[Esc] Back  [e] Toggle",
+        Style::default().fg(theme::SUBTEXT),
+    )));
 
-    let block = Block::default()
-        .title(format!(" Module: {} ", module.id))
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
+    let title = format!("Module: {}", module.id);
+    let block = theme::themed_block(&title, theme::MAUVE);
 
     let para = Paragraph::new(lines).block(block).wrap(Wrap { trim: true });
 

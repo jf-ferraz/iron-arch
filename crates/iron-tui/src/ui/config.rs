@@ -4,11 +4,13 @@
 //! detected after system updates.
 
 use crate::app::App;
+use crate::ui::theme;
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Paragraph, Row, Table};
+use ratatui::widgets::{Cell, Paragraph, Row, Table};
 
 /// Config conflict type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum ConflictType {
     /// New config file from package (.pacnew)
     Pacnew,
@@ -16,6 +18,7 @@ pub enum ConflictType {
     Pacsave,
 }
 
+#[allow(dead_code)]
 impl ConflictType {
     /// Get the display name
     pub fn name(&self) -> &'static str {
@@ -28,8 +31,8 @@ impl ConflictType {
     /// Get the icon
     pub fn icon(&self) -> &'static str {
         match self {
-            Self::Pacnew => "📄",
-            Self::Pacsave => "💾",
+            Self::Pacnew => "N",
+            Self::Pacsave => "S",
         }
     }
 
@@ -44,19 +47,17 @@ impl ConflictType {
 
 /// Render the configuration manager view
 pub fn render_config_manager(frame: &mut Frame, area: Rect, app: &App) {
-    // Main layout: Header, Conflicts List, Help
+    // Main layout: Header + Conflicts List (footer handles keybindings)
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3),  // Header
             Constraint::Min(10),    // Conflicts list
-            Constraint::Length(3),  // Help bar
         ])
         .split(area);
 
     render_header(frame, layout[0], app);
     render_conflicts_list(frame, layout[1], app);
-    render_help(frame, layout[2]);
 }
 
 /// Render header section
@@ -68,23 +69,21 @@ fn render_header(frame: &mut Frame, area: Rect, app: &App) {
         .unwrap_or(0);
 
     let status = if conflict_count == 0 {
-        Span::styled("No conflicts", Style::default().fg(Color::Green))
+        Span::styled("No conflicts", Style::default().fg(theme::GREEN))
     } else {
         Span::styled(
             format!("{} conflict{}", conflict_count, if conflict_count == 1 { "" } else { "s" }),
-            Style::default().fg(Color::Yellow),
+            Style::default().fg(theme::YELLOW),
         )
     };
 
     let header_text = Line::from(vec![
-        Span::styled("Configuration Manager", Style::default().fg(Color::White).bold()),
+        Span::styled("Configuration Manager", Style::default().fg(theme::TEXT).bold()),
         Span::raw("  │  "),
         status,
     ]);
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Blue));
+    let block = theme::themed_block("Config", theme::BLUE);
 
     let paragraph = Paragraph::new(header_text)
         .block(block)
@@ -95,10 +94,7 @@ fn render_header(frame: &mut Frame, area: Rect, app: &App) {
 
 /// Render the conflicts list
 fn render_conflicts_list(frame: &mut Frame, area: Rect, app: &App) {
-    let block = Block::default()
-        .title(" Configuration Conflicts ")
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Blue));
+    let block = theme::themed_block("Configuration Conflicts", theme::BLUE);
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -116,12 +112,12 @@ fn render_conflicts_list(frame: &mut Frame, area: Rect, app: &App) {
             Line::from(""),
             Line::from(Span::styled(
                 "✓ No configuration conflicts detected",
-                Style::default().fg(Color::Green),
+                Style::default().fg(theme::GREEN),
             )),
             Line::from(""),
             Line::from(Span::styled(
-                "Run a system update to check for new conflicts.",
-                Style::default().fg(Color::Gray),
+                "Configuration conflicts appear after package updates.",
+                Style::default().fg(theme::SUBTEXT),
             )),
         ])
         .alignment(Alignment::Center);
@@ -140,14 +136,14 @@ fn render_conflicts_list(frame: &mut Frame, area: Rect, app: &App) {
             // Determine conflict type from conflict_type field
             use iron_core::services::update::ConfigConflictType;
             let (icon, type_str, color) = match conflict.conflict_type {
-                ConfigConflictType::Pacnew => ("📄", ".pacnew", Color::Yellow),
-                ConfigConflictType::Pacsave => ("💾", ".pacsave", Color::Cyan),
+                ConfigConflictType::Pacnew => ("N", ".pacnew", theme::YELLOW),
+                ConfigConflictType::Pacsave => ("S", ".pacsave", theme::TEAL),
             };
 
             let style = if is_selected {
-                Style::default().bg(Color::DarkGray).fg(Color::White)
+                theme::selected()
             } else {
-                Style::default().fg(Color::White)
+                theme::unselected()
             };
 
             Row::new(vec![
@@ -168,48 +164,13 @@ fn render_conflicts_list(frame: &mut Frame, area: Rect, app: &App) {
     let table = Table::new(rows, widths)
         .header(
             Row::new(vec!["", "Type", "File Path"])
-                .style(Style::default().fg(Color::Yellow).bold())
+                .style(Style::default().fg(theme::YELLOW).bold())
                 .bottom_margin(1),
         )
         .column_spacing(2);
 
     frame.render_widget(table, inner);
 }
-
-/// Render help bar
-fn render_help(frame: &mut Frame, area: Rect) {
-    let help_items = vec![
-        ("↑↓", "Navigate"),
-        ("Enter", "View Diff"),
-        ("r", "Mark Resolved"),
-        ("Esc", "Back"),
-    ];
-
-    let help_spans: Vec<Span> = help_items
-        .iter()
-        .flat_map(|(key, action)| {
-            vec![
-                Span::styled(
-                    format!("[{}]", key),
-                    Style::default().fg(Color::Yellow),
-                ),
-                Span::raw(format!(" {}  ", action)),
-            ]
-        })
-        .collect();
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray));
-
-    let paragraph = Paragraph::new(Line::from(help_spans))
-        .block(block)
-        .alignment(Alignment::Center);
-
-    frame.render_widget(paragraph, area);
-}
-
-use ratatui::widgets::Cell;
 
 #[cfg(test)]
 mod tests {
@@ -242,7 +203,7 @@ mod tests {
 
     #[test]
     fn test_conflict_type_icons() {
-        assert_eq!(ConflictType::Pacnew.icon(), "📄");
-        assert_eq!(ConflictType::Pacsave.icon(), "💾");
+        assert_eq!(ConflictType::Pacnew.icon(), "N");
+        assert_eq!(ConflictType::Pacsave.icon(), "S");
     }
 }

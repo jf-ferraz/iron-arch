@@ -8,6 +8,7 @@ pub use progress::{InlineProgress, ProgressTracker, ProgressWidget};
 
 use crate::app::{App, ConfirmAction, View};
 use crate::message::MessageLevel;
+use crate::ui::theme;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
@@ -35,6 +36,8 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App) {
         View::Settings => ("Settings", "[S]"),
         View::SystemMaintenance => ("Maintenance", "[X]"),
         View::CleanSystem => ("System Cleanup", "[C]"),
+        View::CleanupPreview => ("Cleanup Preview", "[C]"),
+        View::CleanupResults => ("Cleanup Results", "[C]"),
         View::SecurityModules => ("Security", "[!]"),
         View::ConfigManager => ("Config Manager", "[#]"),
         View::OperationLog => ("Operation Log", "[L]"),
@@ -45,7 +48,7 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App) {
         " IRON ",
         Style::default()
             .fg(Color::Black)
-            .bg(Color::Cyan)
+            .bg(theme::MAUVE)
             .bold(),
     );
 
@@ -63,21 +66,21 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App) {
     let header_content = Line::from(vec![
         title,
         Span::raw(" "),
-        Span::styled(view_icon, Style::default().fg(Color::Cyan).bold()),
+        Span::styled(view_icon, Style::default().fg(theme::MAUVE).bold()),
         Span::raw(" "),
-        Span::styled(view_name, Style::default().fg(Color::White).bold()),
+        Span::styled(view_name, Style::default().fg(theme::TEXT).bold()),
         Span::raw(&spacing),
-        Span::styled("Host: ", Style::default().fg(Color::DarkGray)),
-        Span::styled(host_name, Style::default().fg(Color::White)),
-        Span::styled("  |  ", Style::default().fg(Color::DarkGray)),
-        Span::styled("Bundle: ", Style::default().fg(Color::DarkGray)),
-        Span::styled(bundle_name, Style::default().fg(Color::White)),
+        Span::styled("Host: ", Style::default().fg(theme::OVERLAY)),
+        Span::styled(host_name, Style::default().fg(theme::TEXT)),
+        Span::styled("  |  ", Style::default().fg(theme::OVERLAY)),
+        Span::styled("Bundle: ", Style::default().fg(theme::OVERLAY)),
+        Span::styled(bundle_name, Style::default().fg(theme::TEXT)),
         Span::raw(" "),
     ]);
 
     let block = Block::default()
         .borders(Borders::BOTTOM)
-        .border_style(Style::default().fg(Color::DarkGray));
+        .border_style(Style::default().fg(theme::OVERLAY));
 
     let para = Paragraph::new(header_content).block(block);
 
@@ -89,9 +92,9 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
     // Show error message if present (error takes priority)
     if let Some(ref msg) = app.error_message {
         let (symbol, color) = match msg.level() {
-            MessageLevel::Error => ("ERROR", Color::Red),
-            MessageLevel::Warning => ("WARN", Color::Yellow),
-            _ => ("ERROR", Color::Red),
+            MessageLevel::Error => ("ERROR", theme::RED),
+            MessageLevel::Warning => ("WARN", theme::YELLOW),
+            _ => ("ERROR", theme::RED),
         };
 
         let error_line = Line::from(vec![
@@ -112,10 +115,10 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
     // Show status message if present
     if let Some(ref msg) = app.status_message {
         let (symbol, color) = match msg.level() {
-            MessageLevel::Success => ("OK", Color::Green),
-            MessageLevel::Info => ("INFO", Color::Cyan),
-            MessageLevel::Warning => ("WARN", Color::Yellow),
-            MessageLevel::Error => ("ERROR", Color::Red),
+            MessageLevel::Success => ("OK", theme::GREEN),
+            MessageLevel::Info => ("INFO", theme::MAUVE),
+            MessageLevel::Warning => ("WARN", theme::YELLOW),
+            MessageLevel::Error => ("ERROR", theme::RED),
         };
 
         let status_line = Line::from(vec![
@@ -126,7 +129,7 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
 
         let block = Block::default()
             .borders(Borders::TOP)
-            .border_style(Style::default().fg(Color::DarkGray));
+            .border_style(Style::default().fg(theme::OVERLAY));
 
         let para = Paragraph::new(status_line).block(block);
         frame.render_widget(para, area);
@@ -139,6 +142,7 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
         View::Bundles | View::Profiles | View::Modules => vec![
             ("[j/k]", "Select"),
             ("[Enter]", "Details"),
+            ("[e]", "Toggle"),
             ("[Esc]", "Back"),
             ("[?]", "Help"),
         ],
@@ -166,12 +170,22 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
             ("[u]", "Update"),
             ("[c]", "Cleanup"),
             ("[d]", "Doctor"),
+            ("[h/l]", "Select"),
             ("[Esc]", "Back"),
         ],
         View::CleanSystem => vec![
             ("[Space]", "Toggle"),
+            ("[s]", "Safe"),
             ("[a]", "All"),
-            ("[p]", "Preview"),
+            ("[Enter]", "Preview"),
+            ("[c]", "Clean"),
+            ("[Esc]", "Back"),
+        ],
+        View::CleanupPreview => vec![
+            ("[c]", "Execute"),
+            ("[Esc]", "Back"),
+        ],
+        View::CleanupResults => vec![
             ("[Esc]", "Back"),
         ],
         View::SecurityModules => vec![
@@ -182,14 +196,13 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
         ],
         View::ConfigManager => vec![
             ("[j/k]", "Select"),
-            ("[Enter]", "Diff"),
-            ("[r]", "Resolve"),
+            ("[Enter]", "View Diff"),
+            ("[r]", "Refresh"),
             ("[Esc]", "Back"),
         ],
         View::OperationLog => vec![
             ("[j/k]", "Scroll"),
             ("[f]", "Filter"),
-            ("[/]", "Search"),
             ("[Esc]", "Back"),
         ],
         View::Settings => vec![
@@ -204,11 +217,11 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
     for (key, action) in keybindings {
         spans.push(Span::styled(
             format!(" {} ", key),
-            Style::default().fg(Color::Black).bg(Color::Cyan).bold(),
+            Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
         ));
         spans.push(Span::styled(
             format!(" {}  ", action),
-            Style::default().fg(Color::Gray),
+            Style::default().fg(theme::SUBTEXT),
         ));
     }
 
@@ -216,7 +229,7 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
 
     let block = Block::default()
         .borders(Borders::TOP)
-        .border_style(Style::default().fg(Color::DarkGray));
+        .border_style(Style::default().fg(theme::OVERLAY));
 
     let para = Paragraph::new(footer_line).block(block);
 
@@ -269,6 +282,13 @@ fn get_view_keybindings(view: View) -> Vec<(&'static str, &'static str)> {
             ("Enter", "Preview"),
             ("c", "Execute cleanup"),
         ],
+        View::CleanupPreview => vec![
+            ("c", "Confirm and execute"),
+            ("Esc", "Back to categories"),
+        ],
+        View::CleanupResults => vec![
+            ("Esc", "Back to maintenance"),
+        ],
         View::SystemMaintenance => vec![
             ("h/l", "Prev/next card"),
             ("Enter", "Launch action"),
@@ -278,13 +298,12 @@ fn get_view_keybindings(view: View) -> Vec<(&'static str, &'static str)> {
         ],
         View::ConfigManager => vec![
             ("j/k", "Move up/down"),
-            ("Enter", "View diff"),
-            ("r", "Mark resolved"),
+            ("Enter", "View diff info"),
+            ("r", "Refresh conflicts"),
         ],
         View::OperationLog => vec![
             ("j/k", "Move up/down"),
-            ("f", "Filter"),
-            ("/", "Search"),
+            ("f", "Cycle filter"),
         ],
         View::SecurityModules => vec![
             ("j/k", "Move up/down"),
@@ -334,6 +353,8 @@ pub fn render_help_overlay(frame: &mut Frame, area: Rect, app: &App) {
         View::ModuleDetail => "Module Detail",
         View::UpdatePreview => "Update Preview",
         View::CleanSystem => "System Cleanup",
+        View::CleanupPreview => "Cleanup Preview",
+        View::CleanupResults => "Cleanup Results",
         View::SystemMaintenance => "Maintenance Hub",
         View::ConfigManager => "Config Manager",
         View::OperationLog => "Operation Log",
@@ -355,7 +376,7 @@ pub fn render_help_overlay(frame: &mut Frame, area: Rect, app: &App) {
     if !view_bindings.is_empty() {
         help_text.push(Line::from(Span::styled(
             "View Actions:",
-            Style::default().fg(Color::Yellow),
+            Style::default().fg(theme::YELLOW),
         )));
         for (key, desc) in view_bindings {
             help_text.push(Line::from(format!("  {:12} {}", key, desc)));
@@ -366,7 +387,7 @@ pub fn render_help_overlay(frame: &mut Frame, area: Rect, app: &App) {
     // Global keybindings
     help_text.push(Line::from(Span::styled(
         "Navigation:",
-        Style::default().fg(Color::Yellow),
+        Style::default().fg(theme::YELLOW),
     )));
     help_text.push(Line::from("  Tab         Next view"));
     help_text.push(Line::from("  Shift+Tab   Previous view"));
@@ -375,7 +396,7 @@ pub fn render_help_overlay(frame: &mut Frame, area: Rect, app: &App) {
 
     help_text.push(Line::from(Span::styled(
         "Global:",
-        Style::default().fg(Color::Yellow),
+        Style::default().fg(theme::YELLOW),
     )));
     help_text.push(Line::from("  ?           Toggle help"));
     help_text.push(Line::from("  q           Quit"));
@@ -384,13 +405,13 @@ pub fn render_help_overlay(frame: &mut Frame, area: Rect, app: &App) {
 
     help_text.push(Line::from(Span::styled(
         "Press any key to close",
-        Style::default().fg(Color::DarkGray),
+        Style::default().fg(theme::OVERLAY),
     )));
 
     let block = Block::default()
         .title(" Help ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(Style::default().fg(theme::MAUVE));
 
     let para = Paragraph::new(help_text)
         .block(block)
@@ -426,9 +447,9 @@ pub fn render_confirm_dialog(frame: &mut Frame, area: Rect, app: &App) {
         Line::from(message),
         Line::from(""),
         Line::from(vec![
-            Span::styled("[Y]", Style::default().fg(Color::Green).bold()),
+            Span::styled("[Y]", Style::default().fg(theme::GREEN).bold()),
             Span::raw(" Yes  "),
-            Span::styled("[N]", Style::default().fg(Color::Red).bold()),
+            Span::styled("[N]", Style::default().fg(theme::RED).bold()),
             Span::raw(" No"),
         ]),
     ];
@@ -436,7 +457,7 @@ pub fn render_confirm_dialog(frame: &mut Frame, area: Rect, app: &App) {
     let block = Block::default()
         .title(" Confirm ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Yellow));
+        .border_style(Style::default().fg(theme::YELLOW));
 
     let para = Paragraph::new(confirm_text)
         .block(block)
@@ -479,10 +500,10 @@ impl StatusBadge {
 
     pub fn render(&self) -> Span<'_> {
         let (symbol, style) = match self.status {
-            BadgeStatus::Ok => ("[OK]", Style::default().fg(Color::Green)),
-            BadgeStatus::Warning => ("[!]", Style::default().fg(Color::Yellow)),
-            BadgeStatus::Error => ("[X]", Style::default().fg(Color::Red)),
-            BadgeStatus::Inactive => ("[-]", Style::default().fg(Color::DarkGray)),
+            BadgeStatus::Ok => ("[OK]", Style::default().fg(theme::GREEN)),
+            BadgeStatus::Warning => ("[!]", Style::default().fg(theme::YELLOW)),
+            BadgeStatus::Error => ("[X]", Style::default().fg(theme::RED)),
+            BadgeStatus::Inactive => ("[-]", Style::default().fg(theme::OVERLAY)),
         };
 
         Span::styled(format!("{} {}", symbol, self.label), style)
@@ -664,6 +685,8 @@ mod tests {
                 View::Settings => "Settings",
                 View::SystemMaintenance => "System Maintenance",
                 View::CleanSystem => "System Cleanup",
+                View::CleanupPreview => "Cleanup Preview",
+                View::CleanupResults => "Cleanup Results",
                 View::SecurityModules => "Security Modules",
                 View::ConfigManager => "Config Manager",
                 View::OperationLog => "Operation Log",

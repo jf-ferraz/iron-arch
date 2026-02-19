@@ -1,11 +1,30 @@
 //! Bundle view rendering
 
 use crate::app::App;
+use crate::ui::theme;
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap};
+use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 
 /// Render the bundles list view
 pub fn render_bundles(frame: &mut Frame, area: Rect, app: &App) {
+    let block = theme::themed_block("Bundles", theme::MAUVE);
+
+    if app.bundles.is_empty() {
+        let empty = Paragraph::new(vec![
+            Line::from(""),
+            Line::from(Span::styled("No bundles found", Style::default().fg(theme::SUBTEXT))),
+            Line::from(""),
+            Line::from(Span::styled(
+                "Add bundle directories to your config path.",
+                Style::default().fg(theme::OVERLAY),
+            )),
+        ])
+        .block(block)
+        .alignment(Alignment::Center);
+        frame.render_widget(empty, area);
+        return;
+    }
+
     let items: Vec<ListItem> = app
         .bundles
         .iter()
@@ -22,26 +41,25 @@ pub fn render_bundles(frame: &mut Frame, area: Rect, app: &App) {
             let content = format!("{} {} - {}", status, bundle.id, desc);
 
             let style = if i == app.selected_index {
-                Style::default().bg(Color::DarkGray).fg(Color::White)
+                theme::selected()
             } else if is_active {
-                Style::default().fg(Color::Green)
+                Style::default().fg(theme::GREEN)
             } else {
-                Style::default()
+                theme::unselected()
             };
 
             ListItem::new(content).style(style)
         })
         .collect();
 
-    let block = Block::default()
-        .title(" Bundles ")
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
-
-    let list = List::new(items).block(block);
+    let list = List::new(items)
+        .block(block)
+        .highlight_symbol("▸ ");
 
     let mut state = ListState::default();
-    state.select(Some(app.selected_index));
+    if !app.bundles.is_empty() {
+        state.select(Some(app.selected_index));
+    }
 
     frame.render_stateful_widget(list, area, &mut state);
 }
@@ -51,9 +69,7 @@ pub fn render_bundle_detail(frame: &mut Frame, area: Rect, app: &App) {
     let bundle = match app.selected_bundle() {
         Some(b) => b,
         None => {
-            let block = Block::default()
-                .title(" Bundle Detail ")
-                .borders(Borders::ALL);
+            let block = theme::themed_block("Bundle Detail", theme::MAUVE);
             let para = Paragraph::new("No bundle selected").block(block);
             frame.render_widget(para, area);
             return;
@@ -70,23 +86,49 @@ pub fn render_bundle_detail(frame: &mut Frame, area: Rect, app: &App) {
     let desc = bundle.description.as_deref().unwrap_or("No description");
 
     let text = vec![
-        Line::from(format!("ID: {}", bundle.id)),
-        Line::from(format!("Description: {}", desc)),
-        Line::from(format!("Type: {:?}", bundle.bundle_type)),
-        Line::from(format!("Status: {}", status)),
         Line::from(""),
-        Line::from("Profiles:"),
+        Line::from(vec![
+            Span::styled("ID          ", Style::default().fg(theme::SUBTEXT)),
+            Span::styled(bundle.id.as_str(), Style::default().fg(theme::TEXT).bold()),
+        ]),
+        Line::from(vec![
+            Span::styled("Description ", Style::default().fg(theme::SUBTEXT)),
+            Span::styled(desc, Style::default().fg(theme::LAVENDER)),
+        ]),
+        Line::from(vec![
+            Span::styled("Type        ", Style::default().fg(theme::SUBTEXT)),
+            Span::styled(format!("{:?}", bundle.bundle_type), Style::default().fg(theme::LAVENDER)),
+        ]),
+        Line::from(vec![
+            Span::styled("Status      ", Style::default().fg(theme::SUBTEXT)),
+            Span::styled(
+                status,
+                Style::default().fg(if is_active { theme::GREEN } else { theme::OVERLAY }),
+            ),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled("Profiles:", Style::default().fg(theme::YELLOW).bold())),
     ];
 
     let mut lines = text;
-    for profile_id in &bundle.profiles {
-        lines.push(Line::from(format!("  - {}", profile_id)));
+    if bundle.profiles.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  No profiles configured",
+            Style::default().fg(theme::OVERLAY).italic(),
+        )));
+    } else {
+        for profile_id in &bundle.profiles {
+            lines.push(Line::from(format!("  - {}", profile_id)));
+        }
     }
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "[Esc] Back  [Enter] Activate",
+        Style::default().fg(theme::SUBTEXT),
+    )));
 
-    let block = Block::default()
-        .title(format!(" Bundle: {} ", bundle.id))
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
+    let title = format!("Bundle: {}", bundle.id);
+    let block = theme::themed_block(&title, theme::MAUVE);
 
     let para = Paragraph::new(lines).block(block).wrap(Wrap { trim: true });
 

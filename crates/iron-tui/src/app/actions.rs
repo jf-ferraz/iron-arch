@@ -116,7 +116,7 @@ impl App {
 
     /// Toggle module enable/disable
     pub fn toggle_selected_module(&mut self) {
-        if self.view != View::Modules && self.view != View::ModuleDetail {
+        if !matches!(self.view, View::Modules | View::ModuleDetail | View::SecurityModules) {
             return;
         }
         if let Some(module) = self.selected_module() {
@@ -491,6 +491,8 @@ impl App {
             iron_core::services::clean::format_bytes(total_space),
             self.cleanup_categories.len()
         ));
+
+        self.navigate(View::CleanupPreview);
     }
 
     /// Execute cleanup for selected categories
@@ -526,6 +528,121 @@ impl App {
 
         self.cleanup_summary = Some(summary);
         self.cleanup_preview_mode = false;
+
+        self.navigate(View::CleanupResults);
+    }
+
+    // ==========================================================================
+    // Sync Actions
+    // ==========================================================================
+
+    /// Refresh git sync status
+    pub fn refresh_sync_status(&mut self) {
+        use iron_core::services::sync::{DefaultSyncService, SyncService};
+
+        if let Some(ref sm) = self.state_manager {
+            let sync_service = DefaultSyncService::new(&self.config_dir, sm.clone());
+            match sync_service.status() {
+                Ok(info) => {
+                    self.sync_info = Some(info);
+                    self.set_status("Sync status refreshed");
+                }
+                Err(e) => {
+                    self.set_error(format!("Failed to get sync status: {}", e));
+                }
+            }
+        } else {
+            self.set_error("No state manager available");
+        }
+    }
+
+    /// Push local changes to remote
+    pub fn sync_push(&mut self) {
+        use iron_core::services::sync::{DefaultSyncService, SyncService};
+
+        if let Some(ref sm) = self.state_manager {
+            let sync_service = DefaultSyncService::new(&self.config_dir, sm.clone());
+            match sync_service.push() {
+                Ok(()) => {
+                    self.set_status("Changes pushed successfully");
+                    self.refresh_sync_status();
+                }
+                Err(e) => {
+                    self.set_error(format!("Push failed: {}", e));
+                }
+            }
+        } else {
+            self.set_error("No state manager available");
+        }
+    }
+
+    /// Pull remote changes
+    pub fn sync_pull(&mut self) {
+        use iron_core::services::sync::{DefaultSyncService, SyncService};
+
+        if let Some(ref sm) = self.state_manager {
+            let sync_service = DefaultSyncService::new(&self.config_dir, sm.clone());
+            match sync_service.pull() {
+                Ok(()) => {
+                    self.set_status("Changes pulled successfully");
+                    self.refresh_sync_status();
+                }
+                Err(e) => {
+                    self.set_error(format!("Pull failed: {}", e));
+                }
+            }
+        } else {
+            self.set_error("No state manager available");
+        }
+    }
+
+    // ==========================================================================
+    // Operation Log Actions
+    // ==========================================================================
+
+    /// Cycle through operation log filters
+    pub fn cycle_operation_filter(&mut self) {
+        use crate::ui::operation_log::OperationFilter;
+
+        let all = OperationFilter::all();
+        let current_idx = all.iter().position(|f| *f == self.operation_filter).unwrap_or(0);
+        let next_idx = (current_idx + 1) % all.len();
+        self.operation_filter = all[next_idx];
+        self.selected_index = 0;
+        self.set_info(format!("Filter: {}", self.operation_filter.name()));
+    }
+
+    // ==========================================================================
+    // Config Manager Actions
+    // ==========================================================================
+
+    /// Scan for config conflicts independently (not just post-update)
+    pub fn refresh_config_conflicts(&mut self) {
+        if let Some(ref sm) = self.state_manager {
+            let update_service = DefaultUpdateService::new(sm.clone(), NoopManager);
+            let conflicts = update_service.find_config_conflicts();
+
+            // Store in post_update_result, creating one if it doesn't exist
+            if let Some(ref mut result) = self.post_update_result {
+                result.config_conflicts = conflicts;
+            } else {
+                use iron_core::services::update::PostUpdateResult;
+                self.post_update_result = Some(PostUpdateResult {
+                    config_conflicts: conflicts,
+                    reboot_required: false,
+                    reboot_packages: vec![],
+                    failed_services: vec![],
+                    has_issues: false,
+                });
+            }
+
+            let count = self.post_update_result.as_ref().map(|r| r.config_conflicts.len()).unwrap_or(0);
+            if count > 0 {
+                self.set_warning(format!("{} configuration conflict{} found", count, if count == 1 { "" } else { "s" }));
+            } else {
+                self.set_status("No configuration conflicts found");
+            }
+        }
     }
 }
 

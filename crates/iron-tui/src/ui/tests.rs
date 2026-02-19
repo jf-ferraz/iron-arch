@@ -278,7 +278,8 @@ fn test_dashboard_shows_no_alerts_when_empty() {
         })
         .unwrap();
 
-    assert!(buffer_contains(&terminal, "All clear"));
+    // Default app has no bundles/modules, so it shows onboarding nudge
+    assert!(buffer_contains(&terminal, "get started"));
 }
 
 // =============================================================================
@@ -774,11 +775,11 @@ fn test_sync_renders() {
         .unwrap();
 
     assert!(buffer_contains(&terminal, "Sync"));
-    assert!(buffer_contains(&terminal, "Git Sync Status"));
+    assert!(buffer_contains(&terminal, "Git Sync"));
     assert!(buffer_contains(&terminal, "[p]"));
-    assert!(buffer_contains(&terminal, "push"));
-    assert!(buffer_contains(&terminal, "[l]"));
-    assert!(buffer_contains(&terminal, "pull"));
+    assert!(buffer_contains(&terminal, "Push"));
+    assert!(buffer_contains(&terminal, "[f]"));
+    assert!(buffer_contains(&terminal, "Pull"));
 }
 
 // =============================================================================

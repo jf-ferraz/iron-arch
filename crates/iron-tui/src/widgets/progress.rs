@@ -2,6 +2,7 @@
 //!
 //! Non-blocking progress display for long-running operations.
 
+use crate::ui::theme;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Gauge, Paragraph};
 use std::time::{Duration, Instant};
@@ -166,11 +167,11 @@ impl<'a> ProgressWidget<'a> {
     pub fn render(self, frame: &mut Frame, area: Rect) {
         // Determine colors based on state
         let (border_color, text_color) = if self.tracker.failed {
-            (Color::Red, Color::Red)
+            (theme::RED, theme::RED)
         } else if self.tracker.complete {
-            (Color::Green, Color::Green)
+            (theme::GREEN, theme::GREEN)
         } else {
-            (Color::Cyan, Color::White)
+            (theme::MAUVE, theme::TEXT)
         };
 
         // Create block with title
@@ -211,7 +212,7 @@ impl<'a> ProgressWidget<'a> {
         let description = if let Some(ref error) = self.tracker.error {
             Line::from(vec![
                 Span::styled(format!("{} ", status_icon), Style::default().fg(text_color)),
-                Span::styled(error.as_str(), Style::default().fg(Color::Red)),
+                Span::styled(error.as_str(), Style::default().fg(theme::RED)),
             ])
         } else {
             Line::from(vec![
@@ -226,7 +227,7 @@ impl<'a> ProgressWidget<'a> {
         if let Some(percentage) = self.tracker.percentage {
             if self.show_percentage {
                 let gauge = Gauge::default()
-                    .gauge_style(Style::default().fg(text_color).bg(Color::DarkGray))
+                    .gauge_style(Style::default().fg(text_color).bg(theme::OVERLAY))
                     .percent(percentage as u16)
                     .label(format!("{}%", percentage));
 
@@ -247,7 +248,7 @@ impl<'a> ProgressWidget<'a> {
 
             let progress_line = Line::from(Span::styled(
                 format!("[{}]", bar),
-                Style::default().fg(Color::Cyan),
+                Style::default().fg(theme::MAUVE),
             ));
 
             frame.render_widget(Paragraph::new(progress_line), chunks[2]);
@@ -269,20 +270,20 @@ impl<'a> InlineProgress<'a> {
     /// Render as a Line for inline display
     pub fn render(&self) -> Line<'a> {
         let icon = if self.tracker.failed {
-            Span::styled("✗ ", Style::default().fg(Color::Red))
+            Span::styled("✗ ", Style::default().fg(theme::RED))
         } else if self.tracker.complete {
-            Span::styled("✓ ", Style::default().fg(Color::Green))
+            Span::styled("✓ ", Style::default().fg(theme::GREEN))
         } else {
             Span::styled(
                 format!("{} ", self.tracker.spinner()),
-                Style::default().fg(Color::Cyan),
+                Style::default().fg(theme::MAUVE),
             )
         };
 
         let desc = Span::raw(&self.tracker.description);
 
         let progress = if let Some(pct) = self.tracker.percentage {
-            Span::styled(format!(" ({}%)", pct), Style::default().fg(Color::Gray))
+            Span::styled(format!(" ({}%)", pct), Style::default().fg(theme::SUBTEXT))
         } else {
             Span::raw("")
         };

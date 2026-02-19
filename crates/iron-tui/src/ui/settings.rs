@@ -3,9 +3,10 @@
 //! Displays configuration values and system state.
 
 use crate::app::App;
-use chrono::{DateTime, Utc};
+use crate::ui::theme;
+use crate::ui::utils::format_relative_time;
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Table};
+use ratatui::widgets::{Cell, Paragraph, Row, Table};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Settings Item Definition
@@ -17,34 +18,6 @@ struct SettingItem {
     key: &'static str,
     value: String,
     editable: bool,
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helper Functions
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Format a DateTime as a relative time string
-fn format_relative_time(time: Option<DateTime<Utc>>) -> String {
-    match time {
-        Some(dt) => {
-            let now = Utc::now();
-            let duration = now.signed_duration_since(dt);
-
-            if duration.num_minutes() < 1 {
-                "just now".to_string()
-            } else if duration.num_minutes() < 60 {
-                let mins = duration.num_minutes();
-                format!("{} min{} ago", mins, if mins == 1 { "" } else { "s" })
-            } else if duration.num_hours() < 24 {
-                let hours = duration.num_hours();
-                format!("{} hour{} ago", hours, if hours == 1 { "" } else { "s" })
-            } else {
-                let days = duration.num_days();
-                format!("{} day{} ago", days, if days == 1 { "" } else { "s" })
-            }
-        }
-        None => "never".to_string(),
-    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -69,10 +42,7 @@ pub fn render_settings(frame: &mut Frame, area: Rect, app: &App) {
 
 /// Render the main settings panel
 fn render_settings_panel(frame: &mut Frame, area: Rect, app: &App) {
-    let block = Block::default()
-        .title(" Configuration ")
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
+    let block = theme::themed_block("Configuration", theme::MAUVE);
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -147,14 +117,14 @@ fn render_settings_panel(frame: &mut Frame, area: Rect, app: &App) {
             let is_selected = i == app.selected_index;
 
             let row_style = if is_selected {
-                Style::default().bg(Color::DarkGray).fg(Color::White)
+                theme::selected()
             } else {
-                Style::default()
+                theme::unselected()
             };
 
             // Selection indicator
             let selector = if is_selected {
-                Cell::from(Span::styled(">", Style::default().fg(Color::Cyan).bold()))
+                Cell::from(Span::styled(">", Style::default().fg(theme::MAUVE).bold()))
             } else {
                 Cell::from(" ")
             };
@@ -163,25 +133,25 @@ fn render_settings_panel(frame: &mut Frame, area: Rect, app: &App) {
             let key_cell = Cell::from(Span::styled(
                 item.key,
                 if is_selected {
-                    Style::default().fg(Color::White).bold()
+                    Style::default().fg(theme::TEXT).bold()
                 } else {
-                    Style::default().fg(Color::Gray)
+                    Style::default().fg(theme::SUBTEXT)
                 },
             ));
 
             // Value with special styling
             let value_style = if item.editable {
-                Style::default().fg(Color::Yellow)
+                Style::default().fg(theme::PEACH)
             } else if item.value == "none" || item.value == "not set" || item.value == "never" {
-                Style::default().fg(Color::DarkGray).italic()
+                Style::default().fg(theme::OVERLAY).italic()
             } else {
-                Style::default().fg(Color::Cyan)
+                Style::default().fg(theme::LAVENDER)
             };
             let value_cell = Cell::from(Span::styled(&item.value, value_style));
 
             // Edit indicator
             let edit_cell = if item.editable {
-                Cell::from(Span::styled("[E]", Style::default().fg(Color::Yellow)))
+                Cell::from(Span::styled("[E]", Style::default().fg(theme::PEACH)))
             } else {
                 Cell::from("")
             };
@@ -204,9 +174,7 @@ fn render_settings_panel(frame: &mut Frame, area: Rect, app: &App) {
 
 /// Render the hint bar showing contextual help
 fn render_hint_bar(frame: &mut Frame, area: Rect, app: &App) {
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray));
+    let block = theme::minimal_block();
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -229,8 +197,8 @@ fn render_hint_bar(frame: &mut Frame, area: Rect, app: &App) {
     };
 
     let content = Line::from(vec![
-        Span::styled("  Hint: ", Style::default().fg(Color::Cyan)),
-        Span::styled(hint, Style::default().fg(Color::Gray)),
+        Span::styled("  Hint: ", Style::default().fg(theme::MAUVE)),
+        Span::styled(hint, Style::default().fg(theme::SUBTEXT)),
     ]);
 
     frame.render_widget(Paragraph::new(content), inner);
@@ -239,6 +207,7 @@ fn render_hint_bar(frame: &mut Frame, area: Rect, app: &App) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Utc;
     use ratatui::backend::TestBackend;
     use ratatui::Terminal;
 

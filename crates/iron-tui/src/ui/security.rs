@@ -7,11 +7,13 @@
 //! - SELinux/AppArmor
 
 use crate::app::App;
+use crate::ui::theme;
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Paragraph, Row, Table};
+use ratatui::widgets::{Cell, Paragraph, Row, Table};
 
 /// Security module category
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum SecurityCategory {
     Firewall,
     IntrusionDetection,
@@ -19,6 +21,7 @@ pub enum SecurityCategory {
     AccessControl,
 }
 
+#[allow(dead_code)]
 impl SecurityCategory {
     /// Get category name
     pub fn name(&self) -> &'static str {
@@ -44,19 +47,17 @@ const SECURITY_MODULE_IDS: &[&str] = &[
 
 /// Render the security modules view
 pub fn render_security_modules(frame: &mut Frame, area: Rect, app: &App) {
-    // Main layout: Header, Module List, Help
+    // Main layout: Header + Module List (footer handles keybindings)
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3),  // Header
             Constraint::Min(10),    // Module list
-            Constraint::Length(3),  // Help bar
         ])
         .split(area);
 
     render_header(frame, layout[0], app);
     render_module_list(frame, layout[1], app);
-    render_help(frame, layout[2]);
 }
 
 /// Render header section
@@ -78,17 +79,15 @@ fn render_header(frame: &mut Frame, area: Rect, app: &App) {
         .count();
 
     let header_text = Line::from(vec![
-        Span::styled("Security Modules", Style::default().fg(Color::White).bold()),
+        Span::styled("Security Modules", Style::default().fg(theme::TEXT).bold()),
         Span::raw("  │  "),
         Span::styled(
             format!("{}/{} enabled", enabled_count, total_count),
-            Style::default().fg(if enabled_count > 0 { Color::Green } else { Color::Yellow }),
+            Style::default().fg(if enabled_count > 0 { theme::GREEN } else { theme::YELLOW }),
         ),
     ]);
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Blue));
+    let block = theme::themed_block("Security", theme::RED);
 
     let paragraph = Paragraph::new(header_text)
         .block(block)
@@ -99,10 +98,7 @@ fn render_header(frame: &mut Frame, area: Rect, app: &App) {
 
 /// Render the module list
 fn render_module_list(frame: &mut Frame, area: Rect, app: &App) {
-    let block = Block::default()
-        .title(" Security Modules ")
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Blue));
+    let block = theme::themed_block("Security Modules", theme::RED);
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -124,18 +120,18 @@ fn render_module_list(frame: &mut Frame, area: Rect, app: &App) {
             Line::from(""),
             Line::from(Span::styled(
                 "No security modules available",
-                Style::default().fg(Color::Gray),
+                Style::default().fg(theme::SUBTEXT),
             )),
             Line::from(""),
             Line::from(Span::styled(
                 "Security modules can be added to your configuration.",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(theme::OVERLAY),
             )),
             Line::from(""),
             Line::from(vec![
-                Span::raw("Press "),
-                Span::styled("[m]", Style::default().fg(Color::Yellow)),
-                Span::raw(" to view all available modules."),
+                Span::styled("Press ", Style::default().fg(theme::SUBTEXT)),
+                Span::styled("[m]", Style::default().fg(theme::MAUVE).bold()),
+                Span::styled(" to view all available modules.", Style::default().fg(theme::SUBTEXT)),
             ]),
         ])
         .alignment(Alignment::Center);
@@ -154,15 +150,15 @@ fn render_module_list(frame: &mut Frame, area: Rect, app: &App) {
 
             // Status indicator (inline, not using StatusBadge due to lifetime issues)
             let (status_icon, status_text, status_color) = if is_enabled {
-                ("●", "Enabled", Color::Green)
+                ("●", "Enabled", theme::GREEN)
             } else {
-                ("○", "Disabled", Color::Gray)
+                ("○", "Disabled", theme::SUBTEXT)
             };
 
             let style = if is_selected {
-                Style::default().bg(Color::DarkGray).fg(Color::White)
+                theme::selected()
             } else {
-                Style::default().fg(Color::White)
+                theme::unselected()
             };
 
             let description = module
@@ -174,7 +170,7 @@ fn render_module_list(frame: &mut Frame, area: Rect, app: &App) {
                 Cell::from(format!("{} {}", status_icon, status_text))
                     .style(Style::default().fg(status_color)),
                 Cell::from(module.name.as_str()),
-                Cell::from(description).style(Style::default().fg(Color::Gray)),
+                Cell::from(description).style(Style::default().fg(theme::SUBTEXT)),
             ])
             .style(style)
         })
@@ -189,48 +185,13 @@ fn render_module_list(frame: &mut Frame, area: Rect, app: &App) {
     let table = Table::new(rows, widths)
         .header(
             Row::new(vec!["Status", "Module", "Description"])
-                .style(Style::default().fg(Color::Yellow).bold())
+                .style(Style::default().fg(theme::YELLOW).bold())
                 .bottom_margin(1),
         )
         .column_spacing(2);
 
     frame.render_widget(table, inner);
 }
-
-/// Render help bar
-fn render_help(frame: &mut Frame, area: Rect) {
-    let help_items = vec![
-        ("↑↓", "Navigate"),
-        ("Enter", "Toggle"),
-        ("i", "Install"),
-        ("Esc", "Back"),
-    ];
-
-    let help_spans: Vec<Span> = help_items
-        .iter()
-        .flat_map(|(key, action)| {
-            vec![
-                Span::styled(
-                    format!("[{}]", key),
-                    Style::default().fg(Color::Yellow),
-                ),
-                Span::raw(format!(" {}  ", action)),
-            ]
-        })
-        .collect();
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray));
-
-    let paragraph = Paragraph::new(Line::from(help_spans))
-        .block(block)
-        .alignment(Alignment::Center);
-
-    frame.render_widget(paragraph, area);
-}
-
-use ratatui::widgets::Cell;
 
 #[cfg(test)]
 mod tests {

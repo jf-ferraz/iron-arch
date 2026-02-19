@@ -7,28 +7,29 @@
 //! - Reboot requirement warnings
 
 use crate::app::{App, UpdateSection};
+use crate::ui::theme;
 use iron_core::services::update::PreflightStatus;
 use iron_core::RiskLevel;
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap};
+use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState};
 
 /// Status indicator symbols and colors
 fn status_indicator(status: PreflightStatus) -> (char, Color) {
     match status {
-        PreflightStatus::Pass => ('✓', Color::Green),
-        PreflightStatus::Warning => ('⚠', Color::Yellow),
-        PreflightStatus::Fail => ('✗', Color::Red),
-        PreflightStatus::Skipped => ('○', Color::DarkGray),
+        PreflightStatus::Pass => ('✓', theme::GREEN),
+        PreflightStatus::Warning => ('⚠', theme::YELLOW),
+        PreflightStatus::Fail => ('✗', theme::RED),
+        PreflightStatus::Skipped => ('○', theme::OVERLAY),
     }
 }
 
 /// Risk level indicator
 fn risk_indicator(risk: RiskLevel) -> (&'static str, Color, &'static str) {
     match risk {
-        RiskLevel::Low => ("●", Color::Green, "Safe to update"),
-        RiskLevel::Medium => ("⚠", Color::Yellow, "Review recommended"),
-        RiskLevel::High => ("⚠", Color::Red, "Attention required"),
-        RiskLevel::Critical => ("✗", Color::Red, "Create snapshot first!"),
+        RiskLevel::Low => ("●", theme::GREEN, "Safe to update"),
+        RiskLevel::Medium => ("⚠", theme::YELLOW, "Review recommended"),
+        RiskLevel::High => ("⚠", theme::RED, "Attention required"),
+        RiskLevel::Critical => ("✗", theme::RED, "Create snapshot first!"),
     }
 }
 
@@ -38,7 +39,7 @@ fn package_risk(name: &str) -> (char, Color) {
 
     // Critical: kernel packages
     if name_lower.starts_with("linux") && !name_lower.contains("-headers") {
-        return ('!', Color::Red);
+        return ('!', theme::RED);
     }
 
     // High: nvidia, systemd, glibc
@@ -48,7 +49,7 @@ fn package_risk(name: &str) -> (char, Color) {
         || name_lower == "glibc"
         || name_lower == "gcc-libs"
     {
-        return ('!', Color::LightRed);
+        return ('!', theme::PEACH);
     }
 
     // Medium: mesa, pipewire, etc.
@@ -57,11 +58,11 @@ fn package_risk(name: &str) -> (char, Color) {
         || name_lower.starts_with("pipewire")
         || name_lower.starts_with("wireplumber")
     {
-        return ('~', Color::Yellow);
+        return ('~', theme::YELLOW);
     }
 
     // Low: everything else
-    (' ', Color::White)
+    (' ', theme::TEXT)
 }
 
 /// Render the enhanced update preview view
@@ -121,9 +122,9 @@ fn render_header_section(
             Span::styled(
                 format!("{} package(s)", update_count),
                 Style::default().fg(if update_count > 0 {
-                    Color::Yellow
+                    theme::YELLOW
                 } else {
-                    Color::Green
+                    theme::GREEN
                 }),
             ),
             Span::raw("  │  Risk: "),
@@ -137,10 +138,10 @@ fn render_header_section(
     // Reboot warning
     if reboot_required {
         lines.push(Line::from(vec![
-            Span::styled("⚡ ", Style::default().fg(Color::Yellow)),
+            Span::styled("⚡ ", Style::default().fg(theme::YELLOW)),
             Span::styled(
                 "Reboot required after update (kernel/systemd/glibc)",
-                Style::default().fg(Color::Yellow),
+                Style::default().fg(theme::YELLOW),
             ),
         ]));
     }
@@ -148,10 +149,10 @@ fn render_header_section(
     // Status line
     if !can_proceed && app.has_preflight_results() {
         lines.push(Line::from(vec![
-            Span::styled("✗ ", Style::default().fg(Color::Red)),
+            Span::styled("✗ ", Style::default().fg(theme::RED)),
             Span::styled(
                 "Cannot proceed - resolve issues below",
-                Style::default().fg(Color::Red),
+                Style::default().fg(theme::RED),
             ),
         ]));
     }
@@ -159,20 +160,17 @@ fn render_header_section(
     // Key hints
     lines.push(Line::from(""));
     lines.push(Line::from(vec![
-        Span::styled("[r]", Style::default().fg(Color::Yellow)),
+        Span::styled("[r]", Style::default().fg(theme::YELLOW)),
         Span::raw(" Refresh  "),
-        Span::styled("[u]", Style::default().fg(if can_proceed { Color::Green } else { Color::DarkGray })),
+        Span::styled("[u]", Style::default().fg(if can_proceed { theme::GREEN } else { theme::OVERLAY })),
         Span::raw(" Update  "),
-        Span::styled("[Tab]", Style::default().fg(Color::Yellow)),
+        Span::styled("[Tab]", Style::default().fg(theme::YELLOW)),
         Span::raw(" Section  "),
-        Span::styled("[Esc]", Style::default().fg(Color::Gray)),
+        Span::styled("[Esc]", Style::default().fg(theme::SUBTEXT)),
         Span::raw(" Back"),
     ]));
 
-    let block = Block::default()
-        .title(" System Update ")
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
+    let block = theme::themed_block("System Update", theme::TEAL);
 
     let para = Paragraph::new(lines).block(block);
     frame.render_widget(para, area);
@@ -182,7 +180,7 @@ fn render_header_section(
 fn render_preflight_section(frame: &mut Frame, area: Rect, app: &App) {
     let is_selected = app.update_section == UpdateSection::PreflightChecks;
 
-    let border_color = if is_selected { Color::Cyan } else { Color::DarkGray };
+    let border_color = if is_selected { theme::MAUVE } else { theme::OVERLAY };
 
     let block = Block::default()
         .title(" Pre-flight Checks ")
@@ -202,7 +200,7 @@ fn render_preflight_section(frame: &mut Frame, area: Rect, app: &App) {
                 let is_item_selected = is_selected && i == app.update_section_index;
 
                 let style = if is_item_selected {
-                    Style::default().fg(color).bg(Color::DarkGray)
+                    Style::default().fg(color).bg(theme::SURFACE_HOVER)
                 } else {
                     Style::default().fg(color)
                 };
@@ -216,7 +214,7 @@ fn render_preflight_section(frame: &mut Frame, area: Rect, app: &App) {
         frame.render_widget(list, inner);
     } else {
         let para = Paragraph::new("Press [r] to run pre-flight checks")
-            .style(Style::default().fg(Color::DarkGray))
+            .style(Style::default().fg(theme::SUBTEXT))
             .alignment(Alignment::Center);
         frame.render_widget(para, inner);
     }
@@ -229,13 +227,13 @@ fn render_news_section(frame: &mut Frame, area: Rect, app: &App) {
     let has_critical = app.has_critical_news();
 
     let border_color = if is_selected {
-        Color::Cyan
+        theme::MAUVE
     } else if has_critical {
-        Color::Red
+        theme::RED
     } else if !news.is_empty() {
-        Color::Yellow
+        theme::YELLOW
     } else {
-        Color::DarkGray
+        theme::OVERLAY
     };
 
     let title = if news.is_empty() {
@@ -256,7 +254,7 @@ fn render_news_section(frame: &mut Frame, area: Rect, app: &App) {
 
     if news.is_empty() {
         let para = Paragraph::new("✓ All news acknowledged")
-            .style(Style::default().fg(Color::Green))
+            .style(Style::default().fg(theme::GREEN))
             .alignment(Alignment::Center);
         frame.render_widget(para, inner);
     } else {
@@ -269,12 +267,12 @@ fn render_news_section(frame: &mut Frame, area: Rect, app: &App) {
 
                 let style = if is_item_selected {
                     Style::default()
-                        .fg(if item.requires_manual { Color::Red } else { Color::Yellow })
-                        .bg(Color::DarkGray)
+                        .fg(if item.requires_manual { theme::RED } else { theme::YELLOW })
+                        .bg(theme::SURFACE_HOVER)
                 } else if item.requires_manual {
-                    Style::default().fg(Color::Red)
+                    Style::default().fg(theme::RED)
                 } else {
-                    Style::default().fg(Color::Yellow)
+                    Style::default().fg(theme::YELLOW)
                 };
 
                 let content = format!(
@@ -298,9 +296,9 @@ fn render_news_section(frame: &mut Frame, area: Rect, app: &App) {
 
         if is_selected {
             let hints = Line::from(vec![
-                Span::styled("[a]", Style::default().fg(Color::Yellow)),
+                Span::styled("[a]", Style::default().fg(theme::YELLOW)),
                 Span::raw(" Ack selected  "),
-                Span::styled("[A]", Style::default().fg(Color::Yellow)),
+                Span::styled("[A]", Style::default().fg(theme::YELLOW)),
                 Span::raw(" Ack all"),
             ]);
             frame.render_widget(Paragraph::new(hints), layout[1]);
@@ -313,7 +311,7 @@ fn render_packages_section(frame: &mut Frame, area: Rect, app: &App) {
     let is_selected = app.update_section == UpdateSection::Packages;
     let updates = app.pending_updates_list();
 
-    let border_color = if is_selected { Color::Cyan } else { Color::DarkGray };
+    let border_color = if is_selected { theme::MAUVE } else { theme::OVERLAY };
 
     let title = if updates.len() > 50 {
         format!(" Packages (showing 50 of {}) ", updates.len())
@@ -331,7 +329,7 @@ fn render_packages_section(frame: &mut Frame, area: Rect, app: &App) {
 
     if updates.is_empty() {
         let para = Paragraph::new("✓ System is up to date")
-            .style(Style::default().fg(Color::Green))
+            .style(Style::default().fg(theme::GREEN))
             .alignment(Alignment::Center);
         frame.render_widget(para, inner);
         return;
@@ -354,7 +352,7 @@ fn render_packages_section(frame: &mut Frame, area: Rect, app: &App) {
             );
 
             let style = if is_item_selected {
-                Style::default().fg(base_color).bg(Color::DarkGray)
+                Style::default().fg(base_color).bg(theme::SURFACE_HOVER)
             } else {
                 Style::default().fg(base_color)
             };
@@ -389,20 +387,85 @@ fn render_packages_section(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 /// Render sync status view
-pub fn render_sync(frame: &mut Frame, area: Rect, _app: &App) {
-    let text = vec![
-        Line::from("Git Sync Status"),
-        Line::from(""),
-        Line::from("Press [p] to push changes"),
-        Line::from("Press [l] to pull changes"),
-    ];
+pub fn render_sync(frame: &mut Frame, area: Rect, app: &App) {
+    let block = theme::themed_block("Git Sync", theme::MAUVE);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
 
-    let block = Block::default()
-        .title(" Sync ")
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
+    // Show sync info if available
+    if let Some(ref info) = app.sync_info {
+        let (status_icon, status_text, status_color) = match info.status {
+            iron_core::services::sync::SyncStatus::UpToDate => ("✓", "Up to date", theme::GREEN),
+            iron_core::services::sync::SyncStatus::Ahead => ("↑", "Ahead", theme::YELLOW),
+            iron_core::services::sync::SyncStatus::Behind => ("↓", "Behind", theme::BLUE),
+            iron_core::services::sync::SyncStatus::Diverged => ("⇅", "Diverged", theme::RED),
+            iron_core::services::sync::SyncStatus::Dirty => ("●", "Uncommitted changes", theme::PEACH),
+            iron_core::services::sync::SyncStatus::NotARepo => ("✗", "Not a git repository", theme::RED),
+        };
 
-    let para = Paragraph::new(text).block(block).wrap(Wrap { trim: true });
+        let branch = info.branch.as_deref().unwrap_or("unknown");
 
-    frame.render_widget(para, area);
+        let mut lines = vec![
+            Line::from(""),
+            Line::from(vec![
+                Span::styled(format!("  {} ", status_icon), Style::default().fg(status_color).bold()),
+                Span::styled(status_text, Style::default().fg(status_color).bold()),
+            ]),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("  Branch     ", Style::default().fg(theme::SUBTEXT)),
+                Span::styled(branch, Style::default().fg(theme::TEXT).bold()),
+            ]),
+        ];
+
+        if info.commits_ahead > 0 || info.commits_behind > 0 {
+            lines.push(Line::from(vec![
+                Span::styled("  Ahead      ", Style::default().fg(theme::SUBTEXT)),
+                Span::styled(format!("{}", info.commits_ahead), Style::default().fg(theme::GREEN)),
+                Span::styled("  Behind  ", Style::default().fg(theme::SUBTEXT)),
+                Span::styled(format!("{}", info.commits_behind), Style::default().fg(theme::YELLOW)),
+            ]));
+        }
+
+        if info.dirty_files > 0 {
+            lines.push(Line::from(vec![
+                Span::styled("  Dirty      ", Style::default().fg(theme::SUBTEXT)),
+                Span::styled(
+                    format!("{} file{}", info.dirty_files, if info.dirty_files == 1 { "" } else { "s" }),
+                    Style::default().fg(theme::PEACH),
+                ),
+            ]));
+        }
+
+        if let Some(last) = info.last_sync {
+            let relative = crate::ui::utils::format_relative_time(Some(last));
+            lines.push(Line::from(vec![
+                Span::styled("  Last sync  ", Style::default().fg(theme::SUBTEXT)),
+                Span::styled(relative, Style::default().fg(theme::TEXT)),
+            ]));
+        }
+
+        frame.render_widget(Paragraph::new(lines), inner);
+    } else {
+        // No sync info yet — show prompt
+        let text = vec![
+            Line::from(""),
+            Line::from(Span::styled(
+                "  Press [s] to check git sync status",
+                Style::default().fg(theme::SUBTEXT),
+            )),
+            Line::from(""),
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled("[p]", Style::default().fg(theme::MAUVE).bold()),
+                Span::styled(" Push   ", Style::default().fg(theme::SUBTEXT)),
+                Span::styled("[f]", Style::default().fg(theme::MAUVE).bold()),
+                Span::styled(" Pull   ", Style::default().fg(theme::SUBTEXT)),
+                Span::styled("[s]", Style::default().fg(theme::MAUVE).bold()),
+                Span::styled(" Status", Style::default().fg(theme::SUBTEXT)),
+            ]),
+        ];
+
+        frame.render_widget(Paragraph::new(text), inner);
+    }
 }

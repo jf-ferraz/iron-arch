@@ -6,9 +6,10 @@
 //! - Doctor: System health diagnostics
 
 use crate::app::App;
-use chrono::{DateTime, Utc};
+use crate::ui::theme;
+use crate::ui::utils::format_relative_time;
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::Paragraph;
 
 /// Maintenance action types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,75 +55,37 @@ impl MaintenanceAction {
     /// Get the icon for this action
     pub fn icon(&self) -> &'static str {
         match self {
-            Self::Update => "↻",
-            Self::Cleanup => "🧹",
-            Self::Doctor => "🩺",
+            Self::Update => "[U]",
+            Self::Cleanup => "[C]",
+            Self::Doctor => "[D]",
         }
-    }
-}
-
-/// Format a DateTime as a relative time string
-fn format_relative_time(time: Option<DateTime<Utc>>) -> String {
-    match time {
-        Some(dt) => {
-            let now = Utc::now();
-            let duration = now.signed_duration_since(dt);
-
-            if duration.num_minutes() < 1 {
-                "just now".to_string()
-            } else if duration.num_minutes() < 60 {
-                let mins = duration.num_minutes();
-                format!("{} min{} ago", mins, if mins == 1 { "" } else { "s" })
-            } else if duration.num_hours() < 24 {
-                let hours = duration.num_hours();
-                format!("{} hour{} ago", hours, if hours == 1 { "" } else { "s" })
-            } else if duration.num_days() < 7 {
-                let days = duration.num_days();
-                format!("{} day{} ago", days, if days == 1 { "" } else { "s" })
-            } else if duration.num_weeks() < 4 {
-                let weeks = duration.num_weeks();
-                format!("{} week{} ago", weeks, if weeks == 1 { "" } else { "s" })
-            } else {
-                let months = duration.num_days() / 30;
-                if months < 12 {
-                    format!("{} month{} ago", months, if months == 1 { "" } else { "s" })
-                } else {
-                    "over a year ago".to_string()
-                }
-            }
-        }
-        None => "never".to_string(),
     }
 }
 
 /// Render the system maintenance hub view
 pub fn render_system_maintenance(frame: &mut Frame, area: Rect, app: &App) {
-    // Main layout: Header, Action Cards, Help
+    // Main layout: Header + Action Cards (footer handles keybindings)
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3),  // Header
             Constraint::Min(12),    // Action cards
-            Constraint::Length(3),  // Help bar
         ])
         .split(area);
 
     render_header(frame, layout[0]);
     render_action_cards(frame, layout[1], app);
-    render_help(frame, layout[2]);
 }
 
 /// Render header section
 fn render_header(frame: &mut Frame, area: Rect) {
     let header_text = Line::from(vec![
-        Span::styled("System Maintenance", Style::default().fg(Color::White).bold()),
+        Span::styled("System Maintenance", Style::default().fg(theme::TEXT).bold()),
         Span::raw("  │  "),
-        Span::styled("Hub", Style::default().fg(Color::Cyan)),
+        Span::styled("Hub", Style::default().fg(theme::MAUVE)),
     ]);
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Blue));
+    let block = theme::themed_block("Maintenance", theme::BLUE);
 
     let paragraph = Paragraph::new(header_text)
         .block(block)
@@ -133,10 +96,7 @@ fn render_header(frame: &mut Frame, area: Rect) {
 
 /// Render the three action cards
 fn render_action_cards(frame: &mut Frame, area: Rect, app: &App) {
-    let block = Block::default()
-        .title(" Maintenance Actions ")
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Blue));
+    let block = theme::themed_block("Maintenance Actions", theme::BLUE);
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -173,20 +133,21 @@ fn render_action_card(
     maintenance: &Option<iron_core::state::MaintenanceState>,
 ) {
     let border_color = if is_selected {
-        Color::Yellow
+        theme::YELLOW
     } else {
-        Color::DarkGray
+        theme::OVERLAY
     };
 
     let bg_color = if is_selected {
-        Color::DarkGray
+        theme::SURFACE_HOVER
     } else {
-        Color::Reset
+        theme::SURFACE
     };
 
-    let block = Block::default()
+    let block = ratatui::widgets::Block::default()
         .title(format!(" {} {} ", action.icon(), action.name()))
-        .borders(Borders::ALL)
+        .title_style(Style::default().fg(if is_selected { theme::YELLOW } else { theme::TEXT }).bold())
+        .borders(ratatui::widgets::Borders::ALL)
         .border_style(Style::default().fg(border_color))
         .style(Style::default().bg(bg_color));
 
@@ -203,24 +164,24 @@ fn render_action_card(
     let content = vec![
         Line::from(""),
         Line::from(vec![
-            Span::styled(action.description(), Style::default().fg(Color::White)),
+            Span::styled(action.description(), Style::default().fg(theme::TEXT)),
         ]),
         Line::from(""),
         Line::from(vec![
-            Span::styled("Last run: ", Style::default().fg(Color::Gray)),
+            Span::styled("Last run: ", Style::default().fg(theme::SUBTEXT)),
             Span::styled(
                 format_relative_time(last_run),
-                Style::default().fg(Color::Cyan),
+                Style::default().fg(theme::LAVENDER),
             ),
         ]),
         Line::from(""),
         Line::from(vec![
-            Span::styled("Press ", Style::default().fg(Color::Gray)),
+            Span::styled("Press ", Style::default().fg(theme::SUBTEXT)),
             Span::styled(
                 format!("[{}]", action.shortcut()),
-                Style::default().fg(Color::Yellow),
+                Style::default().fg(theme::YELLOW),
             ),
-            Span::styled(" to launch", Style::default().fg(Color::Gray)),
+            Span::styled(" to launch", Style::default().fg(theme::SUBTEXT)),
         ]),
     ];
 
@@ -228,44 +189,10 @@ fn render_action_card(
     frame.render_widget(paragraph, inner);
 }
 
-/// Render help bar
-fn render_help(frame: &mut Frame, area: Rect) {
-    let help_items = vec![
-        ("u", "Update"),
-        ("c", "Cleanup"),
-        ("d", "Doctor"),
-        ("←→", "Select"),
-        ("Enter", "Launch"),
-        ("Esc", "Back"),
-    ];
-
-    let help_spans: Vec<Span> = help_items
-        .iter()
-        .flat_map(|(key, action)| {
-            vec![
-                Span::styled(
-                    format!("[{}]", key),
-                    Style::default().fg(Color::Yellow),
-                ),
-                Span::raw(format!(" {}  ", action)),
-            ]
-        })
-        .collect();
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray));
-
-    let paragraph = Paragraph::new(Line::from(help_spans))
-        .block(block)
-        .alignment(Alignment::Center);
-
-    frame.render_widget(paragraph, area);
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Utc;
     use ratatui::backend::TestBackend;
     use ratatui::Terminal;
 

@@ -1,9 +1,10 @@
 //! Setup wizard rendering
 
 use crate::app::App;
+use crate::ui::theme;
 use crate::wizard::{InputMode, WizardStep};
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::widgets::{Paragraph, Wrap};
 
 /// Render the setup wizard
 pub fn render_setup_wizard(frame: &mut Frame, area: Rect, app: &App) {
@@ -48,9 +49,9 @@ fn render_wizard_progress(frame: &mut Frame, area: Rect, wizard: &crate::wizard:
 
     let text = vec![Line::from(vec![
         Span::raw("  "),
-        Span::styled(&progress_bar, Style::default().fg(Color::Cyan)),
+        Span::styled(&progress_bar, Style::default().fg(theme::MAUVE)),
         Span::raw("  "),
-        Span::styled(progress_text, Style::default().fg(Color::Gray)),
+        Span::styled(progress_text, Style::default().fg(theme::SUBTEXT)),
     ])];
 
     let para = Paragraph::new(text);
@@ -64,17 +65,17 @@ fn render_wizard_welcome(frame: &mut Frame, area: Rect) {
         Line::from(""),
         Line::from(Span::styled(
             "╔═══════════════════════════════════╗",
-            Style::default().fg(Color::Cyan),
+            Style::default().fg(theme::MAUVE),
         )),
         Line::from(Span::styled(
             "║       Welcome to Iron!            ║",
             Style::default()
-                .fg(Color::Cyan)
+                .fg(theme::MAUVE)
                 .add_modifier(Modifier::BOLD),
         )),
         Line::from(Span::styled(
             "╚═══════════════════════════════════╝",
-            Style::default().fg(Color::Cyan),
+            Style::default().fg(theme::MAUVE),
         )),
         Line::from(""),
         Line::from(""),
@@ -88,14 +89,11 @@ fn render_wizard_welcome(frame: &mut Frame, area: Rect) {
         Line::from(""),
         Line::from(Span::styled(
             "Press Enter to begin...",
-            Style::default().fg(Color::Green),
+            Style::default().fg(theme::GREEN),
         )),
     ];
 
-    let block = Block::default()
-        .title(" First-Time Setup ")
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
+    let block = theme::themed_block("First-Time Setup", theme::MAUVE);
 
     let para = Paragraph::new(text)
         .block(block)
@@ -110,9 +108,9 @@ fn render_wizard_host_setup(frame: &mut Frame, area: Rect, app: &App) {
     let is_editing = app.host_input.mode == InputMode::Editing;
 
     let input_style = if is_editing {
-        Style::default().fg(Color::Yellow).bg(Color::DarkGray)
+        Style::default().fg(theme::YELLOW).bg(theme::SURFACE_HOVER)
     } else {
-        Style::default().fg(Color::White)
+        Style::default().fg(theme::TEXT)
     };
 
     let cursor_hint = if is_editing { "│" } else { "" };
@@ -123,7 +121,7 @@ fn render_wizard_host_setup(frame: &mut Frame, area: Rect, app: &App) {
         Line::from(Span::styled(
             "Host Setup",
             Style::default()
-                .fg(Color::Cyan)
+                .fg(theme::MAUVE)
                 .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
@@ -138,20 +136,17 @@ fn render_wizard_host_setup(frame: &mut Frame, area: Rect, app: &App) {
         if is_editing {
             Line::from(Span::styled(
                 "Press Enter to confirm, Esc to cancel",
-                Style::default().fg(Color::Gray),
+                Style::default().fg(theme::SUBTEXT),
             ))
         } else {
             Line::from(Span::styled(
                 "Press [e] to edit, Enter to continue",
-                Style::default().fg(Color::Gray),
+                Style::default().fg(theme::SUBTEXT),
             ))
         },
     ];
 
-    let block = Block::default()
-        .title(" Host Setup ")
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
+    let block = theme::themed_block("Host Setup", theme::MAUVE);
 
     let para = Paragraph::new(text).block(block).wrap(Wrap { trim: true });
 
@@ -168,7 +163,7 @@ fn render_wizard_bundle_selection(frame: &mut Frame, area: Rect, app: &App) {
         Line::from(Span::styled(
             "Bundle Selection",
             Style::default()
-                .fg(Color::Cyan)
+                .fg(theme::MAUVE)
                 .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
@@ -180,7 +175,7 @@ fn render_wizard_bundle_selection(frame: &mut Frame, area: Rect, app: &App) {
     if bundles.is_empty() {
         text.push(Line::from(Span::styled(
             "No bundles found. Create bundles in your config directory.",
-            Style::default().fg(Color::Yellow),
+            Style::default().fg(theme::YELLOW),
         )));
     } else {
         for (i, bundle) in bundles.iter().enumerate() {
@@ -191,7 +186,7 @@ fn render_wizard_bundle_selection(frame: &mut Frame, area: Rect, app: &App) {
             };
             let style = if i == selected_idx {
                 Style::default()
-                    .fg(Color::Green)
+                    .fg(theme::GREEN)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
@@ -206,13 +201,10 @@ fn render_wizard_bundle_selection(frame: &mut Frame, area: Rect, app: &App) {
     text.push(Line::from(""));
     text.push(Line::from(Span::styled(
         "Use ↑/↓ to select, Enter to continue",
-        Style::default().fg(Color::Gray),
+        Style::default().fg(theme::SUBTEXT),
     )));
 
-    let block = Block::default()
-        .title(" Bundle Selection ")
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
+    let block = theme::themed_block("Bundle Selection", theme::MAUVE);
 
     let para = Paragraph::new(text).block(block).wrap(Wrap { trim: true });
 
@@ -229,7 +221,7 @@ fn render_wizard_profile_selection(frame: &mut Frame, area: Rect, app: &App) {
         Line::from(Span::styled(
             "Profile Selection",
             Style::default()
-                .fg(Color::Cyan)
+                .fg(theme::MAUVE)
                 .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
@@ -241,7 +233,7 @@ fn render_wizard_profile_selection(frame: &mut Frame, area: Rect, app: &App) {
     if profiles.is_empty() {
         text.push(Line::from(Span::styled(
             "No profiles found. Create profiles in your config directory.",
-            Style::default().fg(Color::Yellow),
+            Style::default().fg(theme::YELLOW),
         )));
     } else {
         for (i, profile) in profiles.iter().enumerate() {
@@ -252,7 +244,7 @@ fn render_wizard_profile_selection(frame: &mut Frame, area: Rect, app: &App) {
             };
             let style = if i == selected_idx {
                 Style::default()
-                    .fg(Color::Green)
+                    .fg(theme::GREEN)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
@@ -267,13 +259,10 @@ fn render_wizard_profile_selection(frame: &mut Frame, area: Rect, app: &App) {
     text.push(Line::from(""));
     text.push(Line::from(Span::styled(
         "Use ↑/↓ to select, Enter to continue",
-        Style::default().fg(Color::Gray),
+        Style::default().fg(theme::SUBTEXT),
     )));
 
-    let block = Block::default()
-        .title(" Profile Selection ")
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
+    let block = theme::themed_block("Profile Selection", theme::MAUVE);
 
     let para = Paragraph::new(text).block(block).wrap(Wrap { trim: true });
 
@@ -292,7 +281,7 @@ fn render_wizard_confirmation(frame: &mut Frame, area: Rect, app: &App) {
         Line::from(Span::styled(
             "Confirmation",
             Style::default()
-                .fg(Color::Cyan)
+                .fg(theme::MAUVE)
                 .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
@@ -304,7 +293,7 @@ fn render_wizard_confirmation(frame: &mut Frame, area: Rect, app: &App) {
         Line::from(""),
         Line::from(Span::styled(
             "Press Enter to apply, Backspace to go back",
-            Style::default().fg(Color::Gray),
+            Style::default().fg(theme::SUBTEXT),
         )),
     ];
 
@@ -313,14 +302,11 @@ fn render_wizard_confirmation(frame: &mut Frame, area: Rect, app: &App) {
         final_text.push(Line::from(""));
         final_text.push(Line::from(Span::styled(
             format!("Error: {}", error),
-            Style::default().fg(Color::Red),
+            Style::default().fg(theme::RED),
         )));
     }
 
-    let block = Block::default()
-        .title(" Confirmation ")
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Yellow));
+    let block = theme::themed_block("Confirmation", theme::YELLOW);
 
     let para = Paragraph::new(final_text)
         .block(block)
@@ -336,17 +322,17 @@ fn render_wizard_complete(frame: &mut Frame, area: Rect) {
         Line::from(""),
         Line::from(Span::styled(
             "╔═══════════════════════════════════╗",
-            Style::default().fg(Color::Green),
+            Style::default().fg(theme::GREEN),
         )),
         Line::from(Span::styled(
             "║        Setup Complete!            ║",
             Style::default()
-                .fg(Color::Green)
+                .fg(theme::GREEN)
                 .add_modifier(Modifier::BOLD),
         )),
         Line::from(Span::styled(
             "╚═══════════════════════════════════╝",
-            Style::default().fg(Color::Green),
+            Style::default().fg(theme::GREEN),
         )),
         Line::from(""),
         Line::from(""),
@@ -359,14 +345,11 @@ fn render_wizard_complete(frame: &mut Frame, area: Rect) {
         Line::from(""),
         Line::from(Span::styled(
             "Press Enter to go to the Dashboard...",
-            Style::default().fg(Color::Cyan),
+            Style::default().fg(theme::MAUVE),
         )),
     ];
 
-    let block = Block::default()
-        .title(" Complete ")
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Green));
+    let block = theme::themed_block("Complete", theme::GREEN);
 
     let para = Paragraph::new(text)
         .block(block)
@@ -383,24 +366,22 @@ fn render_wizard_navigation(frame: &mut Frame, area: Rect, wizard: &crate::wizar
     if wizard.can_go_back() {
         spans.push(Span::styled(
             "[Backspace]",
-            Style::default().fg(Color::Gray),
+            Style::default().fg(theme::SUBTEXT),
         ));
         spans.push(Span::raw(" Back  "));
     }
 
     if wizard.can_proceed() {
-        spans.push(Span::styled("[Enter]", Style::default().fg(Color::Green)));
+        spans.push(Span::styled("[Enter]", Style::default().fg(theme::GREEN)));
         spans.push(Span::raw(" Continue  "));
     }
 
-    spans.push(Span::styled("[q]", Style::default().fg(Color::Red)));
+    spans.push(Span::styled("[q]", Style::default().fg(theme::RED)));
     spans.push(Span::raw(" Quit"));
 
     let text = vec![Line::from(spans)];
 
-    let block = Block::default()
-        .borders(Borders::TOP)
-        .border_style(Style::default().fg(Color::DarkGray));
+    let block = theme::minimal_block();
 
     let para = Paragraph::new(text).block(block);
     frame.render_widget(para, area);
