@@ -6,6 +6,7 @@ description = "TUI dashboard for Iron"
 
 [dependencies]
 iron-core = { path = "../iron-core" }
+iron-systemd = { path = "../iron-systemd" }
 ratatui.workspace = true
 crossterm.workspace = true
 anyhow.workspace = true

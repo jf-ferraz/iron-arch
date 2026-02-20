@@ -96,7 +96,7 @@ View::CleanSystem                                   [handlers.rs L152]
               ▼
          execute_cleanup()                           [actions.rs L557]
               │  DefaultCleanupService::new()
-              │  service.execute(&categories, false)  ← ⚠ dry_run=false
+              │  service.execute(&categories, true)   ← ✅ dry_run=true (S1-P7-002)
               │    ├─ execute_package_cache()   → sudo paccache -rk3
               │    ├─ execute_orphan_packages() → sudo pacman -Rns --noconfirm
               │    ├─ execute_systemd_journal() → sudo journalctl --vacuum-size=100M
@@ -387,32 +387,14 @@ stores results in `App`, and `build_health_checks()` reads the stored results.
 
 ---
 
-### 4.1 TUI Cleanup Executes with dry_run=false (Spec Violation)
+### 4.1 ✅ RESOLVED: TUI Cleanup dry_run=false (S1-P7-002)
 
-**Severity**: High | **File**: `actions.rs` L573
+> **Fixed 2026-02-19**: Changed `false` to `true` in `execute_cleanup()`. TUI now
+> runs cleanup in dry-run mode per spec. 371 tests pass.
 
-The `execute_cleanup()` method passes `dry_run: false`:
+**Severity**: ~~High~~ Resolved | **File**: `actions.rs` L580
 
-```rust
-let summary = service.execute(&self.cleanup_categories, false);
-```
-
-The user-workflow spec explicitly states:
-
-> **Note**: TUI runs cleanup in **dry-run mode only**. Full execution requires
-> `iron clean --all` or `iron clean --cache --orphans` via CLI.
-
-This means the TUI is **actually deleting files and removing packages** when the spec
-says it should only preview. This is a safety issue — the TUI can:
-- Remove orphan packages (`sudo pacman -Rns --noconfirm`)
-- Delete browser caches (breaking active sessions)
-- Delete developer caches (requiring re-download)
-- Delete journal logs
-- Delete user cache files
-
-The core service's `dry_run` parameter is fully functional — every execute method
-has a `dry_run` code path that returns `[DRY RUN]` messages. The fix is changing
-`false` to `true` in the TUI call.
+~~The `execute_cleanup()` method passes `dry_run: false`~~ → Now passes `true`.
 
 ---
 
@@ -541,9 +523,8 @@ Combined with the broken `[r]` key (Issue 3), the Doctor view shows permanently 
      │ execute_cleanup │       │       │ NO CALLS to     │
      │   → service     │       │       │ CleanupService  │
      │     .execute()  │       │       │                 │
-     │   dry_run=false │       │       └─────────────────┘
-     │   ⚠ SPEC SAYS  │       │
-     │     true        │       │       ┌─── iron-pacman ──┐
+     │   dry_run=true  │       │       └─────────────────┘
+     │   ✅ per spec   │       │       ┌─── iron-pacman ──┐
      └─────────────────┘       │       │                   │
                                │       │ clean_cache() ◄── NOT USED
                                │       │ get_orphans() ◄── NOT USED
@@ -715,7 +696,7 @@ Combined with the broken `[r]` key (Issue 3), the Doctor view shows permanently 
 
 | ID | Priority | Title | Category |
 |----|----------|-------|----------|
-| S1-P7-NEW-001 | **P0** | Fix TUI cleanup `dry_run=false` → `true` per spec | Bug (Issue 4.1) |
+| S1-P7-NEW-001 | ~~**P0**~~ ✅ | ~~Fix TUI cleanup `dry_run=false` → `true` per spec~~ | ✅ Completed (S1-P7-002) |
 | S1-P7-NEW-002 | **P1** | Create `DoctorService` in iron-core with 15 unified checks | Feature (S1-P7-001) |
 | S1-P7-NEW-003 | **P1** | Rewire CLI `iron clean` to use `DefaultCleanupService` | Feature (Issue 4.2) |
 | S1-P7-NEW-004 | **P1** | Fix TUI Doctor `[r]` re-run key handler | Bug (Issue 3) |
@@ -733,7 +714,7 @@ Combined with the broken `[r]` key (Issue 3), the Doctor view shows permanently 
 ### Implementation Order
 
 ```
-S1-P7-NEW-001 (dry_run fix) ◄── Trivial, high impact, do FIRST
+S1-P7-NEW-001 (dry_run fix) ◄── ✅ DONE (2026-02-19)
 
 S1-P7-NEW-002 (DoctorService)
     ├─► S1-P7-NEW-006 (CLI doctor rewire)
@@ -752,17 +733,11 @@ S1-P7-NEW-009 (state recording)    ── independent
 S1-P7-NEW-011 (symlinks decision)  ── independent
 ```
 
-### Quick Win — dry_run Fix
+### Quick Win — ✅ dry_run Fix (Completed)
 
-The highest-severity finding is the spec violation where TUI executes cleanup
-with `dry_run=false`. The fix is a one-character change:
+> **Completed 2026-02-19 (S1-P7-002)**. The one-character change was applied:
+> `service.execute(&self.cleanup_categories, true)` — TUI is now spec-compliant.
 
-```rust
-// In actions.rs execute_cleanup(), change:
-let summary = service.execute(&self.cleanup_categories, false);
-// To:
-let summary = service.execute(&self.cleanup_categories, true);
-```
-
-This immediately brings the TUI into spec compliance. Users who want actual
+~~The highest-severity finding is the spec violation where TUI executes cleanup
+with `dry_run=false`.~~ Users who want actual
 cleanup should use `iron clean --all` via CLI, per the spec.

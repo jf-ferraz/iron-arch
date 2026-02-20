@@ -7,7 +7,7 @@ use crate::wizard::TextInput;
 use iron_core::services::{
     BundleService, DefaultBundleService, DefaultUpdateService, StateManager, UpdateService,
 };
-use iron_core::{Module, NoopManager, Profile};
+use iron_core::{Module, Profile};
 
 impl App {
     /// Initialize application state
@@ -25,7 +25,8 @@ impl App {
                         // Load bundles via BundleService (with real package manager)
                         let bundle_service =
                             DefaultBundleService::new(&self.config_dir, sm.clone())
-                                .with_package_manager(self.package_manager.clone());
+                                .with_package_manager(self.package_manager.clone())
+                                .with_service_manager(self.service_manager.clone());
                         self.bundles = bundle_service.discover().unwrap_or_default();
                         self.active_bundle =
                             self.bundles.iter().find(|b| b.id == bundle_id).cloned();
@@ -49,7 +50,8 @@ impl App {
             && let Some(ref sm) = self.state_manager
         {
             let bundle_service = DefaultBundleService::new(&self.config_dir, sm.clone())
-                .with_package_manager(self.package_manager.clone());
+                .with_package_manager(self.package_manager.clone())
+                .with_service_manager(self.service_manager.clone());
             self.bundles = bundle_service.discover().unwrap_or_default();
         }
 
@@ -79,7 +81,8 @@ impl App {
             ConfirmAction::RemoveBundle(id) => {
                 if let Some(ref sm) = self.state_manager {
                     let bundle_service = DefaultBundleService::new(&self.config_dir, sm.clone())
-                        .with_package_manager(self.package_manager.clone());
+                        .with_package_manager(self.package_manager.clone())
+                        .with_service_manager(self.service_manager.clone());
                     match bundle_service.deactivate(&id) {
                         Ok(()) => {
                             self.bundles = bundle_service.discover().unwrap_or_default();
@@ -97,7 +100,11 @@ impl App {
             }
             ConfirmAction::EnableModule(ref id) => {
                 if let Some(ref sm) = self.state_manager {
-                    match sm.enable_module(id) {
+                    let module_service = iron_core::services::DefaultModuleService::new(
+                        &self.config_dir,
+                        sm.clone(),
+                    );
+                    match iron_core::services::ModuleService::enable(&module_service, id) {
                         Ok(()) => {
                             self.active_modules = sm.active_modules();
                             self.set_status(format!("Enabled module: {}", id));
@@ -110,7 +117,11 @@ impl App {
             }
             ConfirmAction::DisableModule(ref id) => {
                 if let Some(ref sm) = self.state_manager {
-                    match sm.disable_module(id) {
+                    let module_service = iron_core::services::DefaultModuleService::new(
+                        &self.config_dir,
+                        sm.clone(),
+                    );
+                    match iron_core::services::ModuleService::disable(&module_service, id) {
                         Ok(()) => {
                             self.active_modules = sm.active_modules();
                             self.set_status(format!("Disabled module: {}", id));
@@ -206,8 +217,15 @@ impl App {
             None => return,
         };
 
-        if let (Some(sm), Some(host_id)) = (&self.state_manager, &self.current_host) {
-            match sm.set_active_profile(host_id, &profile) {
+        if let Some(ref sm) = self.state_manager {
+            let module_service =
+                iron_core::services::DefaultModuleService::new(&self.config_dir, sm.clone());
+            let profile_service = iron_core::services::DefaultProfileService::new(
+                &self.config_dir,
+                sm.clone(),
+                module_service,
+            );
+            match iron_core::services::ProfileService::apply(&profile_service, &profile) {
                 Ok(()) => {
                     self.active_profile = Some(profile.clone());
                     self.set_status(format!("Activated profile: {}", profile));
@@ -240,14 +258,16 @@ impl App {
 
         // Run pre-flight checks with news (Phase 2.3)
         if let Some(ref sm) = self.state_manager {
-            let update_service = DefaultUpdateService::new(sm.clone(), NoopManager);
+            let snapshot_mgr = iron_core::snapshot::create_manager();
+            let update_service = DefaultUpdateService::new(sm.clone(), snapshot_mgr);
             let preflight_result = update_service.run_preflight_checks_with_news(&news_items);
             self.preflight_result = Some(preflight_result);
         } else {
             // Without state manager, run basic pre-flight checks
             let sm = StateManager::new(self.config_dir.clone()).ok();
             if let Some(sm) = sm {
-                let update_service = DefaultUpdateService::new(sm, NoopManager);
+                let snapshot_mgr = iron_core::snapshot::create_manager();
+                let update_service = DefaultUpdateService::new(sm, snapshot_mgr);
                 let preflight_result = update_service.run_preflight_checks_with_news(&news_items);
                 self.preflight_result = Some(preflight_result);
             }
@@ -328,7 +348,8 @@ impl App {
             View::Bundles | View::BundleDetail => {
                 if let Some(ref sm) = self.state_manager {
                     let bundle_service = DefaultBundleService::new(&self.config_dir, sm.clone())
-                        .with_package_manager(self.package_manager.clone());
+                        .with_package_manager(self.package_manager.clone())
+                        .with_service_manager(self.service_manager.clone());
                     self.bundles = bundle_service.discover().unwrap_or_default();
                     self.set_status("Bundles refreshed");
                 }
@@ -356,6 +377,11 @@ impl App {
             }
             View::Settings => {
                 self.refresh_settings();
+            }
+            View::Doctor => {
+                // Re-run health checks by refreshing underlying data
+                let _ = self.init();
+                self.set_status("Health checks refreshed");
             }
             _ => {}
         }
@@ -424,7 +450,8 @@ impl App {
     pub fn switch_bundle(&mut self, bundle_id: String) {
         if let Some(ref sm) = self.state_manager {
             let bundle_service = DefaultBundleService::new(&self.config_dir, sm.clone())
-                .with_package_manager(self.package_manager.clone());
+                .with_package_manager(self.package_manager.clone())
+                .with_service_manager(self.service_manager.clone());
 
             // Deactivate current bundle if any
             if let Some(ref current) = self.active_bundle
@@ -454,6 +481,17 @@ impl App {
 
     /// Run system update via the injected package manager.
     pub fn run_system_update(&mut self) {
+        // Gate on preflight results: block if critical issues
+        if let Some(ref preflight) = self.preflight_result {
+            if !preflight.blockers.is_empty() {
+                self.set_error(format!(
+                    "Pre-flight checks failed: {}. Resolve before updating.",
+                    preflight.blockers.join(", ")
+                ));
+                return;
+            }
+        }
+
         self.set_info("Running system update...");
 
         // Collect package names for post-update checks before update starts
@@ -463,14 +501,31 @@ impl App {
             .map(|p| p.name.clone())
             .collect();
 
-        // Execute the real upgrade (preview=false → actually install)
-        match self.package_manager.upgrade(false) {
-            Ok(_preview) => {
-                self.set_status("System update completed successfully");
+        // Use UpdateService::apply() for snapshot integration
+        let create_snapshot = self.snapshot_backend != iron_core::snapshot::SnapshotBackend::None;
+
+        if let Some(ref sm) = self.state_manager {
+            let snapshot_mgr = iron_core::snapshot::create_manager();
+            let update_service = DefaultUpdateService::new(sm.clone(), snapshot_mgr);
+            match iron_core::services::UpdateService::apply(&update_service, create_snapshot) {
+                Ok(()) => {
+                    self.set_status("System update completed successfully");
+                }
+                Err(e) => {
+                    self.set_error(format!("System update failed: {}", e));
+                    return;
+                }
             }
-            Err(e) => {
-                self.set_error(format!("System update failed: {}", e));
-                return;
+        } else {
+            // Fallback without state manager — direct upgrade
+            match self.package_manager.upgrade(false) {
+                Ok(_) => {
+                    self.set_status("System update completed successfully");
+                }
+                Err(e) => {
+                    self.set_error(format!("System update failed: {}", e));
+                    return;
+                }
             }
         }
 
@@ -487,7 +542,8 @@ impl App {
     /// - Failed systemd services
     pub fn run_post_update_checks(&mut self, updated_packages: &[String]) {
         if let Some(ref sm) = self.state_manager {
-            let update_service = DefaultUpdateService::new(sm.clone(), NoopManager);
+            let snapshot_mgr = iron_core::snapshot::create_manager();
+            let update_service = DefaultUpdateService::new(sm.clone(), snapshot_mgr);
             let result = update_service.run_post_update_checks(updated_packages);
 
             if result.has_issues {
@@ -518,7 +574,8 @@ impl App {
         } else {
             // Without state manager, run basic post-update checks
             if let Ok(sm) = StateManager::new(self.config_dir.clone()) {
-                let update_service = DefaultUpdateService::new(sm, NoopManager);
+                let snapshot_mgr = iron_core::snapshot::create_manager();
+                let update_service = DefaultUpdateService::new(sm, snapshot_mgr);
                 self.post_update_result =
                     Some(update_service.run_post_update_checks(updated_packages));
             }
@@ -623,12 +680,24 @@ impl App {
         }
     }
 
-    /// Push local changes to remote
+    /// Push local changes to remote (auto-commits first if dirty)
     pub fn sync_push(&mut self) {
         use iron_core::services::sync::{DefaultSyncService, SyncService};
 
         if let Some(ref sm) = self.state_manager {
             let sync_service = DefaultSyncService::new(&self.config_dir, sm.clone());
+
+            // Auto-commit uncommitted changes before push
+            if let Ok(status) = sync_service.status() {
+                if status.dirty_files > 0 {
+                    let msg = format!("iron: auto-commit {} change(s)", status.dirty_files);
+                    if let Err(e) = sync_service.commit(&msg) {
+                        self.set_error(format!("Auto-commit failed: {}", e));
+                        return;
+                    }
+                }
+            }
+
             match sync_service.push() {
                 Ok(()) => {
                     self.set_status("Changes pushed successfully");
@@ -643,18 +712,47 @@ impl App {
         }
     }
 
-    /// Pull remote changes
+    /// Pull remote changes (stashes dirty tree first if needed)
     pub fn sync_pull(&mut self) {
         use iron_core::services::sync::{DefaultSyncService, SyncService};
 
         if let Some(ref sm) = self.state_manager {
             let sync_service = DefaultSyncService::new(&self.config_dir, sm.clone());
+
+            // Check for dirty tree and stash if needed
+            let did_stash = if let Ok(status) = sync_service.status() {
+                if status.dirty_files > 0 {
+                    if let Err(e) = sync_service.stash() {
+                        self.set_error(format!("Stash failed: {}", e));
+                        return;
+                    }
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
             match sync_service.pull() {
                 Ok(()) => {
+                    // Restore stashed changes
+                    if did_stash {
+                        if let Err(e) = sync_service.stash_pop() {
+                            self.set_warning(format!(
+                                "Pull succeeded but unstash failed: {}. Run 'git stash pop' manually.",
+                                e
+                            ));
+                        }
+                    }
                     self.set_status("Changes pulled successfully");
                     self.refresh_sync_status();
                 }
                 Err(e) => {
+                    // Restore stashed changes even on pull failure
+                    if did_stash {
+                        let _ = sync_service.stash_pop();
+                    }
                     self.set_error(format!("Pull failed: {}", e));
                 }
             }
@@ -751,7 +849,8 @@ impl App {
         use iron_core::services::recovery::{DefaultRecoveryService, RecoveryService};
 
         if let Some(ref sm) = self.state_manager {
-            let service = DefaultRecoveryService::new(&self.config_dir, sm.clone(), NoopManager);
+            let snapshot_mgr = iron_core::snapshot::create_manager();
+            let service = DefaultRecoveryService::new(&self.config_dir, sm.clone(), snapshot_mgr);
             match service.export() {
                 Ok(_export) => {
                     // Save to timestamped file
@@ -783,7 +882,8 @@ impl App {
         };
 
         if let Some(ref sm) = self.state_manager {
-            let service = DefaultRecoveryService::new(&self.config_dir, sm.clone(), NoopManager);
+            let snapshot_mgr = iron_core::snapshot::create_manager();
+            let service = DefaultRecoveryService::new(&self.config_dir, sm.clone(), snapshot_mgr);
             let options = InstallScriptOptions {
                 include_packages: true,
                 include_aur: true,
@@ -828,7 +928,8 @@ impl App {
         use iron_core::services::recovery::{DefaultRecoveryService, RecoveryService};
 
         if let Some(ref sm) = self.state_manager {
-            let service = DefaultRecoveryService::new(&self.config_dir, sm.clone(), NoopManager);
+            let snapshot_mgr = iron_core::snapshot::create_manager();
+            let service = DefaultRecoveryService::new(&self.config_dir, sm.clone(), snapshot_mgr);
             let output_dir = self.config_dir.join("backups");
             match service.create_backup(&output_dir) {
                 Ok(path) => {
@@ -875,7 +976,8 @@ impl App {
     /// Scan for config conflicts independently (not just post-update)
     pub fn refresh_config_conflicts(&mut self) {
         if let Some(ref sm) = self.state_manager {
-            let update_service = DefaultUpdateService::new(sm.clone(), NoopManager);
+            let snapshot_mgr = iron_core::snapshot::create_manager();
+            let update_service = DefaultUpdateService::new(sm.clone(), snapshot_mgr);
             let conflicts = update_service.find_config_conflicts();
 
             // Store in post_update_result, creating one if it doesn't exist
@@ -1373,6 +1475,7 @@ mod tests {
         let mut app = App::new(
             temp_dir.path().to_path_buf(),
             Arc::new(iron_core::NoopPackageManager),
+            Arc::new(iron_core::NoopSystemService),
         );
         app.view = View::Profiles;
         app.profiles = vec![create_test_profile("old")];
@@ -1389,6 +1492,7 @@ mod tests {
         let mut app = App::new(
             temp_dir.path().to_path_buf(),
             Arc::new(iron_core::NoopPackageManager),
+            Arc::new(iron_core::NoopSystemService),
         );
         app.view = View::Modules;
         app.modules = vec![create_test_module("old")];
@@ -1523,6 +1627,7 @@ mod tests {
         let mut app = App::new(
             temp_dir.path().to_path_buf(),
             Arc::new(iron_core::NoopPackageManager),
+            Arc::new(iron_core::NoopSystemService),
         );
 
         app.init_wizard();
@@ -1557,6 +1662,7 @@ packages = []
         let mut app = App::new(
             temp_dir.path().to_path_buf(),
             Arc::new(iron_core::NoopPackageManager),
+            Arc::new(iron_core::NoopSystemService),
         );
         app.init_wizard();
 
@@ -1578,6 +1684,7 @@ packages = []
         let mut app = App::new(
             temp_dir.path().to_path_buf(),
             Arc::new(iron_core::NoopPackageManager),
+            Arc::new(iron_core::NoopSystemService),
         );
 
         app.load_profiles();
@@ -1610,6 +1717,7 @@ modules = ["nvim-ide", "kitty-dev"]
         let mut app = App::new(
             temp_dir.path().to_path_buf(),
             Arc::new(iron_core::NoopPackageManager),
+            Arc::new(iron_core::NoopSystemService),
         );
         app.load_profiles();
 
@@ -1632,6 +1740,7 @@ modules = ["nvim-ide", "kitty-dev"]
         let mut app = App::new(
             temp_dir.path().to_path_buf(),
             Arc::new(iron_core::NoopPackageManager),
+            Arc::new(iron_core::NoopSystemService),
         );
         app.load_profiles();
 
@@ -1649,6 +1758,7 @@ modules = ["nvim-ide", "kitty-dev"]
         let mut app = App::new(
             temp_dir.path().to_path_buf(),
             Arc::new(iron_core::NoopPackageManager),
+            Arc::new(iron_core::NoopSystemService),
         );
 
         app.load_modules();
@@ -1684,6 +1794,7 @@ depends = []
         let mut app = App::new(
             temp_dir.path().to_path_buf(),
             Arc::new(iron_core::NoopPackageManager),
+            Arc::new(iron_core::NoopSystemService),
         );
         app.load_modules();
 

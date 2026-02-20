@@ -73,7 +73,8 @@ fn main() -> Result<()> {
             let root = std::path::PathBuf::from(&cli.root);
             let package_manager =
                 std::sync::Arc::new(iron_pacman::DefaultPackageManager::default());
-            iron_tui::run_with_config(root, package_manager)
+            let service_manager = std::sync::Arc::new(iron_systemd::SystemdServiceAdapter::user());
+            iron_tui::run_with_config(root, package_manager, service_manager)
         }
         Some(Commands::Completions { shell }) => {
             let mut cmd = Cli::command();

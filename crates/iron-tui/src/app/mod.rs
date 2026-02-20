@@ -10,8 +10,8 @@ use crate::ui::operation_log::OperationFilter;
 use crate::widgets::ProgressTracker;
 use crate::wizard::{TextInput, WizardState};
 use iron_core::{
-    ArchNewsItem, Bundle, Module, NoopPackageManager, PackageManager, PackageUpdate, Profile,
-    RiskLevel,
+    ArchNewsItem, Bundle, Module, NoopPackageManager, NoopSystemService, PackageManager,
+    PackageUpdate, Profile, RiskLevel, SystemService,
     services::StateManager,
     services::clean::{CleanupCategory, CleanupPreview, CleanupSummary},
     services::sync::SyncInfo,
@@ -80,6 +80,8 @@ pub struct App {
     pub host_input: TextInput,
     /// Package manager (injected)
     pub package_manager: Arc<dyn PackageManager>,
+    /// Service manager for systemd operations (injected)
+    pub service_manager: Arc<dyn SystemService>,
     /// Installed package count (cached)
     pub installed_count: usize,
     /// Pending updates (cached)
@@ -270,13 +272,21 @@ pub enum HealthStatus {
 
 impl Default for App {
     fn default() -> Self {
-        Self::new(std::path::PathBuf::from("."), Arc::new(NoopPackageManager))
+        Self::new(
+            std::path::PathBuf::from("."),
+            Arc::new(NoopPackageManager),
+            Arc::new(NoopSystemService),
+        )
     }
 }
 
 impl App {
-    /// Create a new application instance with a package manager
-    pub fn new(config_dir: PathBuf, package_manager: Arc<dyn PackageManager>) -> Self {
+    /// Create a new application instance with injected package and service managers
+    pub fn new(
+        config_dir: PathBuf,
+        package_manager: Arc<dyn PackageManager>,
+        service_manager: Arc<dyn SystemService>,
+    ) -> Self {
         Self {
             view: View::Dashboard,
             previous_view: None,
@@ -301,6 +311,7 @@ impl App {
             wizard: WizardState::new(),
             host_input: TextInput::new(""),
             package_manager,
+            service_manager,
             installed_count: 0,
             pending_updates: Vec::new(),
             update_risk: RiskLevel::Low,

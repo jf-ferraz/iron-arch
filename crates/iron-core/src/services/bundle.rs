@@ -7,7 +7,7 @@ use crate::packages::{NoopPackageManager, PackageManager};
 use crate::services::state::StateManager;
 use crate::system_service::{NoopSystemService, SystemService};
 use crate::validation::expand_home;
-use crate::{IronResult, StateError};
+use crate::{FsError, IronResult, StateError};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -87,6 +87,110 @@ impl DefaultBundleService {
         self.bundles_dir.join(id)
     }
 
+    /// Get the dormant directory for a bundle (sibling to bundles/).
+    fn dormant_dir(&self, id: &str) -> PathBuf {
+        self.bundles_dir
+            .parent()
+            .expect("bundles_dir should have a parent")
+            .join("dormant")
+            .join(id)
+    }
+
+    /// Resolve the dotfiles directory for a bundle.
+    ///
+    /// Supports both `dotfiles/` (legacy convention) and `config/` (current convention).
+    /// Returns `dotfiles/` if it exists, otherwise falls back to `config/`.
+    /// Returns `None` if neither directory exists.
+    fn resolve_dotfiles_dir(&self, bundle_id: &str) -> Option<PathBuf> {
+        let bundle_dir = self.bundle_dir(bundle_id);
+        let dotfiles_dir = bundle_dir.join("dotfiles");
+        if dotfiles_dir.exists() {
+            return Some(dotfiles_dir);
+        }
+        let config_dir = bundle_dir.join("config");
+        if config_dir.exists() {
+            return Some(config_dir);
+        }
+        None
+    }
+
+    /// Archive a bundle's dotfiles directory to `dormant/<id>/`.
+    ///
+    /// Moves the bundle's resolved dotfiles dir (e.g. `bundles/<id>/config/`)
+    /// into `dormant/<id>/`. Only moves if a dotfiles dir is found.
+    fn archive_to_dormant(&self, id: &str) -> IronResult<()> {
+        if let Some(dotfiles_src) = self.resolve_dotfiles_dir(id) {
+            let dormant = self.dormant_dir(id);
+            Self::move_dir(&dotfiles_src, &dormant)?;
+        }
+        Ok(())
+    }
+
+    /// Restore a bundle's dotfiles from `dormant/<id>/` back to `bundles/<id>/config/`.
+    ///
+    /// Only restores if the dormant directory exists.
+    fn restore_from_dormant(&self, id: &str) -> IronResult<()> {
+        let dormant = self.dormant_dir(id);
+        if dormant.exists() {
+            let target = self.bundle_dir(id).join("config");
+            Self::move_dir(&dormant, &target)?;
+        }
+        Ok(())
+    }
+
+    /// Move a directory from `src` to `dst` (rename-first, copy+delete fallback).
+    fn move_dir(src: &Path, dst: &Path) -> IronResult<()> {
+        if let Some(parent) = dst.parent() {
+            fs::create_dir_all(parent).map_err(|e| FsError::IoError {
+                message: format!("Cannot create parent {}: {}", parent.display(), e),
+            })?;
+        }
+        if dst.exists() {
+            fs::remove_dir_all(dst).map_err(|e| FsError::IoError {
+                message: format!("Cannot remove destination {}: {}", dst.display(), e),
+            })?;
+        }
+        match fs::rename(src, dst) {
+            Ok(()) => Ok(()),
+            Err(_) => {
+                Self::copy_dir_recursive(src, dst)?;
+                fs::remove_dir_all(src).map_err(|e| FsError::IoError {
+                    message: format!("Cannot remove source after copy: {}", e),
+                })?;
+                Ok(())
+            }
+        }
+    }
+
+    /// Recursively copy a directory tree.
+    fn copy_dir_recursive(src: &Path, dst: &Path) -> IronResult<()> {
+        fs::create_dir_all(dst).map_err(|e| FsError::IoError {
+            message: format!("Cannot create directory {}: {}", dst.display(), e),
+        })?;
+        for entry in fs::read_dir(src).map_err(|e| FsError::IoError {
+            message: format!("Cannot read directory {}: {}", src.display(), e),
+        })? {
+            let entry = entry.map_err(|e| FsError::IoError {
+                message: format!("Cannot read entry: {}", e),
+            })?;
+            let src_path = entry.path();
+            let dst_path = dst.join(entry.file_name());
+            if src_path.is_dir() {
+                Self::copy_dir_recursive(&src_path, &dst_path)?;
+            } else {
+                fs::copy(&src_path, &dst_path).map_err(|e| FsError::IoError {
+                    message: format!(
+                        "Cannot copy {} → {}: {}",
+                        src_path.display(),
+                        dst_path.display(),
+                        e
+                    ),
+                })?;
+            }
+        }
+        Ok(())
+    }
+
     /// Get current host ID
     fn current_host(&self) -> IronResult<String> {
         self.state_manager
@@ -121,12 +225,10 @@ impl DefaultBundleService {
 
     /// Link bundle dotfiles
     fn link_dotfiles(&self, bundle: &Bundle) -> IronResult<()> {
-        let bundle_dir = self.bundle_dir(&bundle.id);
-        let dotfiles_dir = bundle_dir.join("dotfiles");
-
-        if !dotfiles_dir.exists() {
-            return Ok(());
-        }
+        let dotfiles_dir = match self.resolve_dotfiles_dir(&bundle.id) {
+            Some(dir) => dir,
+            None => return Ok(()),
+        };
 
         // Walk dotfiles directory and create symlinks
         for entry in walkdir::WalkDir::new(&dotfiles_dir)
@@ -165,12 +267,10 @@ impl DefaultBundleService {
 
     /// Unlink bundle dotfiles
     fn unlink_dotfiles(&self, bundle: &Bundle) -> IronResult<()> {
-        let bundle_dir = self.bundle_dir(&bundle.id);
-        let dotfiles_dir = bundle_dir.join("dotfiles");
-
-        if !dotfiles_dir.exists() {
-            return Ok(());
-        }
+        let dotfiles_dir = match self.resolve_dotfiles_dir(&bundle.id) {
+            Some(dir) => dir,
+            None => return Ok(()),
+        };
 
         // Walk dotfiles directory and remove symlinks
         for entry in walkdir::WalkDir::new(&dotfiles_dir)
@@ -289,12 +389,31 @@ impl BundleService for DefaultBundleService {
             if active_id == id {
                 return Err(StateError::BundleAlreadyActive { id: id.to_string() }.into());
             }
-            // Deactivate current bundle first
+        }
+
+        // Block activation if conflicts with currently active bundles
+        let conflicts = self.check_conflicts(id)?;
+        if !conflicts.is_empty() {
+            return Err(StateError::Conflict {
+                message: format!(
+                    "Bundle '{}' conflicts with active bundle(s): {}",
+                    id,
+                    conflicts.join(", ")
+                ),
+            }
+            .into());
+        }
+
+        // Deactivate current bundle first (after conflict check passes)
+        if let Some(active_id) = self.state_manager.active_bundle(&host_id) {
             self.deactivate(&active_id)?;
         }
 
         // Install packages
         self.install_packages(&bundle)?;
+
+        // Restore dotfiles from dormant/<id>/ if previously archived
+        self.restore_from_dormant(id)?;
 
         // Link dotfiles
         self.link_dotfiles(&bundle)?;
@@ -327,6 +446,9 @@ impl BundleService for DefaultBundleService {
         // Unlink dotfiles
         self.unlink_dotfiles(&bundle)?;
 
+        // Archive dotfiles to dormant/<id>/
+        self.archive_to_dormant(id)?;
+
         // Note: We typically don't remove packages on deactivation
         // as they might be shared with other bundles
 
@@ -340,8 +462,21 @@ impl BundleService for DefaultBundleService {
         // Deactivate current bundle
         self.deactivate(from)?;
 
-        // Activate new bundle
-        self.activate(to)?;
+        // Activate new bundle; rollback on failure
+        if let Err(e) = self.activate(to) {
+            // Attempt to re-activate the original bundle
+            if let Err(rollback_err) = self.activate(from) {
+                return Err(StateError::Conflict {
+                    message: format!(
+                        "Switch failed and rollback also failed: activation of '{}' failed ({}), \
+                         rollback to '{}' failed ({})",
+                        to, e, from, rollback_err
+                    ),
+                }
+                .into());
+            }
+            return Err(e);
+        }
 
         Ok(())
     }
@@ -356,11 +491,13 @@ impl BundleService for DefaultBundleService {
             return Ok(BundleState::Active);
         }
 
-        // Check if dotfiles are linked (dormant)
-        let bundle_dir = self.bundle_dir(id);
-        let dotfiles_dir = bundle_dir.join("dotfiles");
+        // Check if archived in dormant/
+        if self.dormant_dir(id).exists() {
+            return Ok(BundleState::Dormant);
+        }
 
-        if dotfiles_dir.exists() {
+        // Fallback: check if any dotfile symlinks exist (legacy heuristic)
+        if let Some(dotfiles_dir) = self.resolve_dotfiles_dir(id) {
             for entry in walkdir::WalkDir::new(&dotfiles_dir)
                 .min_depth(1)
                 .into_iter()
@@ -374,7 +511,6 @@ impl BundleService for DefaultBundleService {
                 let target = expand_home(Path::new(&relative_str));
 
                 if target.is_symlink() {
-                    // Some dotfiles are linked, might be dormant
                     return Ok(BundleState::Dormant);
                 }
             }
@@ -656,5 +792,179 @@ mod tests {
 
         let result = service.activate("nonexistent");
         assert!(result.is_err());
+    }
+
+    // =========================================================================
+    // S1-P4-006: dotfiles/config directory resolution tests
+    // =========================================================================
+
+    #[test]
+    fn test_resolve_dotfiles_dir_prefers_dotfiles() {
+        let (service, temp_dir) = create_test_service();
+        create_test_bundle(temp_dir.path(), "test-bundle");
+
+        // Create both directories
+        let bundle_dir = temp_dir.path().join("bundles").join("test-bundle");
+        fs::create_dir_all(bundle_dir.join("dotfiles")).unwrap();
+        fs::create_dir_all(bundle_dir.join("config")).unwrap();
+
+        let resolved = service.resolve_dotfiles_dir("test-bundle");
+        assert!(resolved.is_some());
+        assert!(resolved.unwrap().ends_with("dotfiles"));
+    }
+
+    #[test]
+    fn test_resolve_dotfiles_dir_falls_back_to_config() {
+        let (service, temp_dir) = create_test_service();
+        create_test_bundle(temp_dir.path(), "test-bundle");
+
+        // Create only config/ (not dotfiles/)
+        let bundle_dir = temp_dir.path().join("bundles").join("test-bundle");
+        fs::create_dir_all(bundle_dir.join("config")).unwrap();
+
+        let resolved = service.resolve_dotfiles_dir("test-bundle");
+        assert!(resolved.is_some());
+        assert!(resolved.unwrap().ends_with("config"));
+    }
+
+    #[test]
+    fn test_resolve_dotfiles_dir_returns_none() {
+        let (service, temp_dir) = create_test_service();
+        create_test_bundle(temp_dir.path(), "test-bundle");
+        // No dotfiles/ or config/ created
+
+        let resolved = service.resolve_dotfiles_dir("test-bundle");
+        assert!(resolved.is_none());
+    }
+
+    fn create_test_bundle_with_conflicts(dir: &Path, id: &str, conflicts: Vec<String>) {
+        let bundle_dir = dir.join("bundles").join(id);
+        fs::create_dir_all(&bundle_dir).unwrap();
+
+        let bundle = Bundle {
+            id: id.to_string(),
+            name: format!("Test Bundle {}", id),
+            description: Some("A test bundle".to_string()),
+            bundle_type: BundleType::WaylandCompositor,
+            packages: vec!["pkg1".to_string()],
+            aur_packages: vec![],
+            profiles: vec![],
+            default_profile: None,
+            conflicts,
+            services: vec![],
+            post_install: None,
+        };
+
+        let config_path = bundle_dir.join("bundle.toml");
+        let content = toml::to_string_pretty(&bundle).unwrap();
+        fs::write(config_path, content).unwrap();
+    }
+
+    #[test]
+    fn test_activate_blocked_by_conflict() {
+        let (service, temp_dir) = create_test_service();
+
+        // Create "hyprland" with no conflicts
+        create_test_bundle(temp_dir.path(), "hyprland");
+        // Create "niri" that declares conflict with "hyprland"
+        create_test_bundle_with_conflicts(temp_dir.path(), "niri", vec!["hyprland".to_string()]);
+
+        // Activate hyprland first
+        service.activate("hyprland").unwrap();
+        assert_eq!(service.state("hyprland").unwrap(), BundleState::Active);
+
+        // Attempting to activate niri should fail due to conflict
+        let result = service.activate("niri");
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(
+            err_msg.contains("conflict"),
+            "Expected conflict error, got: {}",
+            err_msg
+        );
+
+        // hyprland should still be active (no state change)
+        assert_eq!(service.state("hyprland").unwrap(), BundleState::Active);
+    }
+
+    #[test]
+    fn test_activate_succeeds_when_no_conflict() {
+        let (service, temp_dir) = create_test_service();
+
+        // Create two bundles that don't conflict
+        create_test_bundle(temp_dir.path(), "hyprland");
+        create_test_bundle(temp_dir.path(), "niri");
+
+        // Activate hyprland
+        service.activate("hyprland").unwrap();
+
+        // Activating niri should succeed (switches via deactivate + activate)
+        service.activate("niri").unwrap();
+        assert_eq!(service.state("niri").unwrap(), BundleState::Active);
+    }
+
+    #[test]
+    fn test_switch_rollback_on_failure() {
+        let (service, temp_dir) = create_test_service();
+
+        // Create only the "from" bundle
+        create_test_bundle(temp_dir.path(), "hyprland");
+
+        // Activate hyprland
+        service.activate("hyprland").unwrap();
+        assert_eq!(service.state("hyprland").unwrap(), BundleState::Active);
+
+        // Attempt to switch to nonexistent bundle — should fail and rollback
+        let result = service.switch("hyprland", "nonexistent");
+        assert!(result.is_err());
+
+        // hyprland should be re-activated (rollback succeeded)
+        assert_eq!(service.state("hyprland").unwrap(), BundleState::Active);
+    }
+
+    #[test]
+    fn test_dormant_lifecycle() {
+        let (service, temp_dir) = create_test_service();
+        create_test_bundle(temp_dir.path(), "hyprland");
+
+        // Create a config directory with a file
+        let config_dir = temp_dir.path().join("bundles/hyprland/config");
+        fs::create_dir_all(&config_dir).unwrap();
+        fs::write(config_dir.join("hyprland.conf"), "monitor=DP-1").unwrap();
+
+        // Activate
+        service.activate("hyprland").unwrap();
+        assert_eq!(service.state("hyprland").unwrap(), BundleState::Active);
+        assert!(config_dir.exists(), "config/ should exist while active");
+
+        // Deactivate → config should be archived to dormant/
+        service.deactivate("hyprland").unwrap();
+        let dormant = temp_dir.path().join("dormant/hyprland");
+        assert!(
+            dormant.exists(),
+            "dormant dir should exist after deactivate"
+        );
+        assert!(
+            dormant.join("hyprland.conf").exists(),
+            "archived config file should be in dormant/"
+        );
+        assert!(!config_dir.exists(), "config/ should be gone after archive");
+        assert_eq!(service.state("hyprland").unwrap(), BundleState::Dormant);
+
+        // Re-activate → config should be restored from dormant/
+        service.activate("hyprland").unwrap();
+        assert!(
+            config_dir.exists(),
+            "config/ should be restored on activate"
+        );
+        assert!(
+            config_dir.join("hyprland.conf").exists(),
+            "restored config file should be back"
+        );
+        assert!(
+            !dormant.exists(),
+            "dormant dir should be gone after restore"
+        );
+        assert_eq!(service.state("hyprland").unwrap(), BundleState::Active);
     }
 }

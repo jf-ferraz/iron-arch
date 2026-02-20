@@ -50,24 +50,25 @@ Iron has **two separate secrets abstractions** that overlap significantly:
 | `SecretsManager` | `iron-git/src/lib.rs` | 4-method trait wrapping `git-crypt` | Nothing in current codebase |
 
 **Neither layer is used by the TUI.** The TUI Secrets view renders UI chrome from
-hardcoded state fields (`secrets_status: Option<String>`, `encrypted_files: Vec<PathBuf>`)
-but has **zero action handlers** — no keybinds are wired. The `[i]`, `[u]`, `[l]`, `[a]`
-keys shown in the UI do nothing.
+state fields (`secrets_status: Option<String>`, `encrypted_files: Vec<PathBuf>`)
+and now has **action handlers wired** (S1-P9-001): `[i]` init, `[u]` unlock, `[l]` lock,
+`[r]` refresh are all functional. `[a]` Add GPG key is deferred (needs text input widget).
+State is auto-populated via `refresh_secrets()` on navigation.
 
-### Key Architectural Finding: TUI Views Are Render-Only Shells
+### Key Architectural Finding: TUI Views — Wiring Status
 
-**This is the most critical Phase 9 discovery.** Three TUI views — Secrets, Recovery,
-and (partially) Security — are visual shells with no backend wiring:
+> **Update (2026-02-19)**: Secrets and Recovery views were wired in S1-P9-001 and
+> S1-P9-002. The table below reflects the current state.
 
 | View | Renders | Has Handlers | Has Actions | State Populated |
-|------|---------|-------------|-------------|-----------------|
-| Secrets | Status + file list + keybind hints | **NO** | **NO** | **NEVER** (always None/empty) |
-| Recovery | Status + action list + keybind hints | **NO** | **NO** | **NEVER** (always None) |
+|------|---------|-------------|-------------|-------------------|
+| Secrets | Status + file list + keybind hints | **YES** ✅ (i/u/l/r) | **YES** ✅ (4 methods) | **YES** (auto-refresh on navigate) |
+| Recovery | Status + action list + keybind hints | **YES** ✅ (e/g/s) | **YES** ✅ (3 methods) | **PARTIAL** (last_backup from audit log) |
 | SecurityModules | Module list with toggle | **YES** (e/i toggle, j/k nav) | YES (via toggle_selected_module) | YES (from modules list) |
 
-Secrets and Recovery views navigate correctly (`Shift+S`, `Shift+R`) and display
-beautifully, but pressing any action key is a no-op because `View::Secrets` and
-`View::Recovery` are not matched in the handler's view-specific `match` block.
+Secrets and Recovery views navigate correctly (`Shift+S`, `Shift+R`), handle
+action keybinds, and auto-populate state on entry. Remaining gaps: `[a]` Add GPG key
+(needs text input widget), `[i]` Import and `[r]` Recovery wizard (need file path input).
 
 ### Key Components
 
@@ -647,24 +648,26 @@ if matches!(view, View::Secrets) {
 
 ## 11. Discovered Issues — Outside Original Phase 9 Scope
 
-### D-P9-001 (P0) — TUI Secrets View Has Zero Action Wiring
+### D-P9-001 (P0) — ✅ RESOLVED: TUI Secrets View Wired (S1-P9-001)
 
-**Location**: `handlers.rs` — no `View::Secrets` match arm  
-**Problem**: The Secrets view shows keybind hints ([i], [u], [l], [a]) but none of
-them do anything. `View::Secrets` is not matched in the handler, so all keys fall
-through to the `_ => false` default.  
-**Impact**: Users see a functional-looking UI but cannot interact with git-crypt at all.  
-**Fix**: Add `View::Secrets` handler block + action methods. This IS the core of
-S1-P9-001 but the severity should be elevated to P0 since the view is effectively broken.
+> **Fixed 2026-02-19**: `View::Secrets` handler arm added at handlers.rs L361.
+> Keybinds: `i` (init), `u` (unlock), `l` (lock), `r` (refresh). Auto-refresh on navigate.
+> 5 handler tests added. `[a]` Add GPG key deferred (needs text input widget).
 
-### D-P9-002 (P0) — TUI Recovery View Has Zero Action Wiring
+~~**Location**: `handlers.rs` — no `View::Secrets` match arm~~  
+~~**Problem**: The Secrets view shows keybind hints ([i], [u], [l], [a]) but none of
+them do anything.~~
 
-**Location**: `handlers.rs` — no `View::Recovery` match arm  
-**Problem**: Same as Secrets. The Recovery view shows keybind hints ([g], [e], [i],
-[r], [s]) but none do anything.  
-**Impact**: Users cannot export state, generate install scripts, or create backups
-from the TUI.  
-**Fix**: Add `View::Recovery` handler block + action methods.
+### D-P9-002 (P0) — ✅ RESOLVED: TUI Recovery View Wired (S1-P9-002)
+
+> **Fixed 2026-02-19**: `View::Recovery` handler arm added at handlers.rs L382.
+> Keybinds: `e` (export), `g` (generate script), `s` (snapshot). Auto-populate
+> `last_backup` from audit log on navigate. 4 handler tests added.
+> `[i]` Import and `[r]` Recovery wizard deferred (need file path input widget).
+
+~~**Location**: `handlers.rs` — no `View::Recovery` match arm~~  
+~~**Problem**: Same as Secrets. The Recovery view shows keybind hints ([g], [e], [i],
+[r], [s]) but none do anything.~~
 
 ### D-P9-003 (P1) — Secrets State Never Populated
 

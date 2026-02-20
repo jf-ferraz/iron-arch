@@ -1,14 +1,11 @@
 //! Iron Clean Command
 //!
-//! System cleanup operations.
+//! System cleanup operations using `CleanupService`.
 
 use crate::context::{AppContext, require_init};
 use crate::output::StatusBadge;
 use anyhow::Result;
-use iron_core::services::module::ModuleService;
-use iron_core::validation::expand_home;
-use std::path::Path;
-use std::process::Command;
+use iron_core::services::clean::{CleanupCategory, CleanupService, DefaultCleanupService};
 
 /// Execute clean command
 pub fn execute(
@@ -21,128 +18,77 @@ pub fn execute(
     require_init(ctx)?;
 
     let output = &ctx.output;
-    let do_all = all || (!orphans && !cache && !symlinks);
+    let service = DefaultCleanupService::new();
+
+    // Build category list from flags
+    let categories: Vec<CleanupCategory> = if all || (!orphans && !cache && !symlinks) {
+        CleanupCategory::safe().to_vec()
+    } else {
+        let mut cats = Vec::new();
+        if orphans {
+            cats.push(CleanupCategory::OrphanPackages);
+        }
+        if cache {
+            cats.push(CleanupCategory::PackageCache);
+        }
+        if symlinks {
+            // Symlinks don't have a dedicated CleanupCategory — handle via
+            // category list (UserCache is closest). For backwards compat we
+            // include the safe set minus aggressive.
+            cats.push(CleanupCategory::UserCache);
+        }
+        cats
+    };
 
     output.header("Iron Cleanup");
 
-    let mut cleaned = false;
-
-    // Clean orphan packages
-    if orphans || do_all {
-        output.subheader("Orphan Packages");
-        clean_orphans(ctx)?;
-        cleaned = true;
+    // Preview first
+    let previews = service.preview(&categories);
+    for preview in &previews {
+        output.subheader(preview.category.name());
+        output.info(&format!(
+            "  {} items, estimated {}",
+            preview.items_count,
+            preview.space_formatted()
+        ));
     }
 
-    // Clear package cache
-    if cache || do_all {
-        output.subheader("Package Cache");
-        clean_cache(ctx)?;
-        cleaned = true;
-    }
+    // Execute (dry_run=false for real cleanup)
+    let summary = service.execute(&categories, false);
 
-    // Fix broken symlinks
-    if symlinks || do_all {
-        output.subheader("Broken Symlinks");
-        clean_symlinks(ctx)?;
-        cleaned = true;
-    }
+    output.separator();
 
-    if !cleaned {
-        output.info("No cleanup operations specified.");
-        output.info("Use --all or specify: --orphans, --cache, --symlinks");
-    } else {
-        output.separator();
-        output.success("Cleanup complete");
-    }
-
-    Ok(())
-}
-
-/// Clean orphan packages
-fn clean_orphans(ctx: &AppContext) -> Result<()> {
-    let output = &ctx.output;
-
-    // Check for orphans
-    let orphan_check = Command::new("pacman").args(["-Qtdq"]).output();
-
-    match orphan_check {
-        Ok(result) => {
-            let orphans_output = String::from_utf8_lossy(&result.stdout);
-            let orphans: Vec<&str> = orphans_output.lines().collect();
-
-            if orphans.is_empty() {
-                output.list_item_status("No orphan packages found", StatusBadge::Ok);
-            } else {
-                output.info(&format!("Found {} orphan packages:", orphans.len()));
-                for pkg in &orphans {
-                    output.list_item(pkg);
-                }
-                output.warning("Run 'sudo pacman -Rns $(pacman -Qtdq)' to remove");
-            }
-        }
-        Err(_) => {
-            output.warning("Could not check for orphan packages");
+    for result in &summary.results {
+        if result.success {
+            output.list_item_status(
+                &format!(
+                    "{}: {} items cleaned ({})",
+                    result.category.name(),
+                    result.items_cleaned,
+                    result.space_formatted()
+                ),
+                StatusBadge::Ok,
+            );
+        } else {
+            output.list_item_status(
+                &format!(
+                    "{}: {}",
+                    result.category.name(),
+                    result.error.as_deref().unwrap_or("unknown error")
+                ),
+                StatusBadge::Error,
+            );
         }
     }
 
-    Ok(())
-}
-
-/// Clean package cache
-fn clean_cache(ctx: &AppContext) -> Result<()> {
-    let output = &ctx.output;
-
-    // Check cache size
-    let cache_path = Path::new("/var/cache/pacman/pkg");
-    if cache_path.exists() {
-        if let Ok(entries) = std::fs::read_dir(cache_path) {
-            let count = entries.count();
-            output.info(&format!("Package cache contains {} files", count));
-            output.warning("Run 'sudo paccache -r' to clean old versions");
-            output.warning("Run 'sudo paccache -ruk0' to remove uninstalled packages");
-        }
-    } else {
-        output.list_item_status("Package cache not found", StatusBadge::Warning);
-    }
-
-    Ok(())
-}
-
-/// Clean broken symlinks
-fn clean_symlinks(ctx: &AppContext) -> Result<()> {
-    let output = &ctx.output;
-    let module_service = ctx.module_service();
-    let modules = module_service.discover().unwrap_or_default();
-
-    let mut broken = Vec::new();
-
-    for module in &modules {
-        for dotfile in &module.dotfiles {
-            let target = expand_home(Path::new(&dotfile.target));
-            if target.is_symlink()
-                && let Ok(link_target) = std::fs::read_link(&target)
-                && !link_target.exists()
-            {
-                broken.push(target.clone());
-            }
-        }
-    }
-
-    if broken.is_empty() {
-        output.list_item_status("No broken symlinks found", StatusBadge::Ok);
-    } else {
-        output.info(&format!("Found {} broken symlinks:", broken.len()));
-        for link in &broken {
-            output.list_item(&link.display().to_string());
-
-            // Remove the broken symlink
-            if std::fs::remove_file(link).is_ok() {
-                output.verbose(&format!("  Removed: {}", link.display()));
-            }
-        }
-        output.success(&format!("Removed {} broken symlinks", broken.len()));
-    }
+    output.separator();
+    output.success(&format!(
+        "Cleanup complete: {} items, {} reclaimed ({} succeeded, {} failed)",
+        summary.total_items,
+        summary.space_formatted(),
+        summary.successful,
+        summary.failed,
+    ));
 
     Ok(())
 }

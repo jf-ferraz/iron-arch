@@ -78,15 +78,16 @@ Welcome (1)  →  HostSetup (2)  →  BundleSelection (3)  →  ProfileSelection
 ### Data Flow During `apply()`
 
 ```
-WizardState::apply(config_dir)
+WizardState::apply(config_dir, package_manager)
   │
   ├─ StateManager::new(config_dir)              → creates/loads state.json
   ├─ state_manager.set_current_host(host_id)    → persists to state.json
-  ├─ DefaultBundleService::new(config_dir, sm)  → ⚠ NoopPackageManager (BUG)
+  ├─ DefaultBundleService::new(config_dir, sm)
+  │     .with_package_manager(package_manager)   → ✅ real PM injected (S1-P1-005)
   │     └─ bundle_service.activate(bundle_id)
-  │           ├─ install_packages()             → NoopPackageManager.install() = no-op
+  │           ├─ install_packages()             → real PM installs packages
   │           ├─ link_dotfiles()                → symlinks via stow
-  │           └─ enable_services()              → NoopSystemService = no-op
+  │           └─ enable_services()              → NoopSystemService = no-op (see S1-P4-003)
   └─ state_manager.set_active_profile(host, profile)
 ```
 
@@ -136,8 +137,8 @@ There were **6 total** `DefaultBundleService::new()` call sites across the TUI c
 | 2 | `actions.rs:49` | `init()` — fallback bundle load | **NO** → **FIXED** | Discovery-only (low impact) |
 | 3 | `actions.rs:82` | `execute_confirm_action()` — RemoveBundle | **NO** → **FIXED** | `deactivate()` skips package removal (medium) |
 | 4 | `actions.rs:421` | `switch_bundle()` | **NO** → **FIXED** | `activate()` skips package install (HIGH) |
-| 5 | `actions.rs:325` | `refresh_current_view()` — Bundles | **NO** → **UNFIXED** | Discovery-only (low impact, overlooked) |
-| 6 | `wizard.rs:348` | `WizardState::apply()` — first-time activate | **NO** → **UNFIXED** | `activate()` skips package install (HIGH) |
+| 5 | `actions.rs:325` | `refresh_current_view()` — Bundles | **NO** → **FIXED** (S1-P1-005) | Discovery-only (low impact) |
+| 6 | `wizard.rs:348` | `WizardState::apply()` — first-time activate | **NO** → **FIXED** (S1-P1-005) | `activate()` now installs packages ✅ |
 
 ### 2.3 What Was Fixed
 
@@ -152,45 +153,31 @@ let bundle_service = DefaultBundleService::new(&self.config_dir, sm.clone())
 This works because `App` stores `package_manager: Arc<dyn PackageManager>` (injected
 at construction via `App::new()`), and `Arc::clone()` is cheap (reference count increment).
 
-### 2.4 Remaining Gaps (Discovered During Analysis)
+### 2.4 Remaining Gaps — ✅ All Resolved (S1-P1-005)
 
-**Gap A — `refresh_current_view()` at actions.rs:325**:
+> **Both gaps below were fixed in S1-P1-005 (2026-02-19).** The descriptions below
+> are preserved for historical context.
+
+**Gap A — `refresh_current_view()` at actions.rs:325** — ✅ FIXED:
 
 ```rust
-// Current code (still missing PM):
+// Fixed code — PM now injected:
 View::Bundles | View::BundleDetail => {
     if let Some(ref sm) = self.state_manager {
-        let bundle_service = DefaultBundleService::new(&self.config_dir, sm.clone());
-        //                 ← missing .with_package_manager()
+        let bundle_service = DefaultBundleService::new(&self.config_dir, sm.clone())
+            .with_package_manager(self.package_manager.clone());
         self.bundles = bundle_service.discover().unwrap_or_default();
     }
 }
 ```
 
 **Impact**: Low. `discover()` only reads TOML files from disk — it doesn't call
-`install_packages()`. The PM is unused during discovery. However, for consistency and
-to prevent future bugs if `discover()` ever gains PM-dependent behavior, this should
-be fixed.
+`install_packages()`. The PM is unused during discovery. Fixed for consistency.
 
-**Gap B — `WizardState::apply()` at wizard.rs:348**:
+**Gap B — `WizardState::apply()` at wizard.rs:348** — ✅ FIXED:
 
 ```rust
-// Current code (still missing PM):
-let bundle_service = DefaultBundleService::new(config_dir, state_manager.clone());
-if let Err(e) = bundle_service.activate(bundle_id) { ... }
-```
-
-**Impact**: HIGH. This is invoked during the first-time setup wizard when the user
-selects a bundle and confirms. `activate()` calls `install_packages()` which uses
-`NoopPackageManager`. The user's selected bundle packages are **never installed**.
-
-**Root cause**: `WizardState` is a standalone struct that doesn't have access to
-`App.package_manager`. It creates its own `DefaultBundleService` internally.
-
-**Recommended fix** (for a future sprint or follow-up):
-
-```rust
-// Option A: Pass PM as parameter to apply()
+// Fixed code — PM passed as parameter and injected:
 pub fn apply(
     &mut self,
     config_dir: &Path,
@@ -199,30 +186,13 @@ pub fn apply(
     // ...
     let bundle_service = DefaultBundleService::new(config_dir, state_manager.clone())
         .with_package_manager(package_manager);
-    // ...
+    if let Err(e) = bundle_service.activate(bundle_id) { ... }
 }
-
-// Then in handlers.rs, Confirmation step:
-WizardStep::Confirmation => match key.code {
-    KeyCode::Enter | KeyCode::Char('y') => {
-        match self.wizard.apply(&self.config_dir, self.package_manager.clone()) {
 ```
 
-**Trade-off**: This changes the `apply()` signature, which requires updating all
-call sites and tests. The `WizardState` deliberately avoids owning an `Arc<dyn PackageManager>`
-to keep the wizard testable without mock setup.
-
-**Alternatively** — have `App::init()` (called right after `apply()` succeeds in the
-handler) also do a `bundle_service.activate()` with the real PM. But this would
-double-activate and potentially cause idempotency issues.
-
-The safest immediate fix is **Option A** — adding the PM parameter. This task was
-overlooked in the Sprint 1 fix because the analysis focused on `actions.rs` call sites,
-not the `wizard.rs` call site.
-
-### 2.5 Verification
-
-After the Sprint 1 fix, the following call sites correctly inject the PM:
+**Fix applied**: Option A — added `package_manager: Arc<dyn PackageManager>` parameter
+to `apply()`. Handler call site in `handlers.rs` passes `self.package_manager.clone()`.
+All 362 tests pass.
 
 ```
 ✅ actions.rs:27   — init() load from state

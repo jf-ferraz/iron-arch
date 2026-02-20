@@ -91,7 +91,7 @@ Defined at `crates/iron-core/src/services/bundle.rs` (L16–L40):
 | `load(id)` | L21 | Parse a single bundle by ID |
 | `active()` | L24 | Return currently active bundle via state |
 | `activate(id)` | L27 | Full activation: packages → dotfiles → services → state |
-| `deactivate(id)` | L30 | Deactivation: services → unlink dotfiles (no state update!) |
+| `deactivate(id)` | L30 | Deactivation: services → unlink dotfiles → clear state ✅ (S1-P4-004) |
 | `switch(from, to)` | L33 | Sequential deactivate + activate |
 | `state(id)` | L36 | Determine bundle's state (Active/Dormant/NotInstalled) |
 | `check_conflicts(id)` | L39 | Return IDs of conflicting bundles that are currently Active |
@@ -120,7 +120,7 @@ User presses 'a' on Bundles/BundleDetail view
        │    └─ bundle_service.deactivate(current.id)
        │         ├─ disable_services() → NoopSystemService (silent no-op)
        │         ├─ unlink_dotfiles() → removes symlinks, restores .iron-backup
-       │         └─ NO state update ← BUG
+       │         ├─ clear_active_bundle(host_id) → removes from state.json ✅ (S1-P4-004)
        │         └─ NO move to dormant/ ← GAP (S1-P4-001)
        │
        └─ bundle_service.activate(bundle_id)
@@ -162,7 +162,7 @@ But `deactivate()` at `crates/iron-core/src/services/bundle.rs` L320–342 only:
 
 It does **not**:
 - Move any config files to `dormant/`
-- Update state to clear the active bundle
+- ~~Update state to clear the active bundle~~ → ✅ **FIXED** (S1-P4-004): `clear_active_bundle()` added
 - Record the dormant state anywhere
 
 The `dormant/` directory at workspace root exists but is empty.

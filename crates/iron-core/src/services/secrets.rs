@@ -287,7 +287,7 @@ impl SecretsService for DefaultSecretsService {
             }
         }
 
-        // Find files matching patterns (simplified - just check secrets/ directory)
+        // Collect all files in secrets/ directory
         let mut encrypted_files = Vec::new();
         let secrets_dir = self.repo_root.join("secrets");
 
@@ -297,12 +297,123 @@ impl SecretsService for DefaultSecretsService {
                 .filter_map(|e| e.ok())
                 .filter(|e| e.file_type().is_file())
             {
-                encrypted_files.push(entry.path().to_path_buf());
+                let path = entry.path().to_path_buf();
+
+                // If we have patterns from .gitattributes, filter by them
+                if !encrypted_patterns.is_empty() {
+                    let relative = path
+                        .strip_prefix(&self.repo_root)
+                        .unwrap_or(&path)
+                        .to_string_lossy();
+                    if encrypted_patterns
+                        .iter()
+                        .any(|pat| glob_match(pat, &relative))
+                    {
+                        encrypted_files.push(path);
+                    }
+                } else {
+                    // No patterns found — assume all secrets/ files are encrypted
+                    encrypted_files.push(path);
+                }
             }
         }
 
         Ok(encrypted_files)
     }
+}
+
+/// Simple glob pattern matching for gitattributes patterns.
+///
+/// Supports `*` (matches any sequence except `/`) and `**` (matches any sequence including `/`).
+/// Patterns without `/` are matched against the basename only (gitattributes convention).
+fn glob_match(pattern: &str, path: &str) -> bool {
+    let pattern = pattern.replace('\\', "/");
+    let path = path.replace('\\', "/");
+
+    // gitattributes: if pattern has no '/', match against the basename only
+    if !pattern.contains('/') {
+        let basename = path.rsplit('/').next().unwrap_or(&path);
+        return glob_match_inner(pattern.as_bytes(), basename.as_bytes());
+    }
+
+    glob_match_inner(pattern.as_bytes(), path.as_bytes())
+}
+
+/// Core byte-level glob matching engine (`*` stops at `/`, `**` crosses `/`, `?` matches one byte).
+fn glob_match_inner(pat: &[u8], txt: &[u8]) -> bool {
+    let (mut pi, mut ti) = (0, 0);
+    let (mut star_pi, mut star_ti) = (usize::MAX, 0);
+
+    while ti < txt.len() {
+        if pi < pat.len() && pat[pi] == b'*' {
+            // Check for **
+            if pi + 1 < pat.len() && pat[pi + 1] == b'*' {
+                // ** matches everything including /
+                star_pi = pi;
+                star_ti = ti;
+                pi += 2;
+                // Skip optional trailing /
+                if pi < pat.len() && pat[pi] == b'/' {
+                    pi += 1;
+                }
+                continue;
+            }
+            // Single * matches everything except /
+            star_pi = pi;
+            star_ti = ti;
+            pi += 1;
+            continue;
+        }
+
+        if pi < pat.len() && (pat[pi] == b'?' || pat[pi] == txt[ti]) {
+            pi += 1;
+            ti += 1;
+            continue;
+        }
+
+        // Single * cannot match /
+        if star_pi != usize::MAX
+            && star_pi < pat.len()
+            && pat[star_pi] == b'*'
+            && !(star_pi + 1 < pat.len() && pat[star_pi + 1] == b'*')
+        {
+            // Single * — skip non-/ characters
+            if txt[star_ti] == b'/' {
+                // Cannot match / with single *, backtrack fails
+                return false;
+            }
+            star_ti += 1;
+            ti = star_ti;
+            pi = star_pi + 1;
+            continue;
+        }
+
+        if star_pi != usize::MAX {
+            star_ti += 1;
+            ti = star_ti;
+            pi = if pat[star_pi] == b'*' && star_pi + 1 < pat.len() && pat[star_pi + 1] == b'*' {
+                star_pi
+                    + 2
+                    + if star_pi + 2 < pat.len() && pat[star_pi + 2] == b'/' {
+                        1
+                    } else {
+                        0
+                    }
+            } else {
+                star_pi + 1
+            };
+            continue;
+        }
+
+        return false;
+    }
+
+    // Consume remaining pattern characters (must all be *)
+    while pi < pat.len() && pat[pi] == b'*' {
+        pi += 1;
+    }
+
+    pi == pat.len()
 }
 
 #[cfg(test)]
@@ -897,5 +1008,69 @@ mod tests {
         let dir = temp_dir.path().join("subdir");
         std::fs::create_dir_all(&dir).unwrap();
         assert!(!service.is_encrypted(&dir));
+    }
+
+    // ==========================================================================
+    // glob_match Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_glob_match_exact() {
+        assert!(glob_match("secrets/keys.gpg", "secrets/keys.gpg"));
+        assert!(!glob_match("secrets/keys.gpg", "secrets/other.gpg"));
+    }
+
+    #[test]
+    fn test_glob_match_star() {
+        assert!(glob_match("secrets/*.gpg", "secrets/keys.gpg"));
+        assert!(glob_match("secrets/*.gpg", "secrets/other.gpg"));
+        assert!(!glob_match("secrets/*.gpg", "secrets/sub/keys.gpg"));
+    }
+
+    #[test]
+    fn test_glob_match_double_star() {
+        assert!(glob_match("secrets/**", "secrets/keys.gpg"));
+        assert!(glob_match("secrets/**", "secrets/sub/keys.gpg"));
+        assert!(!glob_match("secrets/**", "other/keys.gpg"));
+    }
+
+    // ==========================================================================
+    // list_encrypted filtering Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_list_encrypted_filters_by_pattern() {
+        let (service, temp_dir) = create_test_service();
+
+        // Create .gitattributes with a pattern
+        std::fs::write(
+            temp_dir.path().join(".gitattributes"),
+            "secrets/*.key filter=git-crypt diff=git-crypt\n",
+        )
+        .unwrap();
+
+        // Create files in secrets/
+        let secrets_dir = temp_dir.path().join("secrets");
+        std::fs::create_dir_all(&secrets_dir).unwrap();
+        std::fs::write(secrets_dir.join("prod.key"), "secret").unwrap();
+        std::fs::write(secrets_dir.join("readme.md"), "not secret").unwrap();
+
+        let files = service.list_encrypted().unwrap();
+        assert_eq!(files.len(), 1);
+        assert!(files[0].to_string_lossy().contains("prod.key"));
+    }
+
+    #[test]
+    fn test_list_encrypted_no_patterns_returns_all() {
+        let (service, temp_dir) = create_test_service();
+
+        // No .gitattributes file
+        let secrets_dir = temp_dir.path().join("secrets");
+        std::fs::create_dir_all(&secrets_dir).unwrap();
+        std::fs::write(secrets_dir.join("prod.key"), "secret").unwrap();
+        std::fs::write(secrets_dir.join("readme.md"), "also here").unwrap();
+
+        let files = service.list_encrypted().unwrap();
+        assert_eq!(files.len(), 2);
     }
 }

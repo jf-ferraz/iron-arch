@@ -535,10 +535,11 @@ impl App {
             },
             WizardStep::Confirmation => match key.code {
                 KeyCode::Enter | KeyCode::Char('y') => {
-                    if let Ok(()) = self
-                        .wizard
-                        .apply(&self.config_dir, self.package_manager.clone())
-                    {
+                    if let Ok(()) = self.wizard.apply(
+                        &self.config_dir,
+                        self.package_manager.clone(),
+                        self.service_manager.clone(),
+                    ) {
                         // Reinitialize app after wizard
                         let _ = self.init();
                         self.view = View::Dashboard;

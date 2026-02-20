@@ -16,11 +16,11 @@ state of the code vs. what the user-workflow document describes:
 | Doctor TUI | `[STUB]` | **REAL** – 7 health checks rendered from `app.state` |
 | ProfileBuilder | `[STUB]` | **REAL** – 3-step wizard (Name → Modules → Preview) |
 | ModuleCreator | `[STUB]` | **REAL** – 2-step wizard (ID/Desc/Pkgs → Preview) |
-| Secrets TUI | `[STUB]` | **RENDER-ONLY SHELL** – renders status/file list/keybind hints but NO action handlers wired; state never populated |
-| Recovery TUI | `[STUB]` | **RENDER-ONLY SHELL** – renders status/actions/hints but NO action handlers wired; state never populated |
+| Secrets TUI | `[STUB]` | **WIRED** (S1-P9-001) – handlers for `i`/`u`/`l`/`r` keys, 4 action methods, auto-refresh on navigate. `[a] Add GPG key` deferred (needs text input) |
+| Recovery TUI | `[STUB]` | **WIRED** (S1-P9-002) – handlers for `e`/`g`/`s` keys, 3 action methods, auto-populate `last_backup` from audit log. `[i]`/`[r]` deferred (needs file path input) |
 | System Scan | described in Phase 1.5 | **MISSING** – no scan service or TUI view exists |
 | Host Selection | described in Phase 2 | **MISSING** – no multi-host selection UI exists |
-| TUI Bundle activate | uses real PM | **PARTIAL FIX** (S1-P1-001) – 4/5 call sites fixed; `refresh_current_view` + wizard `apply()` still use `NoopPackageManager` |
+| TUI Bundle activate | uses real PM | **FIXED** (S1-P1-001 + S1-P1-005) – all 5 call sites + wizard `apply()` chain `.with_package_manager()`. Service manager still missing (S1-P4-003) |
 | TUI System Update | dry-run hinted | **REAL** – calls `pacman -Syu --noconfirm` (not dry-run) |
 | Typed confirmation | CRITICAL updates | **FIXED** (S1-P6-001) – `ConfirmStyle` enum with Simple/EnhancedWarning/TypedConfirmation |
 | Dormant directory | bundle deactivate moves configs | **PARTIAL** – `deactivate()` unlinks symlinks only, no move to `dormant/` |
@@ -189,14 +189,20 @@ state of the code vs. what the user-workflow document describes:
   - **Test**: Test that activation is blocked when conflicts exist.
   - **Deps**: None
 
-- [ ] **S1-P4-003** | **P0** | Fix `switch_bundle()` missing service manager injection
-  - **Why**: `switch_bundle()` creates `BundleService` without `.with_service_manager()`.
-    Systemd services defined in bundles are never started/stopped via TUI.
-  - **Action**: Add service manager injection to `switch_bundle()` and all activation paths.
-  - **Files**: `crates/iron-tui/src/app/actions.rs`
-  - **Test**: Bundle switch starts/stops systemd services.
-  - **Deps**: None
+- [ ] **S1-P4-003** | **P0** ⏩ Sprint 2 | Fix service manager injection across ALL TUI bundle paths
+  - **Why**: All 6 `DefaultBundleService::new()` call sites (5 in actions.rs + 1 in wizard.rs)
+    chain `.with_package_manager()` but NONE chain `.with_service_manager()`. Systemd
+    services defined in bundles are never started/stopped via TUI. Requires a
+    `SystemService` adapter in `iron-systemd` (only `NoopSystemService` exists in iron-core).
+  - **Action**: Create `iron-systemd` adapter implementing `iron-core::SystemService` trait.
+    Chain `.with_service_manager()` on all 6 `DefaultBundleService` construction sites.
+  - **Files**: `crates/iron-systemd/src/lib.rs`, `crates/iron-tui/src/app/actions.rs`,
+    `crates/iron-tui/src/wizard.rs`
+  - **Test**: Bundle activation starts systemd services; deactivation stops them.
+  - **Deps**: None (cross-crate work, requires `iron-systemd` → `iron-core` bridge)
   - **Source**: Discovered in `docs/scenario-1-phase-4.md` (B1)
+  - **Deferred**: 2026-02-19 — Moved from Sprint 1 to Sprint 2. Requires new `SystemService`
+    adapter in `iron-systemd` crate. Only `NoopSystemService` currently exists.
 
 - [x] **S1-P4-004** | **P0** | Fix `deactivate()` not clearing `active_bundles` state
   - **Why**: After deactivation, the bundle entry persists in `active_bundles` state.
@@ -373,9 +379,10 @@ state of the code vs. what the user-workflow document describes:
 
 ### Phase 9 — Security & Secrets
 
-*(Secrets and Recovery TUI views have render code but zero action wiring.
-All keybind hints shown in the UI are dead — no handlers, no actions, state never populated.
-SecurityModules view is the only partially functional Phase 9 view. See `docs/scenario-1-phase-9.md` for full analysis.)*
+*(Secrets and Recovery TUI views now have action handlers wired (S1-P9-001, S1-P9-002).
+Remaining gaps: `[a] Add GPG key` (needs text input widget), `[i] Import` and `[r] Recovery wizard`
+(need file path input widget), `list_encrypted()` pattern filtering, secrets audit logging.
+SecurityModules view is partially functional. See `docs/scenario-1-phase-9.md` for full analysis.)*
 
 - [x] **S1-P9-001** | ~~P2~~ **P0** | Secrets view — wire action handlers and populate state
   - **Why**: The Secrets view renders `[i] Init`, `[u] Unlock`, `[l] Lock`, `[a] Add GPG key`
@@ -503,9 +510,10 @@ SecurityModules view is the only partially functional Phase 9 view. See `docs/sc
 | S1-P4-003 | Fix `switch_bundle()` missing service manager | ⏩ **Deferred to Sprint 2** |
 | **Total** | **(7 done, 1 deferred)** | **Sprint 1 P0 complete** |
 
-### Sprint 2 — Core Gaps (P1)
+### Sprint 2 — Core Gaps (P1 + deferred P0)
 | Task | Description | Est |
 |---|---|---|
+| S1-P4-003 | Fix service manager injection (deferred P0) | 2h |
 | S1-P4-001 | Dormant directory management | 3h |
 | S1-P4-002 | Block activation on conflicts | 2h |
 | S1-P4-005 | Fix `switch()` rollback on failure | 2h |
@@ -521,7 +529,7 @@ SecurityModules view is the only partially functional Phase 9 view. See `docs/sc
 | S1-P9-003 | Fix `list_encrypted()` pattern matching | 1h |
 | S1-X-001 | Update architecture.md | 1h |
 | S1-X-002 | Update EXAMPLES.md | 1h |
-| **Total** | | **~26h** |
+| **Total** | | **~28h** |
 
 ### Sprint 3 — New Features (P2)
 | Task | Description | Est |
@@ -554,26 +562,26 @@ SecurityModules view is the only partially functional Phase 9 view. See `docs/sc
 
 | Priority | Count | Status | Estimated |
 |---|---|---|---|
-| P0 (Critical) | 8 | 2 done, 6 remaining | ~9.5h remaining |
-| P1 (High) | 16 | 1 done, 15 remaining | ~26h remaining |
+| P0 (Critical) | 8 | **7 done**, 1 deferred to Sprint 2 | ✅ Sprint 1 complete |
+| P1 (High) | 16 | 1 done, 15 remaining (+1 deferred P0) | ~28h remaining |
 | P2 (Medium) | 16 | 0 done | ~36h |
 | P3 (Low) | 5 | 0 done | ~10h |
-| **Total** | **45** | **3 done, 42 open** | **~81.5h remaining** |
+| **Total** | **45** | **8 done, 37 open** | **~74h remaining** |
 
-| Phase | Tasks | Focus |
-|---|---|---|
-| Phase 1 | 4 | PM injection ✅, stubs fix ✅, progress indicator, wizard PM fix |
-| Phase 1.5 | 6 | System Scan (entirely new) |
-| Phase 2 | 3 | Host Selection (entirely new) |
-| Phase 3 | 2 | Dashboard divergence |
-| Phase 4 | 6 | Dormant mgmt, conflict blocking, service manager, state clearing, rollback, dotfiles dir |
-| Phase 5 | 4 | Persistence verification, profile/module activation fix |
-| Phase 6 | 3 | Confirmation UX ✅, update behavior, snapshots |
-| Phase 7 | 4 | Doctor parity, cleanup dry-run fix, doctor refresh, CLI clean rewire |
-| Phase 8 | 3 | Sync conflicts, push auto-commit, pull dirty-tree |
-| Phase 9 | 6 | Secrets/Recovery view wiring, list_encrypted fix, consolidation, audit, CLI subcommands |
-| Cross-Docs | 2 | Architecture, examples |
-| Cross-Infra | 2 | Tests, coverage |
+| Phase | Tasks | Done | Focus |
+|---|---|---|---|
+| Phase 1 | 4 | 3 ✅ | PM injection ✅, wizard PM fix ✅, stubs fix ✅, progress indicator |
+| Phase 1.5 | 6 | 0 | System Scan (entirely new) |
+| Phase 2 | 3 | 0 | Host Selection (entirely new) |
+| Phase 3 | 2 | 0 | Dashboard divergence |
+| Phase 4 | 6 | 1 ✅ | State clearing ✅, service manager ⏩, dormant, conflicts, rollback, dotfiles |
+| Phase 5 | 4 | 0 | Persistence verification, profile/module activation fix |
+| Phase 6 | 3 | 1 ✅ | Confirmation UX ✅, update behavior, snapshots |
+| Phase 7 | 4 | 1 ✅ | Cleanup dry_run ✅, doctor parity, doctor refresh, CLI clean |
+| Phase 8 | 3 | 0 | Sync conflicts, push auto-commit, pull dirty-tree |
+| Phase 9 | 6 | 2 ✅ | Secrets wiring ✅, Recovery wiring ✅, list_encrypted, consolidation, audit, CLI |
+| Cross-Docs | 2 | 0 | Architecture, examples |
+| Cross-Infra | 2 | 0 | Tests, coverage |
 
 ---
 

@@ -78,6 +78,28 @@ pub trait SnapshotManager {
     fn is_available(&self) -> bool;
 }
 
+/// Blanket implementation so `Box<dyn SnapshotManager>` can be used where `S: SnapshotManager`.
+impl SnapshotManager for Box<dyn SnapshotManager> {
+    fn backend(&self) -> SnapshotBackend {
+        (**self).backend()
+    }
+    fn create(&self, description: &str) -> IronResult<SnapshotInfo> {
+        (**self).create(description)
+    }
+    fn list(&self) -> IronResult<Vec<SnapshotInfo>> {
+        (**self).list()
+    }
+    fn delete(&self, id: &str) -> IronResult<()> {
+        (**self).delete(id)
+    }
+    fn restore(&self, id: &str) -> IronResult<()> {
+        (**self).restore(id)
+    }
+    fn is_available(&self) -> bool {
+        (**self).is_available()
+    }
+}
+
 /// Detect available snapshot backend
 pub fn detect_backend() -> SnapshotBackend {
     // Check for timeshift

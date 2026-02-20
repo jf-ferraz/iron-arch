@@ -2,11 +2,11 @@
 //!
 //! Multi-step wizard for first-time setup and configuration.
 
-use iron_core::PackageManager;
 use iron_core::services::{
     BundleService, DefaultBundleService, DefaultModuleService, DefaultProfileService,
     ProfileService, StateManager,
 };
+use iron_core::{PackageManager, SystemService};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -327,6 +327,7 @@ impl WizardState {
         &mut self,
         config_dir: &Path,
         package_manager: Arc<dyn PackageManager>,
+        service_manager: Arc<dyn SystemService>,
     ) -> Result<(), String> {
         self.processing = true;
         self.error = None;
@@ -351,7 +352,8 @@ impl WizardState {
         // Activate bundle if selected
         if let Some(bundle_id) = self.selected_bundle() {
             let bundle_service = DefaultBundleService::new(config_dir, state_manager.clone())
-                .with_package_manager(package_manager);
+                .with_package_manager(package_manager)
+                .with_service_manager(service_manager);
             if let Err(e) = bundle_service.activate(bundle_id) {
                 self.processing = false;
                 self.error = Some(format!("Failed to activate bundle: {:?}", e));
@@ -359,13 +361,21 @@ impl WizardState {
             }
         }
 
-        // Set active profile if selected
-        if let Some(profile_id) = self.selected_profile()
-            && let Err(e) = state_manager.set_active_profile(&self.host_id, profile_id)
-        {
-            self.processing = false;
-            self.error = Some(format!("Failed to set profile: {:?}", e));
-            return Err(self.error.clone().unwrap());
+        // Apply active profile if selected (creates symlinks + hooks)
+        if let Some(profile_id) = self.selected_profile() {
+            let module_service =
+                iron_core::services::DefaultModuleService::new(config_dir, state_manager.clone());
+            let profile_service = iron_core::services::DefaultProfileService::new(
+                config_dir,
+                state_manager.clone(),
+                module_service,
+            );
+            if let Err(e) = iron_core::services::ProfileService::apply(&profile_service, profile_id)
+            {
+                self.processing = false;
+                self.error = Some(format!("Failed to apply profile: {:?}", e));
+                return Err(self.error.clone().unwrap());
+            }
         }
 
         self.processing = false;
