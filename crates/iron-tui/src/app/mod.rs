@@ -398,8 +398,8 @@ impl App {
             self.refresh_secrets();
         }
         // Auto-refresh recovery state when entering Recovery view
-        if matches!(view, View::Recovery) {
-            if let Some(ref sm) = self.state_manager {
+        if matches!(view, View::Recovery)
+            && let Some(ref sm) = self.state_manager {
                 // Populate last_backup from the most recent backup operation in audit log
                 let ops = sm.recent_audit(50);
                 self.last_backup = ops
@@ -410,7 +410,6 @@ impl App {
                     .map(|op| op.timestamp)
                     .next();
             }
-        }
     }
 
     /// Go back to previous view
@@ -511,18 +510,16 @@ impl App {
     /// Clears expired status and error messages.
     pub fn tick(&mut self) {
         // Clear expired status message
-        if let Some(ref msg) = self.status_message {
-            if msg.is_expired() {
+        if let Some(ref msg) = self.status_message
+            && msg.is_expired() {
                 self.status_message = None;
             }
-        }
 
         // Clear expired error message
-        if let Some(ref msg) = self.error_message {
-            if msg.is_expired() {
+        if let Some(ref msg) = self.error_message
+            && msg.is_expired() {
                 self.error_message = None;
             }
-        }
     }
 
     /// Get system health status based on update risk and pending updates
@@ -678,8 +675,8 @@ impl App {
             let url = news[self.update_section_index].url.clone();
 
             // Acknowledge via state manager
-            if let Some(ref state_manager) = self.state_manager {
-                if state_manager.acknowledge_news(&url).is_ok() {
+            if let Some(ref state_manager) = self.state_manager
+                && state_manager.acknowledge_news(&url).is_ok() {
                     // Remove from preflight result
                     if let Some(ref mut result) = self.preflight_result {
                         result.unacknowledged_news.retain(|n| n.url != url);
@@ -689,7 +686,6 @@ impl App {
                     }
                     return Some(url);
                 }
-            }
         }
         None
     }
@@ -708,8 +704,8 @@ impl App {
 
         let url_refs: Vec<&str> = urls.iter().map(|s| s.as_str()).collect();
 
-        if let Some(ref state_manager) = self.state_manager {
-            if state_manager.acknowledge_all_news(&url_refs).is_ok() {
+        if let Some(ref state_manager) = self.state_manager
+            && state_manager.acknowledge_all_news(&url_refs).is_ok() {
                 let count = urls.len();
                 if let Some(ref mut result) = self.preflight_result {
                     result.unacknowledged_news.clear();
@@ -717,7 +713,6 @@ impl App {
                 }
                 return count;
             }
-        }
         0
     }
 

@@ -1067,16 +1067,13 @@ fn count_old_files(path: &Path, max_age: Duration) -> (usize, u64) {
                 let entry_path = entry.path();
                 if entry_path.is_dir() {
                     walk(&entry_path, now, max_age, count, size);
-                } else if let Ok(metadata) = entry.metadata() {
-                    if let Ok(modified) = metadata.modified() {
-                        if let Ok(age) = now.duration_since(modified) {
-                            if age > max_age {
+                } else if let Ok(metadata) = entry.metadata()
+                    && let Ok(modified) = metadata.modified()
+                        && let Ok(age) = now.duration_since(modified)
+                            && age > max_age {
                                 *count += 1;
                                 *size += metadata.len();
                             }
-                        }
-                    }
-                }
             }
         }
     }
@@ -1100,19 +1097,15 @@ fn count_log_files(path: &Path, max_age: Duration) -> (usize, u64) {
                 } else if let Ok(metadata) = entry.metadata() {
                     let name = entry_path.file_name().unwrap_or_default().to_string_lossy();
                     // Only count log files
-                    if name.ends_with(".log")
+                    if (name.ends_with(".log")
                         || name.ends_with(".log.old")
-                        || name.contains(".log.")
-                    {
-                        if let Ok(modified) = metadata.modified() {
-                            if let Ok(age) = now.duration_since(modified) {
-                                if age > max_age {
+                        || name.contains(".log."))
+                        && let Ok(modified) = metadata.modified()
+                            && let Ok(age) = now.duration_since(modified)
+                                && age > max_age {
                                     *count += 1;
                                     *size += metadata.len();
                                 }
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -1133,17 +1126,13 @@ fn remove_old_files(path: &Path, max_age: Duration) -> usize {
                 let entry_path = entry.path();
                 if entry_path.is_dir() {
                     walk(&entry_path, now, max_age, removed);
-                } else if let Ok(metadata) = entry.metadata() {
-                    if let Ok(modified) = metadata.modified() {
-                        if let Ok(age) = now.duration_since(modified) {
-                            if age > max_age {
-                                if fs::remove_file(&entry_path).is_ok() {
+                } else if let Ok(metadata) = entry.metadata()
+                    && let Ok(modified) = metadata.modified()
+                        && let Ok(age) = now.duration_since(modified)
+                            && age > max_age
+                                && fs::remove_file(&entry_path).is_ok() {
                                     *removed += 1;
                                 }
-                            }
-                        }
-                    }
-                }
             }
         }
     }
@@ -1165,20 +1154,15 @@ fn remove_log_files(path: &Path, max_age: Duration) -> usize {
                     walk(&entry_path, now, max_age, removed);
                 } else if let Ok(metadata) = entry.metadata() {
                     let name = entry_path.file_name().unwrap_or_default().to_string_lossy();
-                    if name.ends_with(".log")
+                    if (name.ends_with(".log")
                         || name.ends_with(".log.old")
-                        || name.contains(".log.")
-                    {
-                        if let Ok(modified) = metadata.modified() {
-                            if let Ok(age) = now.duration_since(modified) {
-                                if age > max_age {
-                                    if fs::remove_file(&entry_path).is_ok() {
+                        || name.contains(".log."))
+                        && let Ok(modified) = metadata.modified()
+                            && let Ok(age) = now.duration_since(modified)
+                                && age > max_age
+                                    && fs::remove_file(&entry_path).is_ok() {
                                         *removed += 1;
                                     }
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }

@@ -385,11 +385,10 @@ impl BundleService for DefaultBundleService {
         let host_id = self.current_host()?;
 
         // Check if already active
-        if let Some(active_id) = self.state_manager.active_bundle(&host_id) {
-            if active_id == id {
+        if let Some(active_id) = self.state_manager.active_bundle(&host_id)
+            && active_id == id {
                 return Err(StateError::BundleAlreadyActive { id: id.to_string() }.into());
             }
-        }
 
         // Block activation if conflicts with currently active bundles
         let conflicts = self.check_conflicts(id)?;

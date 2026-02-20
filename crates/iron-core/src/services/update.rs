@@ -1478,8 +1478,7 @@ impl<S: SnapshotManager> UpdateService for DefaultUpdateService<S> {
         if let Ok(output) = Command::new("find")
             .args(["/etc", "-name", "*.pacnew", "-type", "f"])
             .output()
-        {
-            if output.status.success() {
+            && output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 for line in stdout.lines() {
                     let line = line.trim();
@@ -1494,14 +1493,12 @@ impl<S: SnapshotManager> UpdateService for DefaultUpdateService<S> {
                     }
                 }
             }
-        }
 
         // Search for .pacsave files in /etc
         if let Ok(output) = Command::new("find")
             .args(["/etc", "-name", "*.pacsave", "-type", "f"])
             .output()
-        {
-            if output.status.success() {
+            && output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 for line in stdout.lines() {
                     let line = line.trim();
@@ -1516,7 +1513,6 @@ impl<S: SnapshotManager> UpdateService for DefaultUpdateService<S> {
                     }
                 }
             }
-        }
 
         conflicts
     }
@@ -1553,8 +1549,7 @@ impl<S: SnapshotManager> UpdateService for DefaultUpdateService<S> {
         if let Ok(output) = Command::new("systemctl")
             .args(["--failed", "--no-legend", "--no-pager"])
             .output()
-        {
-            if output.status.success() {
+            && output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 for line in stdout.lines() {
                     let parts: Vec<&str> = line.split_whitespace().collect();
@@ -1569,7 +1564,6 @@ impl<S: SnapshotManager> UpdateService for DefaultUpdateService<S> {
                     }
                 }
             }
-        }
 
         failed
     }
@@ -1578,8 +1572,8 @@ impl<S: SnapshotManager> UpdateService for DefaultUpdateService<S> {
 impl<S: SnapshotManager> DefaultUpdateService<S> {
     /// Find which package owns a file using pacman -Qo
     fn find_package_owner(file_path: &str) -> Option<String> {
-        if let Ok(output) = Command::new("pacman").args(["-Qo", file_path]).output() {
-            if output.status.success() {
+        if let Ok(output) = Command::new("pacman").args(["-Qo", file_path]).output()
+            && output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 // Output format: "/path/to/file is owned by package version"
                 if let Some(line) = stdout.lines().next() {
@@ -1592,7 +1586,6 @@ impl<S: SnapshotManager> DefaultUpdateService<S> {
                     }
                 }
             }
-        }
         None
     }
 }

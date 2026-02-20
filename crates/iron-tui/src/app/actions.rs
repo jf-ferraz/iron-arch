@@ -83,11 +83,10 @@ impl App {
         self.check_divergence();
 
         // Load last scan report from state (S1-P1.5-005)
-        if self.scan_report.is_none() {
-            if let Some(ref sm) = self.state_manager {
+        if self.scan_report.is_none()
+            && let Some(ref sm) = self.state_manager {
                 self.scan_report = sm.load_scan_report();
             }
-        }
 
         Ok(())
     }
@@ -347,7 +346,7 @@ impl App {
                 // Enabled Modules - guide to modules view
                 self.set_info("Use Modules view [m] to enable/disable modules");
             }
-            5 | 6 | 7 => {
+            5..=7 => {
                 // Last Sync, Installed Packages, Pending Updates - read-only
                 self.set_info("This value is read-only");
             }
@@ -572,15 +571,14 @@ impl App {
     /// Run system update via the injected package manager.
     pub fn run_system_update(&mut self) {
         // Gate on preflight results: block if critical issues
-        if let Some(ref preflight) = self.preflight_result {
-            if !preflight.blockers.is_empty() {
+        if let Some(ref preflight) = self.preflight_result
+            && !preflight.blockers.is_empty() {
                 self.set_error(format!(
                     "Pre-flight checks failed: {}. Resolve before updating.",
                     preflight.blockers.join(", ")
                 ));
                 return;
             }
-        }
 
         self.set_info("Running system update...");
 
@@ -787,15 +785,14 @@ impl App {
             let sync_service = DefaultSyncService::new(&self.config_dir, sm.clone());
 
             // Auto-commit uncommitted changes before push
-            if let Ok(status) = sync_service.status() {
-                if status.dirty_files > 0 {
+            if let Ok(status) = sync_service.status()
+                && status.dirty_files > 0 {
                     let msg = format!("iron: auto-commit {} change(s)", status.dirty_files);
                     if let Err(e) = sync_service.commit(&msg) {
                         self.set_error(format!("Auto-commit failed: {}", e));
                         return;
                     }
                 }
-            }
 
             match sync_service.push() {
                 Ok(()) => {
@@ -836,14 +833,13 @@ impl App {
             match sync_service.pull() {
                 Ok(()) => {
                     // Restore stashed changes
-                    if did_stash {
-                        if let Err(e) = sync_service.stash_pop() {
+                    if did_stash
+                        && let Err(e) = sync_service.stash_pop() {
                             self.set_warning(format!(
                                 "Pull succeeded but unstash failed: {}. Run 'git stash pop' manually.",
                                 e
                             ));
                         }
-                    }
                     self.set_status("Changes pulled successfully");
                     self.refresh_sync_status();
                 }

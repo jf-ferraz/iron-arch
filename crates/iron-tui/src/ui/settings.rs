@@ -63,11 +63,9 @@ fn render_settings_panel(frame: &mut Frame, area: Rect, app: &App) {
     let last_sync = app
         .state_manager
         .as_ref()
-        .map(|sm| sm.maintenance().last_sync)
-        .flatten();
+        .and_then(|sm| sm.maintenance().last_sync);
 
-    let settings = vec![
-        SettingItem {
+    let settings = [SettingItem {
             key: "Config Directory",
             value: config_dir,
             editable: false,
@@ -106,8 +104,7 @@ fn render_settings_panel(frame: &mut Frame, area: Rect, app: &App) {
             key: "Pending Updates",
             value: format!("{}", app.pending_updates.len()),
             editable: false,
-        },
-    ];
+        }];
 
     // Create table rows
     let rows: Vec<Row> = settings

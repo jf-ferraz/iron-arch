@@ -347,7 +347,7 @@ state of the code vs. what the user-workflow document describes:
   - **Completed**: 2026-02-19 — Changed `dry_run: false` to `dry_run: true` in
     `execute_cleanup()`. 362 tests pass.
 
-- [ ] **S1-P7-003** | **P1** | Fix TUI Doctor `[r]` refresh key handler
+- [x] **S1-P7-003** | **P1** | Fix TUI Doctor `[r]` refresh key handler
   - **Why**: Doctor view shows `[r]` to re-run checks but the handler is broken.
     Health checks go stale on navigation.
   - **Action**: Wire `[r]` key to re-run all health checks.
@@ -355,6 +355,7 @@ state of the code vs. what the user-workflow document describes:
   - **Test**: Press `r` in Doctor view → checks refresh.
   - **Deps**: None
   - **Source**: Discovered in `docs/scenario-1-phase-7.md` (S1-P7-NEW-004)
+  - **Completed**: Sprint 4 — `View::Doctor` handler wired to `refresh_current_view()` on `[r]` key.
 
 - [x] **S1-P7-004** | **P1** | Rewire CLI `iron clean` to use `CleanupService`
   - **Why**: CLI `iron clean` has 149 lines of ad-hoc cleanup covering 3 of 8

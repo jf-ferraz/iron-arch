@@ -478,11 +478,10 @@ pub fn parse_timeshift_create_output(output: &str) -> Option<String> {
     for line in output.lines() {
         if line.contains("Tagged snapshot") {
             // Extract ID between single quotes
-            if let Some(start) = line.find('\'') {
-                if let Some(end) = line[start + 1..].find('\'') {
+            if let Some(start) = line.find('\'')
+                && let Some(end) = line[start + 1..].find('\'') {
                     return Some(line[start + 1..start + 1 + end].to_string());
                 }
-            }
         }
     }
     None
