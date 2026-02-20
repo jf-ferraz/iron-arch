@@ -149,3 +149,83 @@ mkdir modules/my-module
 3. **Document dependencies**: Mark which modules depend on or conflict with others
 4. **Version configs**: Use git to track your Iron configuration
 5. **Test changes**: Use `iron update --dry-run` before applying changes
+
+## System Scan
+
+Run a pre-install system scan to discover existing configurations, package
+overlaps, and potential conflicts before Iron touches anything:
+
+```bash
+# Run a full system scan (human-readable)
+iron scan
+
+# JSON output (for scripting)
+iron scan --json
+```
+
+The scan checks:
+- Existing config files in `~/.config/` and `~/`
+- Whether configs are regular files or symlinks (already managed)
+- Packages already installed that Iron modules would install
+- Potential conflicts between existing configs and Iron modules
+- Actionable recommendations (e.g., "Back up ~/.config/nvim before enabling nvim-ide")
+
+The TUI wizard also runs a system scan automatically after first-run setup.
+
+## Health Checks (Doctor)
+
+Diagnose your Iron installation with the built-in doctor:
+
+```bash
+# Run all health checks
+iron doctor
+
+# JSON output
+iron doctor --json
+```
+
+The doctor checks symlink integrity, package state, state file consistency,
+and snapshot backend availability.
+
+## Secrets Management
+
+Manage encrypted secrets (API keys, tokens, SSH configs) with git-crypt:
+
+```bash
+# Check encryption status
+iron secrets status
+
+# Unlock secrets after a fresh clone
+iron secrets unlock
+
+# Lock secrets before sharing
+iron secrets lock
+
+# Symlink decrypted secrets to target locations
+iron secrets link
+
+# Add a GPG key to the secrets keyring
+iron secrets add-key ABCD1234
+
+# Export symmetric key for backup
+iron secrets export-key
+iron secrets export-key --output my-key.key
+```
+
+## Backup & Recovery
+
+Create backups and recover from failures:
+
+```bash
+# Interactive recovery wizard
+iron recover
+
+# Generate a standalone install script from current host config
+iron recover generate-script
+
+# Create a full backup
+iron recover --backup
+
+# Restore from a previous backup
+iron recover --restore ./iron-backup-20260219/
+```

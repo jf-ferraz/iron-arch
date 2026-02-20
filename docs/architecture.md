@@ -25,6 +25,7 @@ iron-systemd) that wraps external system tools.
 │  │  iron-core                                                           │    │
 │  │  Host Service · Bundle Service · Profile Service · Module Service   │    │
 │  │  Update Service · Recovery Service · Sync Service · Secrets Service │    │
+│  │  Scan Service · Doctor Service                                      │    │
 │  │  State Manager · Circuit Breaker · Validation                       │    │
 │  └──────────────────────────────────┬──────────────────────────────────┘    │
 │                                     │                                        │
@@ -60,7 +61,7 @@ iron-systemd) that wraps external system tools.
 |-------|------|----------------|-----------------|
 | `iron-cli` | Binary | CLI argument parsing, command dispatch, output formatting | iron-core, iron-tui, clap |
 | `iron-tui` | Library | TUI rendering, event loop, screens, wizards | iron-core, ratatui, crossterm |
-| `iron-core` | Library | Domain models, services (Host/Bundle/Profile/Module/Update/Sync/Recovery/Secrets/Clean), state management, circuit breaker, validation | (no infra deps) |
+| `iron-core` | Library | Domain models, services (Host/Bundle/Profile/Module/Update/Sync/Recovery/Secrets/Clean/Scan/Doctor), state management, circuit breaker, validation | (no infra deps) |
 | `iron-fs` | Library | File operations, symlink management, backups, TOML I/O | iron-core |
 | `iron-pacman` | Library | Package management (pacman + AUR), update risk assessment, Arch News | iron-core |
 | `iron-git` | Library | Git operations via git2 (commit, push, pull, diff, status) | iron-core |
@@ -168,6 +169,7 @@ INSTALLING
 iron init                    # First-run wizard
 iron status                  # Show active host/bundle/profile/modules
 iron doctor                  # Run health checks; output JSON report
+iron scan                    # Pre-install system scan (configs, conflicts, overlaps)
 
 iron bundle list             # List all bundles and states
 iron bundle switch <id>      # Switch active bundle (snapshot + rollback)
@@ -192,10 +194,14 @@ iron sync status             # Show sync status
 
 iron recover                 # Start 4-step recovery wizard
 iron recover generate-script # Output install.sh from host config
+iron recover --backup        # Create a full backup of current state
+iron recover --restore <dir> # Restore from a previous backup
 
 iron secrets unlock          # Decrypt secrets after fresh clone
 iron secrets link            # Symlink decrypted secrets to target locations
 iron secrets status          # Show encryption status
+iron secrets add-key <id>    # Add a GPG key to the secrets keyring
+iron secrets export-key      # Export symmetric key file
 
 iron clean                   # Remove orphaned symlinks and stale state
 ```
@@ -243,6 +249,32 @@ pub trait RecoveryService {
     fn generate_install_script(&self, host: &Host) -> Result<String>;
     fn export_state(&self) -> Result<StateExport>;
     fn verify_installation(&self) -> Result<VerificationResult>;
+}
+
+pub trait ScanService {
+    fn scan(&self, bundles: &[Bundle], modules: &[Module]) -> Result<ScanReport>;
+}
+
+pub trait DoctorService {
+    fn check_all(&self) -> Result<HealthReport>;
+}
+
+pub trait SecretsBackend: Send + Sync {
+    fn is_unlocked(&self) -> bool;
+    fn unlock(&self, key_path: Option<&Path>) -> Result<()>;
+    fn lock(&self) -> Result<()>;
+    fn list_encrypted(&self) -> Result<Vec<PathBuf>>;
+}
+
+pub trait SecretsService {
+    fn status(&self) -> Result<SecretsStatus>;
+    fn init(&self) -> Result<()>;
+    fn unlock(&self, key_path: Option<&Path>) -> Result<()>;
+    fn lock(&self) -> Result<()>;
+    fn add_gpg_user(&self, key_id: &str) -> Result<()>;
+    fn list_keys(&self) -> Result<Vec<GpgKey>>;
+    fn export_key(&self, output_path: &Path) -> Result<()>;
+    fn is_encrypted(&self, file: &Path) -> bool;
 }
 ```
 
@@ -323,5 +355,7 @@ pub trait RecoveryService {
   configuration storage.
 - **Extension points**:
   - Additional package manager backends (e.g., flatpak) via `PackageManager` trait
-  - Additional encryption backends (age vs. git-crypt) via `SecretsBackend` trait
+  - Additional encryption backends (age vs. git-crypt) via `SecretsBackend` trait (git-crypt default)
   - Additional snapshot backends (timeshift vs. snapper) via `SnapshotManager` trait
+  - Pre-install system scanning via `ScanService` trait (discovers existing configs, conflicts)
+  - Health diagnostics via `DoctorService` trait (checks symlinks, packages, state consistency)

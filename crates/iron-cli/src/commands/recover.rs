@@ -9,7 +9,14 @@ use std::fs;
 use std::path::Path;
 
 /// Execute recover command
-pub fn execute(ctx: &AppContext, export: bool, import: Option<String>, script: bool) -> Result<()> {
+pub fn execute(
+    ctx: &AppContext,
+    export: bool,
+    import: Option<String>,
+    script: bool,
+    backup: bool,
+    restore: Option<String>,
+) -> Result<()> {
     if export {
         return export_state(ctx);
     }
@@ -20,6 +27,14 @@ pub fn execute(ctx: &AppContext, export: bool, import: Option<String>, script: b
 
     if script {
         return generate_script(ctx);
+    }
+
+    if backup {
+        return create_backup(ctx);
+    }
+
+    if let Some(path) = restore {
+        return restore_backup(ctx, &path);
     }
 
     // Default: show recovery help
@@ -37,11 +52,15 @@ fn show_help(ctx: &AppContext) -> Result<()> {
     output.list_item("--export     Export current state to JSON file");
     output.list_item("--import     Import state from JSON file");
     output.list_item("--script     Generate installation script");
+    output.list_item("--backup     Create full backup (configs + state)");
+    output.list_item("--restore    Restore from a backup directory");
 
     output.subheader("Examples");
     output.raw("  iron recover --export              # Export to iron-export.json");
     output.raw("  iron recover --import backup.json  # Import from file");
     output.raw("  iron recover --script              # Generate install.sh");
+    output.raw("  iron recover --backup              # Create backup archive");
+    output.raw("  iron recover --restore ./backup    # Restore from backup dir");
 
     Ok(())
 }
@@ -215,6 +234,48 @@ fn generate_script(ctx: &AppContext) -> Result<()> {
         }
         output.raw("...");
     }
+
+    Ok(())
+}
+
+/// Create a full backup (configs + state)
+fn create_backup(ctx: &AppContext) -> Result<()> {
+    require_init(ctx)?;
+
+    let output = &ctx.output;
+    let recovery_service = ctx.recovery_service();
+
+    output.header("Create Backup");
+    output.info("Creating full backup...");
+
+    let backup_path = recovery_service.create_backup(Path::new("."))?;
+
+    output.separator();
+    output.success(&format!("Backup created: {}", backup_path.display()));
+    output.info("Store this backup in a safe location.");
+
+    Ok(())
+}
+
+/// Restore from a backup directory
+fn restore_backup(ctx: &AppContext, backup_dir: &str) -> Result<()> {
+    let output = &ctx.output;
+    let recovery_service = ctx.recovery_service();
+
+    let backup_path = Path::new(backup_dir);
+    if !backup_path.exists() {
+        anyhow::bail!("Backup path does not exist: {}", backup_dir);
+    }
+
+    output.header("Restore Backup");
+    output.warning("This will overwrite current configuration!");
+    output.info(&format!("Restoring from {}...", backup_dir));
+
+    recovery_service.restore_backup(backup_path)?;
+
+    output.separator();
+    output.success("Backup restored successfully");
+    output.info("Run 'iron doctor' to verify system health.");
 
     Ok(())
 }

@@ -17,6 +17,7 @@ mod recovery;
 mod secrets;
 mod security;
 mod settings;
+mod system_scan;
 pub mod theme;
 mod update;
 pub mod utils;
@@ -45,6 +46,7 @@ pub use recovery::render_recovery;
 pub use secrets::render_secrets;
 pub use security::render_security_modules;
 pub use settings::render_settings;
+pub use system_scan::render_system_scan;
 pub use update::{render_sync, render_update_preview};
 pub use wizard::render_setup_wizard;
 
@@ -92,6 +94,7 @@ pub fn render(frame: &mut Frame, app: &App) {
         View::Recovery => render_recovery(frame, layout[1], app),
         View::ProfileBuilder => render_profile_builder(frame, layout[1], app),
         View::ModuleCreator => render_module_creator(frame, layout[1], app),
+        View::SystemScan => render_system_scan(frame, layout[1], app),
     }
 
     // Render footer

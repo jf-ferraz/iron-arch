@@ -78,8 +78,19 @@ impl AppContext {
     }
 
     /// Get secrets service
+    ///
+    /// When the root is a git repository, injects the resilient
+    /// `DefaultSecretsManager` from iron-git as a `SecretsBackend`.
     pub fn secrets_service(&self) -> impl SecretsService {
-        DefaultSecretsService::new(&self.root)
+        let mut svc = DefaultSecretsService::new(&self.root);
+
+        // Wire in the resilient backend when a .git dir exists
+        if self.root.join(".git").exists() {
+            let mgr = iron_git::DefaultSecretsManager::new(self.root.clone());
+            svc = svc.with_backend(Box::new(mgr));
+        }
+
+        svc
     }
 
     /// Get update service

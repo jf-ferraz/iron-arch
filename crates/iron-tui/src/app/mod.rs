@@ -116,6 +116,8 @@ pub struct App {
     // -------------------------------------------------------------------------
     /// Cached sync info from git
     pub sync_info: Option<SyncInfo>,
+    /// Conflicted files detected during sync (unmerged paths)
+    pub sync_conflicts: Vec<String>,
     // -------------------------------------------------------------------------
     // Operation Log State
     // -------------------------------------------------------------------------
@@ -178,6 +180,18 @@ pub struct App {
     pub module_creator_packages: String,
     /// Whether name field is active (vs description/packages)
     pub module_creator_active_field: usize, // 0=name, 1=desc, 2=packages
+    // -------------------------------------------------------------------------
+    // System Scan State (Sprint 3 / S1-P1.5-003)
+    // -------------------------------------------------------------------------
+    /// Latest system scan report (populated by the ScanService)
+    pub scan_report: Option<iron_core::services::scan::ScanReport>,
+    /// Scroll offset for the scan results view
+    pub scan_scroll: usize,
+    // -------------------------------------------------------------------------
+    // Divergence Detection (Sprint 3 / S1-P3-001)
+    // -------------------------------------------------------------------------
+    /// Module IDs whose dotfile symlinks are broken or point to unexpected targets
+    pub diverged_modules: Vec<String>,
 }
 
 /// Available views
@@ -229,6 +243,8 @@ pub enum View {
     ProfileBuilder,
     /// Module creator wizard ([n] from Modules)
     ModuleCreator,
+    /// System scan results
+    SystemScan,
 }
 
 /// Actions that require confirmation
@@ -328,6 +344,7 @@ impl App {
             cleanup_preview_mode: true,
             // Sync state
             sync_info: None,
+            sync_conflicts: Vec::new(),
             // Operation log state
             operation_filter: OperationFilter::default(),
             // Progress dialog
@@ -349,6 +366,9 @@ impl App {
             module_creator_description: String::new(),
             module_creator_packages: String::new(),
             module_creator_active_field: 0,
+            scan_report: None,
+            scan_scroll: 0,
+            diverged_modules: Vec::new(),
         }
     }
 
@@ -835,5 +855,73 @@ impl App {
     /// Deselect all cleanup categories
     pub fn deselect_all_cleanup_categories(&mut self) {
         self.cleanup_categories.clear();
+    }
+
+    // ==========================================================================
+    // Divergence Detection Helpers (S1-P3-001)
+    // ==========================================================================
+
+    /// Check active modules for dotfile symlink divergence.
+    ///
+    /// A module is considered "diverged" if any of its dotfile targets:
+    /// - Is a symlink that points to a non-existent file (broken)
+    /// - Is not a symlink when it should be (overwritten by user)
+    /// - Does not exist at all (removed)
+    pub fn check_divergence(&mut self) {
+        let modules_dir = self.config_dir.join("modules");
+        let mut diverged = Vec::new();
+
+        for module in &self.modules {
+            if !self.active_modules.contains(&module.id) {
+                continue;
+            }
+            let mut module_diverged = false;
+            for dotfile in &module.dotfiles {
+                let target = iron_core::expand_home(std::path::Path::new(&dotfile.target));
+                if dotfile.link {
+                    // Expected to be a symlink
+                    if target.is_symlink() {
+                        // Check if symlink target still exists
+                        if let Ok(link_dest) = std::fs::read_link(&target) {
+                            if !link_dest.exists() {
+                                module_diverged = true;
+                                break;
+                            }
+                            // Optionally verify it points into the modules dir
+                            let expected_source =
+                                modules_dir.join(&module.id).join(&dotfile.source);
+                            if expected_source.exists()
+                                && link_dest.canonicalize().ok()
+                                    != expected_source.canonicalize().ok()
+                            {
+                                module_diverged = true;
+                                break;
+                            }
+                        }
+                    } else if target.exists() {
+                        // Target exists but is NOT a symlink → overwritten
+                        module_diverged = true;
+                        break;
+                    }
+                    // If target doesn't exist at all, the dotfile hasn't been applied yet
+                    // (not diverged, just not deployed)
+                }
+            }
+            if module_diverged {
+                diverged.push(module.id.clone());
+            }
+        }
+
+        self.diverged_modules = diverged;
+    }
+
+    /// Get count of diverged modules
+    pub fn diverged_count(&self) -> usize {
+        self.diverged_modules.len()
+    }
+
+    /// Check if a specific module has diverged
+    pub fn is_module_diverged(&self, module_id: &str) -> bool {
+        self.diverged_modules.iter().any(|id| id == module_id)
     }
 }

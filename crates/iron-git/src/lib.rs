@@ -381,6 +381,29 @@ impl SecretsManager for DefaultSecretsManager {
     }
 }
 
+// =========================================================================
+// SecretsBackend impl — allows iron-core's DefaultSecretsService to
+// delegate git-crypt operations to this resilient manager.
+// =========================================================================
+
+impl iron_core::services::secrets::SecretsBackend for DefaultSecretsManager {
+    fn is_unlocked(&self) -> bool {
+        SecretsManager::is_unlocked(self)
+    }
+
+    fn unlock(&self, key_path: Option<&Path>) -> IronResult<()> {
+        SecretsManager::unlock(self, key_path)
+    }
+
+    fn lock(&self) -> IronResult<()> {
+        SecretsManager::lock(self)
+    }
+
+    fn list_encrypted(&self) -> IronResult<Vec<PathBuf>> {
+        SecretsManager::list_encrypted(self)
+    }
+}
+
 /// Parse git status --porcelain -b output into GitStatus
 ///
 /// Parses the output of `git status --porcelain -b` into a structured [`GitStatus`].

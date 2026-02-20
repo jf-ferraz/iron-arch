@@ -46,6 +46,7 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App) {
         View::Recovery => ("Recovery", "[R]"),
         View::ProfileBuilder => ("New Profile", "[n]"),
         View::ModuleCreator => ("New Module", "[n]"),
+        View::SystemScan => ("System Scan", "[~]"),
     };
 
     // Build header content
@@ -234,6 +235,7 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
             ("[Enter]", "Preview/Create"),
             ("[Esc]", "Back"),
         ],
+        View::SystemScan => vec![("[r]", "Re-scan"), ("[↑↓]", "Scroll"), ("[Esc]", "Back")],
     };
 
     let mut spans: Vec<Span> = vec![Span::raw("  ")];
@@ -392,6 +394,10 @@ fn get_view_keybindings(view: View) -> Vec<(&'static str, &'static str)> {
             ("Tab", "Switch field"),
             ("Enter", "Preview / Create"),
             ("Esc", "Cancel / Previous step"),
+        ],
+        View::SystemScan => vec![
+            ("r", "Re-scan system"),
+            ("↑/↓", "Scroll results"),
         ],
     }
 }
@@ -907,6 +913,7 @@ mod tests {
                 View::Recovery => "Recovery",
                 View::ProfileBuilder => "New Profile",
                 View::ModuleCreator => "New Module",
+                View::SystemScan => "System Scan",
             };
             assert_eq!(name, expected_name);
         }

@@ -355,6 +355,14 @@ impl App {
                     self.refresh_sync_status();
                     true
                 }
+                KeyCode::Char('l') if !self.sync_conflicts.is_empty() => {
+                    self.resolve_conflicts_keep_local();
+                    true
+                }
+                KeyCode::Char('r') if !self.sync_conflicts.is_empty() => {
+                    self.resolve_conflicts_keep_remote();
+                    true
+                }
                 _ => false,
             },
             // Secrets view handlers
@@ -390,6 +398,22 @@ impl App {
                 }
                 KeyCode::Char('s') => {
                     self.recovery_create_snapshot();
+                    true
+                }
+                _ => false,
+            },
+            // SystemScan view handlers (S1-P1.5-004)
+            View::SystemScan => match key.code {
+                KeyCode::Enter => {
+                    self.navigate(View::Dashboard);
+                    true
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.scan_scroll = self.scan_scroll.saturating_sub(1);
+                    true
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.scan_scroll = self.scan_scroll.saturating_add(1);
                     true
                 }
                 _ => false,
@@ -542,8 +566,10 @@ impl App {
                     ) {
                         // Reinitialize app after wizard
                         let _ = self.init();
-                        self.view = View::Dashboard;
-                        self.set_status("Setup complete! Welcome to Iron.");
+                        // Run system scan and transition to scan view (S1-P1.5-004)
+                        self.run_post_wizard_scan();
+                        self.view = View::SystemScan;
+                        self.set_status("Setup complete! Scanning system...");
                     }
                 }
                 KeyCode::Backspace | KeyCode::Esc => self.wizard.prev_step(),
@@ -551,7 +577,9 @@ impl App {
             },
             WizardStep::Complete => {
                 if key.code == KeyCode::Enter {
-                    self.view = View::Dashboard;
+                    // Also route through scan view on late completion
+                    self.run_post_wizard_scan();
+                    self.view = View::SystemScan;
                 }
             }
         }
@@ -719,7 +747,7 @@ impl App {
             // SetupWizard exits to Dashboard (special case)
             View::SetupWizard => View::Dashboard,
             // New Phase-4 views cycle back to Dashboard
-            View::Doctor | View::Secrets | View::Recovery => View::Dashboard,
+            View::Doctor | View::Secrets | View::Recovery | View::SystemScan => View::Dashboard,
             // Wizard sub-views go back to their parent list
             View::ProfileBuilder => View::Profiles,
             View::ModuleCreator => View::Modules,
@@ -748,7 +776,7 @@ impl App {
             // SetupWizard exits to Dashboard (special case)
             View::SetupWizard => View::Dashboard,
             // New Phase-4 views cycle back to Dashboard
-            View::Doctor | View::Secrets | View::Recovery => View::Dashboard,
+            View::Doctor | View::Secrets | View::Recovery | View::SystemScan => View::Dashboard,
             // Wizard sub-views go back to their parent list
             View::ProfileBuilder => View::Profiles,
             View::ModuleCreator => View::Modules,

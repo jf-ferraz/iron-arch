@@ -299,6 +299,20 @@ fn render_active_config(frame: &mut Frame, area: Rect, app: &App) {
                 Style::default().fg(theme::TEXT),
             ),
         ]),
+        if app.diverged_count() > 0 {
+            Line::from(vec![
+                Span::styled("  Drift     ", Style::default().fg(theme::SUBTEXT)),
+                Span::styled(
+                    format!("[!!] {} diverged", app.diverged_count()),
+                    Style::default().fg(theme::YELLOW).bold(),
+                ),
+            ])
+        } else {
+            Line::from(vec![
+                Span::styled("  Drift     ", Style::default().fg(theme::SUBTEXT)),
+                Span::styled("[OK] in sync", Style::default().fg(theme::GREEN)),
+            ])
+        },
         Line::from(vec![
             Span::styled("  Pending   ", Style::default().fg(theme::SUBTEXT)),
             Span::styled(
@@ -356,8 +370,32 @@ fn render_alerts(frame: &mut Frame, area: Rect, app: &App) {
         ]));
     }
 
+    // Check for diverged modules
+    let diverged = app.diverged_count();
+    if diverged > 0 {
+        if updates > 0 || news_count > 0 {
+            content.push(Line::from(""));
+        }
+        content.push(Line::from(vec![
+            Span::styled("  [~] ", Style::default().fg(theme::YELLOW)),
+            Span::styled(
+                format!(
+                    "{} module{} diverged from managed state",
+                    diverged,
+                    if diverged == 1 { "" } else { "s" }
+                ),
+                Style::default().fg(theme::YELLOW),
+            ),
+        ]));
+        content.push(Line::from(vec![
+            Span::styled("      Press ", Style::default().fg(theme::SUBTEXT)),
+            Span::styled("[d]", Style::default().fg(theme::MAUVE).bold()),
+            Span::styled(" to run diagnostics", Style::default().fg(theme::SUBTEXT)),
+        ]));
+    }
+
     // If no alerts, show all-clear or onboarding nudge
-    if !has_alerts && news_count == 0 {
+    if !has_alerts && news_count == 0 && diverged == 0 {
         if app.active_bundle.is_none() && app.modules.is_empty() {
             content.push(Line::from(vec![
                 Span::styled("  ", Style::default()),

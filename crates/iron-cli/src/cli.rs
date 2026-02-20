@@ -143,6 +143,9 @@ pub enum Commands {
     /// System health check
     Doctor,
 
+    /// Scan system for existing configs, package overlaps, and conflicts
+    Scan,
+
     /// System cleanup
     Clean {
         /// Remove orphaned packages
@@ -175,6 +178,14 @@ pub enum Commands {
         /// Generate install script
         #[arg(long)]
         script: bool,
+
+        /// Create a full backup (configs + state)
+        #[arg(long)]
+        backup: bool,
+
+        /// Restore from a backup directory
+        #[arg(long)]
+        restore: Option<String>,
     },
 
     /// Launch TUI dashboard
@@ -396,6 +407,20 @@ pub enum SecretsAction {
 
     /// Link secrets to proper locations
     Link,
+
+    /// Add a GPG user key for encryption
+    AddKey {
+        /// GPG key ID to add
+        #[arg(required = true)]
+        key_id: String,
+    },
+
+    /// Export the git-crypt encryption key
+    ExportKey {
+        /// Output path for the exported key
+        #[arg(short, long, default_value = "iron-secrets.key")]
+        output: String,
+    },
 }
 
 #[cfg(test)]
@@ -421,6 +446,12 @@ mod tests {
     fn test_cli_doctor_command() {
         let cli = Cli::try_parse_from(["iron", "doctor"]).unwrap();
         assert!(matches!(cli.command, Some(Commands::Doctor)));
+    }
+
+    #[test]
+    fn test_cli_scan_command() {
+        let cli = Cli::try_parse_from(["iron", "scan"]).unwrap();
+        assert!(matches!(cli.command, Some(Commands::Scan)));
     }
 
     #[test]
@@ -789,11 +820,15 @@ mod tests {
             export,
             import,
             script,
+            backup,
+            restore,
         }) = cli.command
         {
             assert!(export);
             assert!(import.is_none());
             assert!(!script);
+            assert!(!backup);
+            assert!(restore.is_none());
         } else {
             panic!("Expected Recover command");
         }
@@ -807,13 +842,68 @@ mod tests {
             export,
             import,
             script,
+            backup,
+            restore,
         }) = cli.command
         {
             assert!(!export);
             assert_eq!(import, Some("/path/to/backup.json".to_string()));
             assert!(!script);
+            assert!(!backup);
+            assert!(restore.is_none());
         } else {
             panic!("Expected Recover command");
+        }
+    }
+
+    #[test]
+    fn test_cli_recover_backup() {
+        let cli = Cli::try_parse_from(["iron", "recover", "--backup"]).unwrap();
+        if let Some(Commands::Recover { backup, .. }) = cli.command {
+            assert!(backup);
+        } else {
+            panic!("Expected Recover command");
+        }
+    }
+
+    #[test]
+    fn test_cli_recover_restore() {
+        let cli =
+            Cli::try_parse_from(["iron", "recover", "--restore", "./my-backup"]).unwrap();
+        if let Some(Commands::Recover { restore, .. }) = cli.command {
+            assert_eq!(restore, Some("./my-backup".to_string()));
+        } else {
+            panic!("Expected Recover command");
+        }
+    }
+
+    #[test]
+    fn test_cli_secrets_add_key() {
+        let cli = Cli::try_parse_from(["iron", "secrets", "add-key", "ABCD1234"]).unwrap();
+        if let Some(Commands::Secrets { action: SecretsAction::AddKey { key_id } }) = cli.command {
+            assert_eq!(key_id, "ABCD1234");
+        } else {
+            panic!("Expected Secrets AddKey command");
+        }
+    }
+
+    #[test]
+    fn test_cli_secrets_export_key() {
+        let cli = Cli::try_parse_from(["iron", "secrets", "export-key"]).unwrap();
+        if let Some(Commands::Secrets { action: SecretsAction::ExportKey { output } }) = cli.command {
+            assert_eq!(output, "iron-secrets.key");
+        } else {
+            panic!("Expected Secrets ExportKey command");
+        }
+    }
+
+    #[test]
+    fn test_cli_secrets_export_key_custom_path() {
+        let cli = Cli::try_parse_from(["iron", "secrets", "export-key", "-o", "/tmp/my.key"]).unwrap();
+        if let Some(Commands::Secrets { action: SecretsAction::ExportKey { output } }) = cli.command {
+            assert_eq!(output, "/tmp/my.key");
+        } else {
+            panic!("Expected Secrets ExportKey command");
         }
     }
 

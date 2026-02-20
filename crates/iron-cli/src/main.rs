@@ -57,6 +57,7 @@ fn main() -> Result<()> {
         Some(Commands::Sync { action }) => commands::sync::execute(&ctx, action),
         Some(Commands::Secrets { action }) => commands::secrets::execute(&ctx, action),
         Some(Commands::Doctor) => commands::doctor::execute(&ctx),
+        Some(Commands::Scan) => commands::scan::execute(&ctx),
         Some(Commands::Clean {
             orphans,
             cache,
@@ -67,7 +68,9 @@ fn main() -> Result<()> {
             export,
             import,
             script,
-        }) => commands::recover::execute(&ctx, export, import, script),
+            backup,
+            restore,
+        }) => commands::recover::execute(&ctx, export, import, script, backup, restore),
         Some(Commands::Go) => {
             ctx.output.info("Launching Iron TUI...");
             let root = std::path::PathBuf::from(&cli.root);

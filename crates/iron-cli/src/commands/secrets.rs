@@ -33,6 +33,8 @@ pub fn execute(ctx: &AppContext, action: SecretsAction) -> Result<()> {
         SecretsAction::Unlock { key } => unlock(ctx, key),
         SecretsAction::Lock => lock(ctx),
         SecretsAction::Link => link(ctx),
+        SecretsAction::AddKey { key_id } => add_key(ctx, &key_id),
+        SecretsAction::ExportKey { output } => export_key(ctx, &output),
     }
 }
 
@@ -284,6 +286,38 @@ fn link(ctx: &AppContext) -> Result<()> {
     } else {
         output.info("No secrets to link");
     }
+
+    Ok(())
+}
+
+/// Add a GPG user key for secrets encryption
+fn add_key(ctx: &AppContext, key_id: &str) -> Result<()> {
+    let output = &ctx.output;
+    let secrets_service = ctx.secrets_service();
+
+    output.header("Add GPG Key");
+    output.info(&format!("Adding GPG key {}...", key_id));
+
+    secrets_service.add_gpg_user(key_id)?;
+
+    output.success(&format!("GPG key {} added successfully", key_id));
+    output.info("Remember to re-lock and push so collaborators can decrypt.");
+
+    Ok(())
+}
+
+/// Export the git-crypt encryption key
+fn export_key(ctx: &AppContext, output_path: &str) -> Result<()> {
+    let output = &ctx.output;
+    let secrets_service = ctx.secrets_service();
+
+    output.header("Export Encryption Key");
+    output.info(&format!("Exporting key to {}...", output_path));
+
+    secrets_service.export_key(Path::new(output_path))?;
+
+    output.success(&format!("Key exported to {}", output_path));
+    output.warning("Keep this file safe! Anyone with this key can decrypt your secrets.");
 
     Ok(())
 }

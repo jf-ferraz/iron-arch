@@ -1,8 +1,14 @@
 //! Doctor view — system health checks
+//!
+//! Uses the shared `DoctorService` from iron-core for system-level health
+//! checks, supplemented with TUI-specific state checks (updates, news, profile).
 
 use crate::app::App;
 use crate::ui::theme;
-use iron_core::snapshot::SnapshotBackend;
+use iron_core::detect_snapshot_backend;
+use iron_core::services::doctor::{
+    CheckStatus, DefaultDoctorService, DoctorConfig, DoctorService, HealthCheck,
+};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
@@ -74,54 +80,78 @@ pub fn render_doctor(frame: &mut Frame, area: Rect, app: &App) {
     frame.render_widget(hints, layout[2]);
 }
 
+/// Map `CheckStatus` to a TUI colour.
+fn color_for(status: CheckStatus) -> Color {
+    match status {
+        CheckStatus::Pass => theme::GREEN,
+        CheckStatus::Warn => theme::YELLOW,
+        CheckStatus::Fail => theme::PINK,
+    }
+}
+
+/// Map `CheckStatus` to an icon string.
+fn icon_for(status: CheckStatus) -> &'static str {
+    match status {
+        CheckStatus::Pass => "[OK]",
+        CheckStatus::Warn | CheckStatus::Fail => "[!!]",
+    }
+}
+
+/// Human-readable label for a HealthCheck name.
+fn label_for(name: &str) -> &'static str {
+    match name {
+        "state_file" => "State file",
+        "directories" => "Directory structure",
+        "current_host" => "Host configured",
+        "git" => "Git repository",
+        "tools" => "External tools",
+        "packages" => "Package installation",
+        "snapshot" => "Snapshot backend",
+        "secrets" => "Secrets",
+        "symlinks" => "Symlink integrity",
+        "services" => "Service availability",
+        _ => "Check",
+    }
+}
+
+/// Convert a shared `HealthCheck` into (icon, label, detail, color).
+fn map_check(check: &HealthCheck) -> (&'static str, &'static str, String, Color) {
+    (
+        icon_for(check.status),
+        label_for(&check.name),
+        check.message.clone(),
+        color_for(check.status),
+    )
+}
+
 /// Build list of health check results from current app state.
 /// Returns (icon, label, detail, color).
+///
+/// Runs the shared `DoctorService` for system-level checks, then appends
+/// TUI-specific items (pending updates, arch news, active profile).
 fn build_health_checks(app: &App) -> Vec<(&'static str, &'static str, String, Color)> {
-    let mut checks = Vec::new();
+    let mut out: Vec<(&str, &str, String, Color)> = Vec::new();
 
-    // 1. Host configured
-    let host_ok = app.current_host.is_some();
-    checks.push((
-        if host_ok { "[OK]" } else { "[!!]" },
-        "Host configured",
-        app.current_host
-            .clone()
-            .unwrap_or_else(|| "No host set — run setup wizard".to_string()),
-        if host_ok { theme::GREEN } else { theme::YELLOW },
-    ));
+    // --- System-level checks from DoctorService ---
+    let config = DoctorConfig {
+        root: app.config_dir.clone(),
+        current_host: app.current_host.clone(),
+        active_bundle: app.active_bundle.as_ref().map(|b| b.id.clone()),
+        snapshot_backend: detect_snapshot_backend(),
+    };
 
-    // 2. Active bundle
-    let bundle_ok = app.active_bundle.is_some();
-    checks.push((
-        if bundle_ok { "[OK]" } else { "[!!]" },
-        "Active bundle",
-        app.active_bundle
-            .as_ref()
-            .map(|b| b.id.clone())
-            .unwrap_or_else(|| "No bundle active — press [b] to select one".to_string()),
-        if bundle_ok {
-            theme::GREEN
-        } else {
-            theme::YELLOW
-        },
-    ));
+    if let Ok(report) = DefaultDoctorService::new(config).check_all() {
+        for check in &report.checks {
+            let (icon, label, detail, color) = map_check(check);
+            out.push((icon, label, detail, color));
+        }
+    }
 
-    // 3. Modules available
-    let modules_ok = !app.modules.is_empty();
-    checks.push((
-        if modules_ok { "[OK]" } else { "[!!]" },
-        "Modules discovered",
-        format!("{} module(s) found", app.modules.len()),
-        if modules_ok {
-            theme::GREEN
-        } else {
-            theme::YELLOW
-        },
-    ));
+    // --- TUI-specific checks ---
 
-    // 4. Pending updates
+    // Pending updates
     let updates = app.pending_update_count();
-    checks.push((
+    out.push((
         if updates == 0 { "[OK]" } else { "[!!]" },
         "System updates",
         if updates == 0 {
@@ -136,9 +166,9 @@ fn build_health_checks(app: &App) -> Vec<(&'static str, &'static str, String, Co
         },
     ));
 
-    // 5. Arch news
+    // Arch news
     let news = app.arch_news.iter().filter(|n| n.requires_manual).count();
-    checks.push((
+    out.push((
         if news == 0 { "[OK]" } else { "[!!]" },
         "Arch news",
         if news == 0 {
@@ -149,9 +179,9 @@ fn build_health_checks(app: &App) -> Vec<(&'static str, &'static str, String, Co
         if news == 0 { theme::GREEN } else { theme::PINK },
     ));
 
-    // 6. Active profile
+    // Active profile
     let profile_ok = app.active_profile.is_some();
-    checks.push((
+    out.push((
         if profile_ok { "[OK]" } else { "[ ]" },
         "Active profile",
         app.active_profile
@@ -164,26 +194,5 @@ fn build_health_checks(app: &App) -> Vec<(&'static str, &'static str, String, Co
         },
     ));
 
-    // 7. Snapshot backend
-    let (snap_icon, snap_detail, snap_color) = match app.snapshot_backend {
-        SnapshotBackend::Timeshift => (
-            "[OK]",
-            "Timeshift detected — snapshots available".to_string(),
-            theme::GREEN,
-        ),
-        SnapshotBackend::Snapper => (
-            "[OK]",
-            "Snapper detected — snapshots available".to_string(),
-            theme::GREEN,
-        ),
-        SnapshotBackend::None => (
-            "[!!]",
-            "No snapshot tool detected — install timeshift or snapper for rollback support"
-                .to_string(),
-            theme::YELLOW,
-        ),
-    };
-    checks.push((snap_icon, "Snapshot backend", snap_detail, snap_color));
-
-    checks
+    out
 }

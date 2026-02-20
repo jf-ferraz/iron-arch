@@ -64,6 +64,9 @@ impl App {
         // Load package data (non-blocking, fail gracefully)
         self.load_package_data();
 
+        // Detect module divergence (S1-P3-001)
+        self.check_divergence();
+
         Ok(())
     }
 
@@ -396,6 +399,31 @@ impl App {
         self.host_input = TextInput::new(&self.wizard.host_id);
     }
 
+    /// Run system scan after wizard completion (S1-P1.5-004)
+    ///
+    /// Populates `scan_report` with results from `DefaultScanService`,
+    /// using real bundles/modules and the injected package manager.
+    pub fn run_post_wizard_scan(&mut self) {
+        use iron_core::services::scan::{DefaultScanService, ScanService};
+
+        let home_dir = std::env::var("HOME")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| std::path::PathBuf::from("/home"));
+
+        let scan_service =
+            DefaultScanService::new(&home_dir, self.package_manager.clone());
+
+        match scan_service.scan(&self.bundles, &self.modules) {
+            Ok(report) => {
+                self.scan_report = Some(report);
+                self.scan_scroll = 0;
+            }
+            Err(e) => {
+                self.set_error(format!("Scan failed: {}", e));
+            }
+        }
+    }
+
     /// Load package data from pacman
     pub fn load_package_data(&mut self) {
         // Get installed package count
@@ -675,6 +703,15 @@ impl App {
                     self.set_error(format!("Failed to get sync status: {}", e));
                 }
             }
+            // Check for merge conflicts (S1-P8-001)
+            match sync_service.check_conflicts() {
+                Ok(conflicts) => {
+                    self.sync_conflicts = conflicts;
+                }
+                Err(_) => {
+                    self.sync_conflicts.clear();
+                }
+            }
         } else {
             self.set_error("No state manager available");
         }
@@ -759,6 +796,64 @@ impl App {
         } else {
             self.set_error("No state manager available");
         }
+    }
+
+    /// Resolve all sync conflicts by keeping local versions (S1-P8-001)
+    pub fn resolve_conflicts_keep_local(&mut self) {
+        if self.sync_conflicts.is_empty() {
+            return;
+        }
+
+        let conflicts: Vec<String> = self.sync_conflicts.clone();
+        let config_dir = self.config_dir.clone();
+
+        // For each conflicted file, checkout our version
+        for file in &conflicts {
+            let _ = std::process::Command::new("git")
+                .args(["checkout", "--ours", file])
+                .current_dir(&config_dir)
+                .output();
+            let _ = std::process::Command::new("git")
+                .args(["add", file])
+                .current_dir(&config_dir)
+                .output();
+        }
+
+        self.sync_conflicts.clear();
+        self.set_status(format!(
+            "Resolved {} conflict{} (kept local)",
+            conflicts.len(),
+            if conflicts.len() == 1 { "" } else { "s" }
+        ));
+    }
+
+    /// Resolve all sync conflicts by keeping remote versions (S1-P8-001)
+    pub fn resolve_conflicts_keep_remote(&mut self) {
+        if self.sync_conflicts.is_empty() {
+            return;
+        }
+
+        let conflicts: Vec<String> = self.sync_conflicts.clone();
+        let config_dir = self.config_dir.clone();
+
+        // For each conflicted file, checkout their version
+        for file in &conflicts {
+            let _ = std::process::Command::new("git")
+                .args(["checkout", "--theirs", file])
+                .current_dir(&config_dir)
+                .output();
+            let _ = std::process::Command::new("git")
+                .args(["add", file])
+                .current_dir(&config_dir)
+                .output();
+        }
+
+        self.sync_conflicts.clear();
+        self.set_status(format!(
+            "Resolved {} conflict{} (kept remote)",
+            conflicts.len(),
+            if conflicts.len() == 1 { "" } else { "s" }
+        ));
     }
 
     // ==========================================================================
@@ -1830,5 +1925,234 @@ depends = []
 
         assert!(app.error_text().is_some());
         assert!(app.error_text().unwrap().contains("No state manager"));
+    }
+
+    // =========================================================================
+    // ProfileBuilder Persistence Tests (S1-P5-001)
+    // =========================================================================
+
+    #[test]
+    fn test_create_profile_from_builder_writes_toml() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut app = App::new(
+            temp_dir.path().to_path_buf(),
+            Arc::new(iron_core::NoopPackageManager),
+            Arc::new(iron_core::NoopSystemService),
+        );
+        // Set up profile builder state
+        app.profile_builder_name = "test-profile".to_string();
+        app.profile_builder_description = "A test profile".to_string();
+        app.profile_builder_selected_modules = vec!["nvim-ide".to_string()];
+
+        app.create_profile_from_builder();
+
+        // Verify TOML file was created
+        let profile_path = temp_dir
+            .path()
+            .join("profiles")
+            .join("test-profile")
+            .join("profile.toml");
+        assert!(profile_path.exists(), "profile.toml should be written to disk");
+
+        let content = std::fs::read_to_string(&profile_path).unwrap();
+        assert!(content.contains("test-profile"));
+        assert!(content.contains("A test profile"));
+        assert!(content.contains("nvim-ide"));
+    }
+
+    #[test]
+    fn test_create_profile_from_builder_empty_name_error() {
+        let mut app = App::default();
+        app.profile_builder_name = "  ".to_string();
+
+        app.create_profile_from_builder();
+
+        assert!(app.error_text().is_some());
+        assert!(app.error_text().unwrap().contains("empty"));
+    }
+
+    // =========================================================================
+    // ModuleCreator Persistence Tests (S1-P5-002)
+    // =========================================================================
+
+    #[test]
+    fn test_create_module_from_creator_writes_toml() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut app = App::new(
+            temp_dir.path().to_path_buf(),
+            Arc::new(iron_core::NoopPackageManager),
+            Arc::new(iron_core::NoopSystemService),
+        );
+        // Set up module creator state
+        app.module_creator_name = "test-module".to_string();
+        app.module_creator_description = "A test module".to_string();
+        app.module_creator_packages = "neovim, ripgrep".to_string();
+
+        app.create_module_from_creator();
+
+        // Verify TOML file was created
+        let module_path = temp_dir
+            .path()
+            .join("modules")
+            .join("test-module")
+            .join("module.toml");
+        assert!(module_path.exists(), "module.toml should be written to disk");
+
+        let content = std::fs::read_to_string(&module_path).unwrap();
+        assert!(content.contains("test-module"));
+        assert!(content.contains("A test module"));
+        assert!(content.contains("neovim"));
+        assert!(content.contains("ripgrep"));
+    }
+
+    #[test]
+    fn test_create_module_from_creator_empty_name_error() {
+        let mut app = App::default();
+        app.module_creator_name = "".to_string();
+
+        app.create_module_from_creator();
+
+        assert!(app.error_text().is_some());
+        assert!(app.error_text().unwrap().contains("empty"));
+    }
+
+    // =========================================================================
+    // Divergence Detection Tests (S1-P3-001)
+    // =========================================================================
+
+    #[test]
+    fn test_diverged_count_empty_by_default() {
+        let app = App::default();
+        assert_eq!(app.diverged_count(), 0);
+        assert!(app.diverged_modules.is_empty());
+    }
+
+    #[test]
+    fn test_check_divergence_no_active_modules() {
+        let mut app = App::default();
+        app.modules = vec![iron_core::Module {
+            id: "test-mod".to_string(),
+            name: "Test".to_string(),
+            description: None,
+            kind: iron_core::ModuleKind::AppConfig,
+            packages: vec![],
+            aur_packages: vec![],
+            dotfiles: vec![iron_core::DotfileMapping {
+                source: "config".to_string(),
+                target: "/tmp/nonexistent-target".to_string(),
+                link: true,
+            }],
+            conflicts: vec![],
+            depends: vec![],
+            pre_install: None,
+            post_install: None,
+        }];
+        // Module not in active list → should not be diverged
+        app.active_modules = vec![];
+
+        app.check_divergence();
+        assert_eq!(app.diverged_count(), 0);
+    }
+
+    #[test]
+    fn test_check_divergence_active_module_no_dotfiles() {
+        let mut app = App::default();
+        app.modules = vec![iron_core::Module {
+            id: "empty-mod".to_string(),
+            name: "Empty".to_string(),
+            description: None,
+            kind: iron_core::ModuleKind::AppConfig,
+            packages: vec![],
+            aur_packages: vec![],
+            dotfiles: vec![],
+            conflicts: vec![],
+            depends: vec![],
+            pre_install: None,
+            post_install: None,
+        }];
+        app.active_modules = vec!["empty-mod".to_string()];
+
+        app.check_divergence();
+        assert_eq!(app.diverged_count(), 0);
+    }
+
+    #[test]
+    fn test_is_module_diverged() {
+        let mut app = App::default();
+        app.diverged_modules = vec!["nvim-ide".to_string()];
+
+        assert!(app.is_module_diverged("nvim-ide"));
+        assert!(!app.is_module_diverged("other"));
+    }
+
+    // =========================================================================
+    // Sync Conflict Resolution Tests (S1-P8-001)
+    // =========================================================================
+
+    #[test]
+    fn test_sync_conflicts_empty_by_default() {
+        let app = App::default();
+        assert!(app.sync_conflicts.is_empty());
+    }
+
+    #[test]
+    fn test_resolve_conflicts_keep_local_clears_conflicts() {
+        let mut app = App::default();
+        app.sync_conflicts = vec!["file1.toml".to_string(), "file2.toml".to_string()];
+
+        app.resolve_conflicts_keep_local();
+
+        assert!(app.sync_conflicts.is_empty());
+        assert!(app.status_text().unwrap().contains("2 conflicts"));
+        assert!(app.status_text().unwrap().contains("kept local"));
+    }
+
+    #[test]
+    fn test_resolve_conflicts_keep_remote_clears_conflicts() {
+        let mut app = App::default();
+        app.sync_conflicts = vec!["config.toml".to_string()];
+
+        app.resolve_conflicts_keep_remote();
+
+        assert!(app.sync_conflicts.is_empty());
+        assert!(app.status_text().unwrap().contains("1 conflict"));
+        assert!(app.status_text().unwrap().contains("kept remote"));
+    }
+
+    #[test]
+    fn test_resolve_conflicts_noop_when_empty() {
+        let mut app = App::default();
+        app.resolve_conflicts_keep_local();
+        assert!(app.status_text().is_none());
+
+        app.resolve_conflicts_keep_remote();
+        assert!(app.status_text().is_none());
+    }
+
+    // =========================================================================
+    // Post-Wizard Scan Tests (S1-P1.5-004)
+    // =========================================================================
+
+    #[test]
+    fn test_run_post_wizard_scan_populates_report() {
+        let mut app = App::default();
+        // With no bundles/modules and NoopPackageManager, scan should succeed with empty report
+        app.run_post_wizard_scan();
+
+        assert!(app.scan_report.is_some());
+        let report = app.scan_report.as_ref().unwrap();
+        // Should have scanned some well-known configs even though bundles/modules are empty
+        assert_eq!(report.potential_conflicts.len(), 0);
+        assert_eq!(app.scan_scroll, 0);
+    }
+
+    #[test]
+    fn test_run_post_wizard_scan_resets_scroll() {
+        let mut app = App::default();
+        app.scan_scroll = 42;
+
+        app.run_post_wizard_scan();
+
+        assert_eq!(app.scan_scroll, 0);
     }
 }
