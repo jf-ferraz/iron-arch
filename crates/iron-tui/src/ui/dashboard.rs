@@ -3,11 +3,11 @@
 //! A clean, professional dashboard for the Iron TUI application.
 
 use crate::app::{App, HealthStatus};
+use crate::ui::theme;
 use crate::ui::utils::format_relative_time;
 use chrono::Utc;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Paragraph};
-use crate::ui::theme;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper Functions
@@ -76,7 +76,12 @@ fn render_system_status(frame: &mut Frame, area: Rect, app: &App) {
     // Determine health status and styling
     let (icon, status_text, status_color, desc) = match app.system_health() {
         HealthStatus::Ok => ("[OK]", "Healthy", theme::GREEN, "All systems operational"),
-        HealthStatus::Warning => ("[!!]", "Attention", theme::YELLOW, "Updates or issues pending"),
+        HealthStatus::Warning => (
+            "[!!]",
+            "Attention",
+            theme::YELLOW,
+            "Updates or issues pending",
+        ),
         HealthStatus::Error => ("[XX]", "Critical", theme::RED, "Action required"),
     };
 
@@ -85,21 +90,30 @@ fn render_system_status(frame: &mut Frame, area: Rect, app: &App) {
 
     // Build status display
     let status_line = Line::from(vec![
-        Span::styled(format!(" {} ", icon), Style::default().fg(status_color).bold()),
+        Span::styled(
+            format!(" {} ", icon),
+            Style::default().fg(status_color).bold(),
+        ),
         Span::styled(status_text, Style::default().fg(status_color).bold()),
         Span::styled(format!("  {}", desc), Style::default().fg(theme::SUBTEXT)),
     ]);
 
     let packages_line = Line::from(vec![
         Span::styled("   Packages   ", Style::default().fg(theme::SUBTEXT)),
-        Span::styled(format!("{}", packages), Style::default().fg(theme::TEXT).bold()),
+        Span::styled(
+            format!("{}", packages),
+            Style::default().fg(theme::TEXT).bold(),
+        ),
         Span::styled(" installed", Style::default().fg(theme::SUBTEXT)),
     ]);
 
     let updates_line = if updates > 0 {
         Line::from(vec![
             Span::styled("   Updates    ", Style::default().fg(theme::SUBTEXT)),
-            Span::styled(format!("{}", updates), Style::default().fg(theme::YELLOW).bold()),
+            Span::styled(
+                format!("{}", updates),
+                Style::default().fg(theme::YELLOW).bold(),
+            ),
             Span::styled(" available", Style::default().fg(theme::SUBTEXT)),
         ])
     } else {

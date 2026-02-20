@@ -51,10 +51,7 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App) {
     // Build header content
     let title = Span::styled(
         " IRON ",
-        Style::default()
-            .fg(Color::Black)
-            .bg(theme::MAUVE)
-            .bold(),
+        Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
     );
 
     // Calculate spacing for right-aligned content
@@ -103,7 +100,10 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
         };
 
         let error_line = Line::from(vec![
-            Span::styled(format!(" {} ", symbol), Style::default().fg(Color::Black).bg(color).bold()),
+            Span::styled(
+                format!(" {} ", symbol),
+                Style::default().fg(Color::Black).bg(color).bold(),
+            ),
             Span::raw(" "),
             Span::styled(msg.text(), Style::default().fg(color)),
         ]);
@@ -127,7 +127,10 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
         };
 
         let status_line = Line::from(vec![
-            Span::styled(format!(" {} ", symbol), Style::default().fg(Color::Black).bg(color).bold()),
+            Span::styled(
+                format!(" {} ", symbol),
+                Style::default().fg(Color::Black).bg(color).bold(),
+            ),
             Span::raw(" "),
             Span::styled(msg.text(), Style::default().fg(color)),
         ]);
@@ -186,13 +189,8 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
             ("[c]", "Clean"),
             ("[Esc]", "Back"),
         ],
-        View::CleanupPreview => vec![
-            ("[c]", "Execute"),
-            ("[Esc]", "Back"),
-        ],
-        View::CleanupResults => vec![
-            ("[Esc]", "Back"),
-        ],
+        View::CleanupPreview => vec![("[c]", "Execute"), ("[Esc]", "Back")],
+        View::CleanupResults => vec![("[Esc]", "Back")],
         View::SecurityModules => vec![
             ("[j/k]", "Select"),
             ("[Enter]", "Toggle"),
@@ -205,11 +203,7 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
             ("[r]", "Refresh"),
             ("[Esc]", "Back"),
         ],
-        View::OperationLog => vec![
-            ("[j/k]", "Scroll"),
-            ("[f]", "Filter"),
-            ("[Esc]", "Back"),
-        ],
+        View::OperationLog => vec![("[j/k]", "Scroll"), ("[f]", "Filter"), ("[Esc]", "Back")],
         View::Settings => vec![
             ("[j/k]", "Navigate"),
             ("[Enter]", "Edit"),
@@ -262,7 +256,10 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
         .as_ref()
         .map(|b| b.id.clone())
         .unwrap_or_else(|| "—".to_string());
-    let profile_name = app.active_profile.clone().unwrap_or_else(|| "—".to_string());
+    let profile_name = app
+        .active_profile
+        .clone()
+        .unwrap_or_else(|| "—".to_string());
     let host_name = app.current_host.clone().unwrap_or_else(|| "—".to_string());
 
     let status_line = Line::from(vec![
@@ -333,13 +330,8 @@ fn get_view_keybindings(view: View) -> Vec<(&'static str, &'static str)> {
             ("Enter", "Preview"),
             ("c", "Execute cleanup"),
         ],
-        View::CleanupPreview => vec![
-            ("c", "Confirm and execute"),
-            ("Esc", "Back to categories"),
-        ],
-        View::CleanupResults => vec![
-            ("Esc", "Back to maintenance"),
-        ],
+        View::CleanupPreview => vec![("c", "Confirm and execute"), ("Esc", "Back to categories")],
+        View::CleanupResults => vec![("Esc", "Back to maintenance")],
         View::SystemMaintenance => vec![
             ("h/l", "Prev/next card"),
             ("Enter", "Launch action"),
@@ -352,10 +344,7 @@ fn get_view_keybindings(view: View) -> Vec<(&'static str, &'static str)> {
             ("Enter", "View diff info"),
             ("r", "Refresh conflicts"),
         ],
-        View::OperationLog => vec![
-            ("j/k", "Move up/down"),
-            ("f", "Cycle filter"),
-        ],
+        View::OperationLog => vec![("j/k", "Move up/down"), ("f", "Cycle filter")],
         View::SecurityModules => vec![
             ("j/k", "Move up/down"),
             ("Enter", "Toggle module"),
@@ -379,9 +368,7 @@ fn get_view_keybindings(view: View) -> Vec<(&'static str, &'static str)> {
             ("Enter", "Select/Continue"),
             ("h/l", "Prev/next step"),
         ],
-        View::Doctor => vec![
-            ("r", "Re-run checks"),
-        ],
+        View::Doctor => vec![("r", "Re-run checks")],
         View::Secrets => vec![
             ("i", "Init git-crypt"),
             ("u", "Unlock secrets"),
@@ -493,9 +480,15 @@ pub fn render_help_overlay(frame: &mut Frame, area: Rect, app: &App) {
             Style::default().fg(theme::MAUVE),
         )));
         help_text.push(Line::from("  HOST     Your machine (e.g. desktop-arch)"));
-        help_text.push(Line::from("    └─ BUNDLE  Desktop environment (Hyprland, KDE…)"));
-        help_text.push(Line::from("         └─ PROFILE  Dotfile collection for a workflow"));
-        help_text.push(Line::from("              └─ MODULE  Single app config (nvim, kitty…)"));
+        help_text.push(Line::from(
+            "    └─ BUNDLE  Desktop environment (Hyprland, KDE…)",
+        ));
+        help_text.push(Line::from(
+            "         └─ PROFILE  Dotfile collection for a workflow",
+        ));
+        help_text.push(Line::from(
+            "              └─ MODULE  Single app config (nvim, kitty…)",
+        ));
         help_text.push(Line::from(""));
         help_text.push(Line::from(Span::styled(
             "  Configure a HOST, then activate a BUNDLE.",

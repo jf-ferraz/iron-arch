@@ -75,7 +75,10 @@ impl CleanupCategory {
 
     /// Check if this category is aggressive (requires explicit opt-in)
     pub fn is_aggressive(&self) -> bool {
-        matches!(self, CleanupCategory::BrowserCache | CleanupCategory::DevCache)
+        matches!(
+            self,
+            CleanupCategory::BrowserCache | CleanupCategory::DevCache
+        )
     }
 
     /// Get the display name
@@ -338,7 +341,10 @@ impl DefaultCleanupService {
             category: CleanupCategory::PackageCache,
             items_count: count,
             space_reclaimable: reclaimable,
-            details: format!("{} files, keeps {} versions", count, self.package_cache_keep),
+            details: format!(
+                "{} files, keeps {} versions",
+                count, self.package_cache_keep
+            ),
             warnings: vec![],
         }
     }
@@ -416,7 +422,10 @@ impl DefaultCleanupService {
             category: CleanupCategory::UserCache,
             items_count: count,
             space_reclaimable: size,
-            details: format!("{} files older than {} days", count, self.cache_max_age_days),
+            details: format!(
+                "{} files older than {} days",
+                count, self.cache_max_age_days
+            ),
             warnings: vec![],
         }
     }
@@ -593,10 +602,7 @@ impl DefaultCleanupService {
 
                 if result.status.success() {
                     // Parse output to count removed packages
-                    let removed = stdout
-                        .lines()
-                        .filter(|l| l.contains("removing"))
-                        .count();
+                    let removed = stdout.lines().filter(|l| l.contains("removing")).count();
                     CleanupResult::success(
                         CleanupCategory::PackageCache,
                         removed,
@@ -1322,7 +1328,10 @@ mod tests {
         assert_eq!(parse_size_string("1M"), 1024 * 1024);
         assert_eq!(parse_size_string("1G"), 1024 * 1024 * 1024);
         assert_eq!(parse_size_string("1.5M"), (1.5 * 1024.0 * 1024.0) as u64);
-        assert_eq!(parse_size_string("234.5M"), (234.5 * 1024.0 * 1024.0) as u64);
+        assert_eq!(
+            parse_size_string("234.5M"),
+            (234.5 * 1024.0 * 1024.0) as u64
+        );
     }
 
     #[test]
@@ -1340,7 +1349,10 @@ mod tests {
 
     #[test]
     fn test_cleanup_result_failure() {
-        let result = CleanupResult::failure(CleanupCategory::PackageCache, "Permission denied".to_string());
+        let result = CleanupResult::failure(
+            CleanupCategory::PackageCache,
+            "Permission denied".to_string(),
+        );
         assert!(!result.success);
         assert_eq!(result.error, Some("Permission denied".to_string()));
     }
@@ -1440,17 +1452,23 @@ mod tests {
     #[test]
     fn test_parse_journal_size_formats() {
         // Test various output formats
-        assert_eq!(parse_journal_size("Archived and active journals take up 234.5M in the file system."),
-                   (234.5 * 1024.0 * 1024.0) as u64);
-        assert_eq!(parse_journal_size("Journals take up 1.2G on disk."),
-                   (1.2 * 1024.0 * 1024.0 * 1024.0) as u64);
+        assert_eq!(
+            parse_journal_size("Archived and active journals take up 234.5M in the file system."),
+            (234.5 * 1024.0 * 1024.0) as u64
+        );
+        assert_eq!(
+            parse_journal_size("Journals take up 1.2G on disk."),
+            (1.2 * 1024.0 * 1024.0 * 1024.0) as u64
+        );
         assert_eq!(parse_journal_size("No match here"), 0);
     }
 
     #[test]
     fn test_parse_journal_freed_formats() {
-        assert_eq!(parse_journal_freed("Vacuuming done, freed 100M of archived journals"),
-                   (100.0 * 1024.0 * 1024.0) as u64);
+        assert_eq!(
+            parse_journal_freed("Vacuuming done, freed 100M of archived journals"),
+            (100.0 * 1024.0 * 1024.0) as u64
+        );
         assert_eq!(parse_journal_freed("Deleted 0B, no files were freed"), 0);
     }
 

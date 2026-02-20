@@ -76,5 +76,5 @@ pub use resilience::{
 
 // Structured logging (NFR-9, NFR-10)
 pub use logging::{
-    generate_correlation_id, init_logging, LogConfig, OperationSpan, DEFAULT_MAX_SIZE_BYTES,
+    DEFAULT_MAX_SIZE_BYTES, LogConfig, OperationSpan, generate_correlation_id, init_logging,
 };

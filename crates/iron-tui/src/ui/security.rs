@@ -51,8 +51,8 @@ pub fn render_security_modules(frame: &mut Frame, area: Rect, app: &App) {
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),  // Header
-            Constraint::Min(10),    // Module list
+            Constraint::Length(3), // Header
+            Constraint::Min(10),   // Module list
         ])
         .split(area);
 
@@ -67,8 +67,7 @@ fn render_header(frame: &mut Frame, area: Rect, app: &App) {
         .modules
         .iter()
         .filter(|m| {
-            SECURITY_MODULE_IDS.contains(&m.id.as_str())
-                && app.active_modules.contains(&m.id)
+            SECURITY_MODULE_IDS.contains(&m.id.as_str()) && app.active_modules.contains(&m.id)
         })
         .count();
 
@@ -83,7 +82,11 @@ fn render_header(frame: &mut Frame, area: Rect, app: &App) {
         Span::raw("  │  "),
         Span::styled(
             format!("{}/{} enabled", enabled_count, total_count),
-            Style::default().fg(if enabled_count > 0 { theme::GREEN } else { theme::YELLOW }),
+            Style::default().fg(if enabled_count > 0 {
+                theme::GREEN
+            } else {
+                theme::YELLOW
+            }),
         ),
     ]);
 
@@ -131,7 +134,10 @@ fn render_module_list(frame: &mut Frame, area: Rect, app: &App) {
             Line::from(vec![
                 Span::styled("Press ", Style::default().fg(theme::SUBTEXT)),
                 Span::styled("[m]", Style::default().fg(theme::MAUVE).bold()),
-                Span::styled(" to view all available modules.", Style::default().fg(theme::SUBTEXT)),
+                Span::styled(
+                    " to view all available modules.",
+                    Style::default().fg(theme::SUBTEXT),
+                ),
             ]),
         ])
         .alignment(Alignment::Center);
@@ -161,10 +167,7 @@ fn render_module_list(frame: &mut Frame, area: Rect, app: &App) {
                 theme::unselected()
             };
 
-            let description = module
-                .description
-                .as_deref()
-                .unwrap_or("No description");
+            let description = module.description.as_deref().unwrap_or("No description");
 
             Row::new(vec![
                 Cell::from(format!("{} {}", status_icon, status_text))
@@ -177,9 +180,9 @@ fn render_module_list(frame: &mut Frame, area: Rect, app: &App) {
         .collect();
 
     let widths = [
-        Constraint::Length(12),  // Status
-        Constraint::Length(20),  // Name
-        Constraint::Min(30),     // Description
+        Constraint::Length(12), // Status
+        Constraint::Length(20), // Name
+        Constraint::Min(30),    // Description
     ];
 
     let table = Table::new(rows, widths)
@@ -196,8 +199,8 @@ fn render_module_list(frame: &mut Frame, area: Rect, app: &App) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ratatui::backend::TestBackend;
     use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
 
     fn create_test_terminal() -> Terminal<TestBackend> {
         let backend = TestBackend::new(100, 25);
@@ -219,7 +222,10 @@ mod tests {
     #[test]
     fn test_security_category_names() {
         assert_eq!(SecurityCategory::Firewall.name(), "Firewall");
-        assert_eq!(SecurityCategory::IntrusionDetection.name(), "Intrusion Detection");
+        assert_eq!(
+            SecurityCategory::IntrusionDetection.name(),
+            "Intrusion Detection"
+        );
         assert_eq!(SecurityCategory::AuditLogging.name(), "Audit Logging");
         assert_eq!(SecurityCategory::AccessControl.name(), "Access Control");
     }

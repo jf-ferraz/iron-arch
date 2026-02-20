@@ -41,7 +41,9 @@ fn at2_4_bundle_switch() {
     let fixture = TestFixture::with_initialized_state();
     fixture.create_bundle("first-bundle");
     fixture.create_bundle("second-bundle");
-    fixture.run_iron(&["bundle", "install", "first-bundle"]).success();
+    fixture
+        .run_iron(&["bundle", "install", "first-bundle"])
+        .success();
     fixture
         .run_iron(&["bundle", "switch", "second-bundle"])
         .success();

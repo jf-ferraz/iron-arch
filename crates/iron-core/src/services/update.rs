@@ -86,51 +86,54 @@ impl PacmanOutputParser {
 
         // Check for package count
         if let Some(caps) = PACKAGES_COUNT.captures(line)
-            && let Ok(count) = caps[1].parse::<usize>() {
-                self.total_packages = Some(count);
-                return Some(PacmanEvent::PackageCount(count));
-            }
+            && let Ok(count) = caps[1].parse::<usize>()
+        {
+            self.total_packages = Some(count);
+            return Some(PacmanEvent::PackageCount(count));
+        }
 
         // Check for upgrade/reinstall progress
         if let Some(caps) = UPGRADING.captures(line)
-            && let (Ok(current), Ok(total)) = (caps[1].parse::<usize>(), caps[2].parse::<usize>()) {
-                let package = caps[4].to_string();
+            && let (Ok(current), Ok(total)) = (caps[1].parse::<usize>(), caps[2].parse::<usize>())
+        {
+            let package = caps[4].to_string();
 
-                // If we have a previous package, it completed
-                let completed_event = self
-                    .last_started_package
-                    .take()
-                    .map(|p| PacmanEvent::PackageCompleted { package: p });
+            // If we have a previous package, it completed
+            let completed_event = self
+                .last_started_package
+                .take()
+                .map(|p| PacmanEvent::PackageCompleted { package: p });
 
-                self.current_package = Some(package.clone());
-                self.last_started_package = Some(package.clone());
+            self.current_package = Some(package.clone());
+            self.last_started_package = Some(package.clone());
 
-                // Return the started event (completed event handled via previous package tracking)
-                if completed_event.is_some() {
-                    // Note: In real usage, we track completions when the next package starts
-                }
-
-                return Some(PacmanEvent::PackageStarted {
-                    package,
-                    current,
-                    total,
-                });
+            // Return the started event (completed event handled via previous package tracking)
+            if completed_event.is_some() {
+                // Note: In real usage, we track completions when the next package starts
             }
+
+            return Some(PacmanEvent::PackageStarted {
+                package,
+                current,
+                total,
+            });
+        }
 
         // Check for install progress
         if let Some(caps) = INSTALLING.captures(line)
-            && let (Ok(current), Ok(total)) = (caps[1].parse::<usize>(), caps[2].parse::<usize>()) {
-                let package = caps[3].to_string();
+            && let (Ok(current), Ok(total)) = (caps[1].parse::<usize>(), caps[2].parse::<usize>())
+        {
+            let package = caps[3].to_string();
 
-                self.current_package = Some(package.clone());
-                self.last_started_package = Some(package.clone());
+            self.current_package = Some(package.clone());
+            self.last_started_package = Some(package.clone());
 
-                return Some(PacmanEvent::PackageStarted {
-                    package,
-                    current,
-                    total,
-                });
-            }
+            return Some(PacmanEvent::PackageStarted {
+                package,
+                current,
+                total,
+            });
+        }
 
         None
     }
@@ -652,7 +655,16 @@ impl<S: SnapshotManager> DefaultUpdateService<S> {
     fn check_network(&self) -> PreflightCheck {
         // Try to reach archlinux.org mirrors
         let result = Command::new("curl")
-            .args(["-s", "-o", "/dev/null", "-w", "%{http_code}", "--connect-timeout", "5", "https://archlinux.org"])
+            .args([
+                "-s",
+                "-o",
+                "/dev/null",
+                "-w",
+                "%{http_code}",
+                "--connect-timeout",
+                "5",
+                "https://archlinux.org",
+            ])
             .output();
 
         match result {
@@ -719,7 +731,10 @@ impl<S: SnapshotManager> DefaultUpdateService<S> {
                         PreflightCheck {
                             name: "Disk Space".to_string(),
                             status: PreflightStatus::Warning,
-                            message: format!("Low disk space: {}GB available (recommended: 5GB+)", gb_available),
+                            message: format!(
+                                "Low disk space: {}GB available (recommended: 5GB+)",
+                                gb_available
+                            ),
                             details: Some("Consider cleaning package cache".to_string()),
                         },
                         available,
@@ -729,7 +744,10 @@ impl<S: SnapshotManager> DefaultUpdateService<S> {
                         PreflightCheck {
                             name: "Disk Space".to_string(),
                             status: PreflightStatus::Fail,
-                            message: format!("Insufficient disk space: {}GB (minimum: 2GB)", gb_available),
+                            message: format!(
+                                "Insufficient disk space: {}GB (minimum: 2GB)",
+                                gb_available
+                            ),
                             details: Some("Free up space before updating".to_string()),
                         },
                         available,
@@ -868,7 +886,10 @@ impl<S: SnapshotManager> DefaultUpdateService<S> {
     /// Check Arch news for unacknowledged items (Phase 2.2)
     ///
     /// Returns the check result, list of unacknowledged news, and whether update is blocked
-    fn check_news(&self, news_items: &[ArchNewsItem]) -> (PreflightCheck, Vec<UnacknowledgedNews>, bool) {
+    fn check_news(
+        &self,
+        news_items: &[ArchNewsItem],
+    ) -> (PreflightCheck, Vec<UnacknowledgedNews>, bool) {
         if news_items.is_empty() {
             return (
                 PreflightCheck {
@@ -1557,10 +1578,7 @@ impl<S: SnapshotManager> UpdateService for DefaultUpdateService<S> {
 impl<S: SnapshotManager> DefaultUpdateService<S> {
     /// Find which package owns a file using pacman -Qo
     fn find_package_owner(file_path: &str) -> Option<String> {
-        if let Ok(output) = Command::new("pacman")
-            .args(["-Qo", file_path])
-            .output()
-        {
+        if let Ok(output) = Command::new("pacman").args(["-Qo", file_path]).output() {
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 // Output format: "/path/to/file is owned by package version"
@@ -2935,11 +2953,7 @@ mod tests {
     // Arch News Check Tests (Phase 2.2)
     // ==========================================================================
 
-    fn create_test_news_item(
-        title: &str,
-        url: &str,
-        requires_manual: bool,
-    ) -> ArchNewsItem {
+    fn create_test_news_item(title: &str, url: &str, requires_manual: bool) -> ArchNewsItem {
         ArchNewsItem {
             title: title.to_string(),
             url: url.to_string(),
@@ -2987,9 +3001,11 @@ mod tests {
     fn test_check_news_unacknowledged_non_critical() {
         let (service, _temp) = create_test_service();
 
-        let news = vec![
-            create_test_news_item("Test News", "https://archlinux.org/news/1/", false),
-        ];
+        let news = vec![create_test_news_item(
+            "Test News",
+            "https://archlinux.org/news/1/",
+            false,
+        )];
 
         let (check, unack, blocks) = service.check_news(&news);
 
@@ -3003,13 +3019,11 @@ mod tests {
     fn test_check_news_unacknowledged_critical() {
         let (service, _temp) = create_test_service();
 
-        let news = vec![
-            create_test_news_item(
-                "Manual intervention required",
-                "https://archlinux.org/news/critical/",
-                true,
-            ),
-        ];
+        let news = vec![create_test_news_item(
+            "Manual intervention required",
+            "https://archlinux.org/news/critical/",
+            true,
+        )];
 
         let (check, unack, blocks) = service.check_news(&news);
 
@@ -3065,9 +3079,11 @@ mod tests {
     fn test_run_preflight_checks_with_news() {
         let (service, _temp) = create_test_service();
 
-        let news = vec![
-            create_test_news_item("Test News", "https://archlinux.org/news/1/", false),
-        ];
+        let news = vec![create_test_news_item(
+            "Test News",
+            "https://archlinux.org/news/1/",
+            false,
+        )];
 
         let result = service.run_preflight_checks_with_news(&news);
 

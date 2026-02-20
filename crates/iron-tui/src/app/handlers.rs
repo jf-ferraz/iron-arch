@@ -357,6 +357,43 @@ impl App {
                 }
                 _ => false,
             },
+            // Secrets view handlers
+            View::Secrets => match key.code {
+                KeyCode::Char('i') => {
+                    self.secrets_init();
+                    true
+                }
+                KeyCode::Char('u') => {
+                    self.secrets_unlock();
+                    true
+                }
+                KeyCode::Char('l') => {
+                    self.secrets_lock();
+                    true
+                }
+                KeyCode::Char('r') => {
+                    self.refresh_secrets();
+                    self.set_status("Secrets status refreshed");
+                    true
+                }
+                _ => false,
+            },
+            // Recovery view handlers
+            View::Recovery => match key.code {
+                KeyCode::Char('e') => {
+                    self.recovery_export();
+                    true
+                }
+                KeyCode::Char('g') => {
+                    self.recovery_generate_script();
+                    true
+                }
+                KeyCode::Char('s') => {
+                    self.recovery_create_snapshot();
+                    true
+                }
+                _ => false,
+            },
             _ => false,
         };
 
@@ -379,12 +416,12 @@ impl App {
             KeyCode::Char('m') => self.navigate(View::Modules),
             KeyCode::Char('x') => self.navigate(View::SystemMaintenance),
             KeyCode::Char('u') => self.navigate(View::UpdatePreview),
-            KeyCode::Char('l') => self.navigate(View::CleanSystem),  // Phase 3: Cleanup
+            KeyCode::Char('l') => self.navigate(View::CleanSystem), // Phase 3: Cleanup
             KeyCode::Char('s') => self.navigate(View::Settings),
-            KeyCode::Char('w') => self.navigate(View::SetupWizard),  // Re-enter wizard
-            KeyCode::Char('y') => self.navigate(View::Sync),         // Git sync
-            KeyCode::Char('S') => self.navigate(View::Secrets),      // Shift+S = Secrets
-            KeyCode::Char('R') => self.navigate(View::Recovery),     // Shift+R = Recovery
+            KeyCode::Char('w') => self.navigate(View::SetupWizard), // Re-enter wizard
+            KeyCode::Char('y') => self.navigate(View::Sync),        // Git sync
+            KeyCode::Char('S') => self.navigate(View::Secrets),     // Shift+S = Secrets
+            KeyCode::Char('R') => self.navigate(View::Recovery),    // Shift+R = Recovery
 
             // List navigation
             KeyCode::Up | KeyCode::Char('k') => self.select_previous(),
@@ -395,7 +432,10 @@ impl App {
 
             // Module/Bundle actions (scoped to relevant views)
             KeyCode::Char('e') => {
-                if matches!(self.view, View::Modules | View::ModuleDetail | View::SecurityModules) {
+                if matches!(
+                    self.view,
+                    View::Modules | View::ModuleDetail | View::SecurityModules
+                ) {
                     self.toggle_selected_module();
                 }
             }
@@ -495,7 +535,10 @@ impl App {
             },
             WizardStep::Confirmation => match key.code {
                 KeyCode::Enter | KeyCode::Char('y') => {
-                    if let Ok(()) = self.wizard.apply(&self.config_dir) {
+                    if let Ok(()) = self
+                        .wizard
+                        .apply(&self.config_dir, self.package_manager.clone())
+                    {
                         // Reinitialize app after wizard
                         let _ = self.init();
                         self.view = View::Dashboard;
@@ -569,7 +612,11 @@ impl App {
                 KeyCode::Char(' ') => {
                     if let Some(module) = self.modules.get(self.profile_builder_module_cursor) {
                         let id = module.id.clone();
-                        if let Some(pos) = self.profile_builder_selected_modules.iter().position(|m| m == &id) {
+                        if let Some(pos) = self
+                            .profile_builder_selected_modules
+                            .iter()
+                            .position(|m| m == &id)
+                        {
                             self.profile_builder_selected_modules.remove(pos);
                         } else {
                             self.profile_builder_selected_modules.push(id);
@@ -603,8 +650,7 @@ impl App {
                     self.navigate(View::Modules);
                 }
                 KeyCode::Tab => {
-                    self.module_creator_active_field =
-                        (self.module_creator_active_field + 1) % 3;
+                    self.module_creator_active_field = (self.module_creator_active_field + 1) % 3;
                 }
                 KeyCode::Enter => {
                     if self.module_creator_name.trim().is_empty() {
@@ -613,24 +659,30 @@ impl App {
                         self.module_creator_step = 1;
                     }
                 }
-                KeyCode::Backspace => {
-                    match self.module_creator_active_field {
-                        0 => { self.module_creator_name.pop(); }
-                        1 => { self.module_creator_description.pop(); }
-                        _ => { self.module_creator_packages.pop(); }
+                KeyCode::Backspace => match self.module_creator_active_field {
+                    0 => {
+                        self.module_creator_name.pop();
                     }
-                }
-                KeyCode::Char(c) => {
-                    match self.module_creator_active_field {
-                        0 => {
-                            if c.is_alphanumeric() || c == '-' || c == '_' {
-                                self.module_creator_name.push(c);
-                            }
+                    1 => {
+                        self.module_creator_description.pop();
+                    }
+                    _ => {
+                        self.module_creator_packages.pop();
+                    }
+                },
+                KeyCode::Char(c) => match self.module_creator_active_field {
+                    0 => {
+                        if c.is_alphanumeric() || c == '-' || c == '_' {
+                            self.module_creator_name.push(c);
                         }
-                        1 => { self.module_creator_description.push(c); }
-                        _ => { self.module_creator_packages.push(c); }
                     }
-                }
+                    1 => {
+                        self.module_creator_description.push(c);
+                    }
+                    _ => {
+                        self.module_creator_packages.push(c);
+                    }
+                },
                 _ => {}
             },
             _ => match key.code {
@@ -657,8 +709,11 @@ impl App {
             View::Sync => View::Settings,
             View::Settings => View::Dashboard,
             // Sub-views cycle to their parent
-            View::CleanSystem | View::CleanupPreview | View::CleanupResults
-            | View::SecurityModules | View::ConfigManager => View::SystemMaintenance,
+            View::CleanSystem
+            | View::CleanupPreview
+            | View::CleanupResults
+            | View::SecurityModules
+            | View::ConfigManager => View::SystemMaintenance,
             View::OperationLog => View::Settings,
             // SetupWizard exits to Dashboard (special case)
             View::SetupWizard => View::Dashboard,
@@ -683,8 +738,11 @@ impl App {
             View::Profiles | View::ProfileDetail => View::Bundles,
             View::Bundles | View::BundleDetail => View::Dashboard,
             // Sub-views cycle to their parent
-            View::CleanSystem | View::CleanupPreview | View::CleanupResults
-            | View::SecurityModules | View::ConfigManager => View::SystemMaintenance,
+            View::CleanSystem
+            | View::CleanupPreview
+            | View::CleanupResults
+            | View::SecurityModules
+            | View::ConfigManager => View::SystemMaintenance,
             View::OperationLog => View::Settings,
             // SetupWizard exits to Dashboard (special case)
             View::SetupWizard => View::Dashboard,
@@ -743,8 +801,16 @@ impl App {
                     m.id.contains("security")
                         || m.id.contains("firewall")
                         || m.id.contains("audit")
-                        || ["ufw", "firewalld", "fail2ban", "auditd", "apparmor", "selinux", "clamav"]
-                            .contains(&m.id.as_str())
+                        || [
+                            "ufw",
+                            "firewalld",
+                            "fail2ban",
+                            "auditd",
+                            "apparmor",
+                            "selinux",
+                            "clamav",
+                        ]
+                        .contains(&m.id.as_str())
                 })
                 .count(),
             View::Sync => 0, // No list items in sync view
@@ -1276,7 +1342,6 @@ mod tests {
 
     #[test]
     fn test_request_confirm_sets_simple_for_non_update_actions() {
-
         let mut app = App::default();
         app.request_confirm(ConfirmAction::Quit);
         assert_eq!(app.confirm_style, ConfirmStyle::Simple);
@@ -1288,7 +1353,6 @@ mod tests {
 
     #[test]
     fn test_typed_confirm_accepts_correct_input() {
-
         let mut app = App::default();
         app.show_confirm = true;
         app.confirm_style = ConfirmStyle::TypedConfirmation;
@@ -1308,7 +1372,6 @@ mod tests {
 
     #[test]
     fn test_typed_confirm_rejects_wrong_input() {
-
         let mut app = App::default();
         app.show_confirm = true;
         app.confirm_style = ConfirmStyle::TypedConfirmation;
@@ -1327,7 +1390,6 @@ mod tests {
 
     #[test]
     fn test_typed_confirm_escape_cancels() {
-
         let mut app = App::default();
         app.show_confirm = true;
         app.confirm_style = ConfirmStyle::TypedConfirmation;
@@ -1345,7 +1407,6 @@ mod tests {
 
     #[test]
     fn test_typed_confirm_backspace_deletes() {
-
         let mut app = App::default();
         app.show_confirm = true;
         app.confirm_style = ConfirmStyle::TypedConfirmation;
@@ -1353,7 +1414,7 @@ mod tests {
 
         app.handle_key(create_key_event(KeyCode::Char('C')));
         app.handle_key(create_key_event(KeyCode::Char('X'))); // wrong char
-        app.handle_key(create_key_event(KeyCode::Backspace));  // delete it
+        app.handle_key(create_key_event(KeyCode::Backspace)); // delete it
         assert_eq!(app.confirm_typed_input, "C");
 
         // Continue with correct input
@@ -1367,7 +1428,6 @@ mod tests {
 
     #[test]
     fn test_enhanced_warning_y_executes() {
-
         let mut app = App::default();
         app.show_confirm = true;
         app.confirm_style = ConfirmStyle::EnhancedWarning;
@@ -1381,7 +1441,6 @@ mod tests {
 
     #[test]
     fn test_enhanced_warning_n_cancels() {
-
         let mut app = App::default();
         app.show_confirm = true;
         app.confirm_style = ConfirmStyle::EnhancedWarning;
@@ -1585,5 +1644,120 @@ mod tests {
 
         // Should stop at index 7 (last item)
         assert_eq!(app.selected_index, 7);
+    }
+
+    // =============================================================================
+    // Secrets View Handler Tests
+    // =============================================================================
+
+    /// Helper: check that the handler produced some feedback (status or error)
+    fn has_feedback(app: &App) -> bool {
+        app.status_text().is_some() || app.error_text().is_some()
+    }
+
+    #[test]
+    fn test_secrets_i_triggers_init() {
+        let mut app = App::default();
+        app.view = View::Secrets;
+
+        app.handle_key(create_key_event(KeyCode::Char('i')));
+
+        // Should stay on Secrets view and produce feedback
+        assert_eq!(app.view, View::Secrets);
+        assert!(has_feedback(&app));
+    }
+
+    #[test]
+    fn test_secrets_u_triggers_unlock() {
+        let mut app = App::default();
+        app.view = View::Secrets;
+
+        app.handle_key(create_key_event(KeyCode::Char('u')));
+
+        assert_eq!(app.view, View::Secrets);
+        assert!(has_feedback(&app));
+    }
+
+    #[test]
+    fn test_secrets_l_triggers_lock() {
+        let mut app = App::default();
+        app.view = View::Secrets;
+
+        app.handle_key(create_key_event(KeyCode::Char('l')));
+
+        assert_eq!(app.view, View::Secrets);
+        assert!(has_feedback(&app));
+    }
+
+    #[test]
+    fn test_secrets_r_triggers_refresh() {
+        let mut app = App::default();
+        app.view = View::Secrets;
+
+        app.handle_key(create_key_event(KeyCode::Char('r')));
+
+        assert_eq!(app.view, View::Secrets);
+        // 'r' always sets status via handler, regardless of service result
+        assert!(app.status_text().is_some());
+        assert!(app.status_text().unwrap().contains("refreshed"));
+    }
+
+    #[test]
+    fn test_secrets_unhandled_key_stays_on_view() {
+        let mut app = App::default();
+        app.view = View::Secrets;
+
+        // 'z' is not bound in secrets view or globally
+        app.handle_key(create_key_event(KeyCode::Char('z')));
+
+        assert_eq!(app.view, View::Secrets);
+    }
+
+    // =============================================================================
+    // Recovery View Handler Tests
+    // =============================================================================
+
+    #[test]
+    fn test_recovery_e_triggers_export() {
+        let mut app = App::default();
+        app.view = View::Recovery;
+
+        app.handle_key(create_key_event(KeyCode::Char('e')));
+
+        assert_eq!(app.view, View::Recovery);
+        assert!(has_feedback(&app));
+    }
+
+    #[test]
+    fn test_recovery_g_triggers_generate_script() {
+        let mut app = App::default();
+        app.view = View::Recovery;
+
+        app.handle_key(create_key_event(KeyCode::Char('g')));
+
+        assert_eq!(app.view, View::Recovery);
+        assert!(has_feedback(&app));
+    }
+
+    #[test]
+    fn test_recovery_s_triggers_snapshot() {
+        let mut app = App::default();
+        app.view = View::Recovery;
+
+        app.handle_key(create_key_event(KeyCode::Char('s')));
+
+        assert_eq!(app.view, View::Recovery);
+        assert!(has_feedback(&app));
+    }
+
+    #[test]
+    fn test_recovery_unhandled_key_stays_on_view() {
+        let mut app = App::default();
+        app.view = View::Recovery;
+
+        // 'z' is not bound in recovery view or globally
+        app.handle_key(create_key_event(KeyCode::Char('z')));
+
+        assert_eq!(app.view, View::Recovery);
     }
 }

@@ -41,17 +41,32 @@ pub fn render_module_creator(frame: &mut Frame, area: Rect, app: &App) {
     // Footer hints
     let hints: Vec<Span> = match app.module_creator_step {
         0 => vec![
-            Span::styled(" [Tab] ", Style::default().fg(Color::Black).bg(theme::MAUVE).bold()),
+            Span::styled(
+                " [Tab] ",
+                Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
+            ),
             Span::styled(" Next field  ", Style::default().fg(theme::SUBTEXT)),
-            Span::styled(" [Enter] ", Style::default().fg(Color::Black).bg(theme::MAUVE).bold()),
+            Span::styled(
+                " [Enter] ",
+                Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
+            ),
             Span::styled(" Preview  ", Style::default().fg(theme::SUBTEXT)),
-            Span::styled(" [Esc] ", Style::default().fg(Color::Black).bg(theme::MAUVE).bold()),
+            Span::styled(
+                " [Esc] ",
+                Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
+            ),
             Span::styled(" Cancel", Style::default().fg(theme::SUBTEXT)),
         ],
         _ => vec![
-            Span::styled(" [Enter] ", Style::default().fg(Color::Black).bg(theme::GREEN).bold()),
+            Span::styled(
+                " [Enter] ",
+                Style::default().fg(Color::Black).bg(theme::GREEN).bold(),
+            ),
             Span::styled(" Create Module  ", Style::default().fg(theme::SUBTEXT)),
-            Span::styled(" [Esc] ", Style::default().fg(Color::Black).bg(theme::MAUVE).bold()),
+            Span::styled(
+                " [Esc] ",
+                Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
+            ),
             Span::styled(" Back", Style::default().fg(theme::SUBTEXT)),
         ],
     };
@@ -96,11 +111,17 @@ fn render_step_details(frame: &mut Frame, area: Rect, app: &App) {
     let name_block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(name_color))
-        .title(Span::styled(" Module ID ", Style::default().fg(name_color).bold()));
+        .title(Span::styled(
+            " Module ID ",
+            Style::default().fg(name_color).bold(),
+        ));
     let name_display = if app.module_creator_name.is_empty() {
         Span::styled("e.g. nvim", Style::default().fg(theme::OVERLAY).italic())
     } else {
-        Span::styled(app.module_creator_name.as_str(), Style::default().fg(theme::TEXT))
+        Span::styled(
+            app.module_creator_name.as_str(),
+            Style::default().fg(theme::TEXT),
+        )
     };
     frame.render_widget(
         Paragraph::new(Line::from(name_display)).block(name_block),
@@ -122,7 +143,10 @@ fn render_step_details(frame: &mut Frame, area: Rect, app: &App) {
             Style::default().fg(theme::OVERLAY).italic(),
         )
     } else {
-        Span::styled(app.module_creator_description.as_str(), Style::default().fg(theme::TEXT))
+        Span::styled(
+            app.module_creator_description.as_str(),
+            Style::default().fg(theme::TEXT),
+        )
     };
     frame.render_widget(
         Paragraph::new(Line::from(desc_display)).block(desc_block),
@@ -144,7 +168,10 @@ fn render_step_details(frame: &mut Frame, area: Rect, app: &App) {
             Style::default().fg(theme::OVERLAY).italic(),
         )
     } else {
-        Span::styled(app.module_creator_packages.as_str(), Style::default().fg(theme::TEXT))
+        Span::styled(
+            app.module_creator_packages.as_str(),
+            Style::default().fg(theme::TEXT),
+        )
     };
     frame.render_widget(
         Paragraph::new(Line::from(pkg_display)).block(pkg_block),
@@ -204,7 +231,10 @@ fn render_step_preview(frame: &mut Frame, area: Rect, app: &App) {
             ),
         ]),
         Line::from(""),
-        Line::from(Span::styled("Packages:", Style::default().fg(theme::YELLOW).bold())),
+        Line::from(Span::styled(
+            "Packages:",
+            Style::default().fg(theme::YELLOW).bold(),
+        )),
     ];
 
     if packages.is_empty() {

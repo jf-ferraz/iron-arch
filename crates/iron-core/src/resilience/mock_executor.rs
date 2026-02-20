@@ -35,42 +35,27 @@
 
 use super::{CircuitOpenError, CommandConfig, CommandError, CommandExecutor, CommandOutput};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::RwLock;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
 /// Mock response configuration for a command
 #[derive(Debug, Clone)]
 pub enum MockResponse {
     /// Successful execution with stdout content
-    Success {
-        stdout: String,
-        stderr: String,
-    },
+    Success { stdout: String, stderr: String },
     /// Failed execution with exit code and stderr
-    Failure {
-        exit_code: i32,
-        stderr: String,
-    },
+    Failure { exit_code: i32, stderr: String },
     /// Simulate a timeout
     Timeout,
     /// Simulate circuit breaker open
-    CircuitOpen {
-        service: String,
-    },
+    CircuitOpen { service: String },
     /// Simulate spawn failure (command not found)
-    SpawnFailed {
-        message: String,
-    },
+    SpawnFailed { message: String },
     /// Simulate IO error
-    IoError {
-        message: String,
-    },
+    IoError { message: String },
     /// Simulate retries exhausted
-    RetriesExhausted {
-        attempts: u32,
-        last_error: String,
-    },
+    RetriesExhausted { attempts: u32, last_error: String },
 }
 
 impl MockResponse {
@@ -137,12 +122,10 @@ impl MockResponse {
                 command: command.to_string(),
                 timeout_secs: 120,
             },
-            MockResponse::CircuitOpen { service } => {
-                CommandError::CircuitOpen(CircuitOpenError {
-                    service: service.clone(),
-                    time_until_reset: Some(Duration::from_secs(30)),
-                })
-            }
+            MockResponse::CircuitOpen { service } => CommandError::CircuitOpen(CircuitOpenError {
+                service: service.clone(),
+                time_until_reset: Some(Duration::from_secs(30)),
+            }),
             MockResponse::SpawnFailed { message } => CommandError::SpawnFailed {
                 command: command.to_string(),
                 message: message.clone(),
@@ -404,7 +387,11 @@ impl MockCommandExecutor {
         let record = CallRecord {
             command: command.to_string(),
             args: args.iter().map(|s| s.to_string()).collect(),
-            env: env.map(|e| e.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()),
+            env: env.map(|e| {
+                e.iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect()
+            }),
         };
         self.calls.write().unwrap().push(record);
         self.call_count.fetch_add(1, Ordering::SeqCst);
@@ -415,7 +402,10 @@ impl MockCommandExecutor {
         let failure_mode = self.failure_mode.read().unwrap();
         match &*failure_mode {
             Some(FailureMode::FailAll(response)) => Some(response.clone()),
-            Some(FailureMode::FailAfter { successes, response }) => {
+            Some(FailureMode::FailAfter {
+                successes,
+                response,
+            }) => {
                 let count = self.total_call_count();
                 if count >= *successes {
                     Some(response.clone())
@@ -529,7 +519,10 @@ impl CommandExecutor for MockCommandExecutor {
     }
 
     fn command_exists(&self, command: &str) -> bool {
-        self.existing_commands.read().unwrap().contains(&command.to_string())
+        self.existing_commands
+            .read()
+            .unwrap()
+            .contains(&command.to_string())
     }
 
     fn config(&self) -> &CommandConfig {
@@ -647,7 +640,9 @@ mod tests {
     fn test_mock_executor_failure_mode_all() {
         let mock = MockCommandExecutor::new();
         mock.add_response("cmd", &[], MockResponse::success("ok"));
-        mock.set_failure_mode(FailureMode::FailAll(MockResponse::io_error("forced failure")));
+        mock.set_failure_mode(FailureMode::FailAll(MockResponse::io_error(
+            "forced failure",
+        )));
 
         let result = mock.execute("cmd", &[]);
         assert!(result.is_err());

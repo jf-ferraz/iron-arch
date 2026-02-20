@@ -4,7 +4,9 @@
 
 use super::{App, ConfirmAction, View};
 use crate::wizard::TextInput;
-use iron_core::services::{BundleService, DefaultBundleService, DefaultUpdateService, StateManager, UpdateService};
+use iron_core::services::{
+    BundleService, DefaultBundleService, DefaultUpdateService, StateManager, UpdateService,
+};
 use iron_core::{Module, NoopManager, Profile};
 
 impl App {
@@ -133,7 +135,10 @@ impl App {
 
     /// Toggle module enable/disable
     pub fn toggle_selected_module(&mut self) {
-        if !matches!(self.view, View::Modules | View::ModuleDetail | View::SecurityModules) {
+        if !matches!(
+            self.view,
+            View::Modules | View::ModuleDetail | View::SecurityModules
+        ) {
             return;
         }
         if let Some(module) = self.selected_module() {
@@ -322,7 +327,8 @@ impl App {
         match self.view {
             View::Bundles | View::BundleDetail => {
                 if let Some(ref sm) = self.state_manager {
-                    let bundle_service = DefaultBundleService::new(&self.config_dir, sm.clone());
+                    let bundle_service = DefaultBundleService::new(&self.config_dir, sm.clone())
+                        .with_package_manager(self.package_manager.clone());
                     self.bundles = bundle_service.discover().unwrap_or_default();
                     self.set_status("Bundles refreshed");
                 }
@@ -451,8 +457,11 @@ impl App {
         self.set_info("Running system update...");
 
         // Collect package names for post-update checks before update starts
-        let package_names: Vec<String> =
-            self.pending_updates.iter().map(|p| p.name.clone()).collect();
+        let package_names: Vec<String> = self
+            .pending_updates
+            .iter()
+            .map(|p| p.name.clone())
+            .collect();
 
         // Execute the real upgrade (preview=false → actually install)
         match self.package_manager.upgrade(false) {
@@ -510,7 +519,8 @@ impl App {
             // Without state manager, run basic post-update checks
             if let Ok(sm) = StateManager::new(self.config_dir.clone()) {
                 let update_service = DefaultUpdateService::new(sm, NoopManager);
-                self.post_update_result = Some(update_service.run_post_update_checks(updated_packages));
+                self.post_update_result =
+                    Some(update_service.run_post_update_checks(updated_packages));
             }
         }
     }
@@ -567,7 +577,7 @@ impl App {
 
         let service = DefaultCleanupService::new();
 
-        let summary = service.execute(&self.cleanup_categories, false);
+        let summary = service.execute(&self.cleanup_categories, true);
 
         if summary.failed > 0 {
             self.set_warning(format!(
@@ -654,6 +664,192 @@ impl App {
     }
 
     // ==========================================================================
+    // Secrets Actions
+    // ==========================================================================
+
+    /// Refresh secrets status and encrypted file list
+    pub fn refresh_secrets(&mut self) {
+        use iron_core::services::secrets::{DefaultSecretsService, SecretsService};
+
+        let service = DefaultSecretsService::new(&self.config_dir);
+
+        // Update status
+        match service.status() {
+            Ok(status) => {
+                self.secrets_status = Some(format!("{:?}", status));
+            }
+            Err(e) => {
+                self.secrets_status = Some(format!("Error: {}", e));
+            }
+        }
+
+        // Update encrypted file list
+        match service.list_encrypted() {
+            Ok(files) => {
+                self.encrypted_files = files;
+            }
+            Err(_) => {
+                self.encrypted_files.clear();
+            }
+        }
+    }
+
+    /// Initialize git-crypt in the repository
+    pub fn secrets_init(&mut self) {
+        use iron_core::services::secrets::{DefaultSecretsService, SecretsService};
+
+        let service = DefaultSecretsService::new(&self.config_dir);
+        match service.init() {
+            Ok(()) => {
+                self.set_status("git-crypt initialized successfully");
+                self.refresh_secrets();
+            }
+            Err(e) => {
+                self.set_error(format!("Failed to initialize git-crypt: {}", e));
+            }
+        }
+    }
+
+    /// Unlock secrets (decrypt)
+    pub fn secrets_unlock(&mut self) {
+        use iron_core::services::secrets::{DefaultSecretsService, SecretsService};
+
+        let service = DefaultSecretsService::new(&self.config_dir);
+        match service.unlock(None) {
+            Ok(()) => {
+                self.set_status("Secrets unlocked successfully");
+                self.refresh_secrets();
+            }
+            Err(e) => {
+                self.set_error(format!("Failed to unlock secrets: {}", e));
+            }
+        }
+    }
+
+    /// Lock secrets (re-encrypt)
+    pub fn secrets_lock(&mut self) {
+        use iron_core::services::secrets::{DefaultSecretsService, SecretsService};
+
+        let service = DefaultSecretsService::new(&self.config_dir);
+        match service.lock() {
+            Ok(()) => {
+                self.set_status("Secrets locked successfully");
+                self.refresh_secrets();
+            }
+            Err(e) => {
+                self.set_error(format!("Failed to lock secrets: {}", e));
+            }
+        }
+    }
+
+    // ==========================================================================
+    // Recovery Actions
+    // ==========================================================================
+
+    /// Export current state to recovery format and save to file
+    pub fn recovery_export(&mut self) {
+        use iron_core::services::recovery::{DefaultRecoveryService, RecoveryService};
+
+        if let Some(ref sm) = self.state_manager {
+            let service = DefaultRecoveryService::new(&self.config_dir, sm.clone(), NoopManager);
+            match service.export() {
+                Ok(_export) => {
+                    // Save to timestamped file
+                    let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+                    let filename = format!("iron-export-{}.json", timestamp);
+                    let path = self.config_dir.join(&filename);
+                    match service.save_export(&path) {
+                        Ok(()) => {
+                            self.set_status(format!("State exported to {}", filename));
+                        }
+                        Err(e) => {
+                            self.set_error(format!("Failed to save export: {}", e));
+                        }
+                    }
+                }
+                Err(e) => {
+                    self.set_error(format!("Failed to export state: {}", e));
+                }
+            }
+        } else {
+            self.set_error("No state manager available");
+        }
+    }
+
+    /// Generate install script for recovery
+    pub fn recovery_generate_script(&mut self) {
+        use iron_core::services::recovery::{
+            DefaultRecoveryService, InstallScriptOptions, RecoveryService,
+        };
+
+        if let Some(ref sm) = self.state_manager {
+            let service = DefaultRecoveryService::new(&self.config_dir, sm.clone(), NoopManager);
+            let options = InstallScriptOptions {
+                include_packages: true,
+                include_aur: true,
+                include_services: true,
+                include_modules: true,
+                include_bundle: true,
+                aur_helper: "paru".to_string(),
+                interactive: true,
+            };
+            match service.generate_install_script(&options) {
+                Ok(script) => {
+                    let path = self.config_dir.join("install.sh");
+                    match std::fs::write(&path, &script) {
+                        Ok(()) => {
+                            // Make executable
+                            #[cfg(unix)]
+                            {
+                                use std::os::unix::fs::PermissionsExt;
+                                let _ = std::fs::set_permissions(
+                                    &path,
+                                    std::fs::Permissions::from_mode(0o755),
+                                );
+                            }
+                            self.set_status("Install script generated: install.sh");
+                        }
+                        Err(e) => {
+                            self.set_error(format!("Failed to write install script: {}", e));
+                        }
+                    }
+                }
+                Err(e) => {
+                    self.set_error(format!("Failed to generate install script: {}", e));
+                }
+            }
+        } else {
+            self.set_error("No state manager available");
+        }
+    }
+
+    /// Create a system snapshot (via timeshift/snapper if available)
+    pub fn recovery_create_snapshot(&mut self) {
+        use iron_core::services::recovery::{DefaultRecoveryService, RecoveryService};
+
+        if let Some(ref sm) = self.state_manager {
+            let service = DefaultRecoveryService::new(&self.config_dir, sm.clone(), NoopManager);
+            let output_dir = self.config_dir.join("backups");
+            match service.create_backup(&output_dir) {
+                Ok(path) => {
+                    self.last_backup = Some(chrono::Utc::now());
+                    self.set_status(format!(
+                        "Backup created: {}",
+                        path.file_name()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_else(|| path.display().to_string())
+                    ));
+                }
+                Err(e) => {
+                    self.set_error(format!("Failed to create backup: {}", e));
+                }
+            }
+        } else {
+            self.set_error("No state manager available");
+        }
+    }
+
+    // ==========================================================================
     // Operation Log Actions
     // ==========================================================================
 
@@ -662,7 +858,10 @@ impl App {
         use crate::ui::operation_log::OperationFilter;
 
         let all = OperationFilter::all();
-        let current_idx = all.iter().position(|f| *f == self.operation_filter).unwrap_or(0);
+        let current_idx = all
+            .iter()
+            .position(|f| *f == self.operation_filter)
+            .unwrap_or(0);
         let next_idx = (current_idx + 1) % all.len();
         self.operation_filter = all[next_idx];
         self.selected_index = 0;
@@ -693,9 +892,17 @@ impl App {
                 });
             }
 
-            let count = self.post_update_result.as_ref().map(|r| r.config_conflicts.len()).unwrap_or(0);
+            let count = self
+                .post_update_result
+                .as_ref()
+                .map(|r| r.config_conflicts.len())
+                .unwrap_or(0);
             if count > 0 {
-                self.set_warning(format!("{} configuration conflict{} found", count, if count == 1 { "" } else { "s" }));
+                self.set_warning(format!(
+                    "{} configuration conflict{} found",
+                    count,
+                    if count == 1 { "" } else { "s" }
+                ));
             } else {
                 self.set_status("No configuration conflicts found");
             }
@@ -733,8 +940,13 @@ impl App {
         }
 
         let desc = self.profile_builder_description.trim().to_string();
-        let desc_opt = if desc.is_empty() { None } else { Some(desc.as_str()) };
-        let module_ids: Vec<&str> = self.profile_builder_selected_modules
+        let desc_opt = if desc.is_empty() {
+            None
+        } else {
+            Some(desc.as_str())
+        };
+        let module_ids: Vec<&str> = self
+            .profile_builder_selected_modules
             .iter()
             .map(|s| s.as_str())
             .collect();
@@ -782,7 +994,11 @@ impl App {
         }
 
         let desc = self.module_creator_description.trim().to_string();
-        let desc_opt = if desc.is_empty() { None } else { Some(desc.as_str()) };
+        let desc_opt = if desc.is_empty() {
+            None
+        } else {
+            Some(desc.as_str())
+        };
 
         let pkgs_raw: Vec<String> = if self.module_creator_packages.trim().is_empty() {
             vec![]
@@ -1148,10 +1364,7 @@ mod tests {
         app.refresh_current_view();
 
         // Without state manager, nothing happens but no error either
-        assert!(
-            app.status_text().is_none()
-                || app.status_text().unwrap().contains("refreshed")
-        );
+        assert!(app.status_text().is_none() || app.status_text().unwrap().contains("refreshed"));
     }
 
     #[test]

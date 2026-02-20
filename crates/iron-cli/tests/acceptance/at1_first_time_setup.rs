@@ -62,12 +62,9 @@ fn at1_5_init_force_reinitializes() {
 #[test]
 fn at1_6_commands_without_init_error() {
     let fixture = TestFixture::new();
-    fixture
-        .run_iron(&["status"])
-        .failure()
-        .stderr(
-            predicate::str::contains("init")
-                .or(predicate::str::contains("not"))
-                .or(predicate::str::contains("found")),
-        );
+    fixture.run_iron(&["status"]).failure().stderr(
+        predicate::str::contains("init")
+            .or(predicate::str::contains("not"))
+            .or(predicate::str::contains("found")),
+    );
 }

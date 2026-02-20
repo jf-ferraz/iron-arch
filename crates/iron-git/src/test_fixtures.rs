@@ -231,7 +231,13 @@ impl GitMockBuilder {
         let status_output = self.generate_status_output();
         executor.add_response(
             "git",
-            &["-C", self.repo_root.as_deref().unwrap_or("."), "status", "--porcelain", "-b"],
+            &[
+                "-C",
+                self.repo_root.as_deref().unwrap_or("."),
+                "status",
+                "--porcelain",
+                "-b",
+            ],
             MockResponse::success(&status_output),
         );
         // Also add without -C for direct calls
@@ -249,7 +255,12 @@ impl GitMockBuilder {
             .join("\n");
         executor.add_response(
             "git",
-            &["-C", self.repo_root.as_deref().unwrap_or("."), "status", "--porcelain"],
+            &[
+                "-C",
+                self.repo_root.as_deref().unwrap_or("."),
+                "status",
+                "--porcelain",
+            ],
             MockResponse::success(&status_no_branch),
         );
         executor.add_response(
@@ -264,11 +275,7 @@ impl GitMockBuilder {
             &["-C", self.repo_root.as_deref().unwrap_or("."), "diff"],
             MockResponse::success(&self.diff_content),
         );
-        executor.add_response(
-            "git",
-            &["diff"],
-            MockResponse::success(&self.diff_content),
-        );
+        executor.add_response("git", &["diff"], MockResponse::success(&self.diff_content));
 
         // Configure git commit
         if self.commit_succeeds {
@@ -291,7 +298,13 @@ impl GitMockBuilder {
                 for branch in &["main", "master", "develop"] {
                     executor.add_response(
                         "git",
-                        &["-C", self.repo_root.as_deref().unwrap_or("."), "push", remote, branch],
+                        &[
+                            "-C",
+                            self.repo_root.as_deref().unwrap_or("."),
+                            "push",
+                            remote,
+                            branch,
+                        ],
                         MockResponse::success("Everything up-to-date"),
                     );
                     executor.add_response(
@@ -306,7 +319,13 @@ impl GitMockBuilder {
                 for branch in &["main", "master", "develop"] {
                     executor.add_response(
                         "git",
-                        &["-C", self.repo_root.as_deref().unwrap_or("."), "push", remote, branch],
+                        &[
+                            "-C",
+                            self.repo_root.as_deref().unwrap_or("."),
+                            "push",
+                            remote,
+                            branch,
+                        ],
                         MockResponse::exit_error(1, "error: failed to push some refs"),
                     );
                     executor.add_response(
@@ -324,7 +343,13 @@ impl GitMockBuilder {
                 for branch in &["main", "master", "develop"] {
                     executor.add_response(
                         "git",
-                        &["-C", self.repo_root.as_deref().unwrap_or("."), "pull", remote, branch],
+                        &[
+                            "-C",
+                            self.repo_root.as_deref().unwrap_or("."),
+                            "pull",
+                            remote,
+                            branch,
+                        ],
                         MockResponse::success("Already up to date."),
                     );
                     executor.add_response(
@@ -339,7 +364,13 @@ impl GitMockBuilder {
                 for branch in &["main", "master", "develop"] {
                     executor.add_response(
                         "git",
-                        &["-C", self.repo_root.as_deref().unwrap_or("."), "pull", remote, branch],
+                        &[
+                            "-C",
+                            self.repo_root.as_deref().unwrap_or("."),
+                            "pull",
+                            remote,
+                            branch,
+                        ],
                         MockResponse::exit_error(1, "CONFLICT (content): Merge conflict"),
                     );
                     executor.add_response(
@@ -363,11 +394,7 @@ impl GitMockBuilder {
 
             // git-crypt unlock
             if self.secrets_unlocked {
-                executor.add_response(
-                    "git-crypt",
-                    &["unlock"],
-                    MockResponse::success(""),
-                );
+                executor.add_response("git-crypt", &["unlock"], MockResponse::success(""));
             } else {
                 executor.add_response(
                     "git-crypt",
@@ -377,11 +404,7 @@ impl GitMockBuilder {
             }
 
             // git-crypt lock
-            executor.add_response(
-                "git-crypt",
-                &["lock"],
-                MockResponse::success(""),
-            );
+            executor.add_response("git-crypt", &["lock"], MockResponse::success(""));
         }
 
         // Add git and git-crypt to existing commands
@@ -428,26 +451,22 @@ pub mod fixtures {
 
     /// Repository with untracked files
     pub fn untracked_files() -> GitMockBuilder {
-        GitMockBuilder::new()
-            .with_untracked_files(&["new_file.txt", "temp/", "*.log"])
+        GitMockBuilder::new().with_untracked_files(&["new_file.txt", "temp/", "*.log"])
     }
 
     /// Repository ahead of remote
     pub fn ahead_of_remote() -> GitMockBuilder {
-        GitMockBuilder::new()
-            .with_ahead_behind(3, 0)
+        GitMockBuilder::new().with_ahead_behind(3, 0)
     }
 
     /// Repository behind remote (needs pull)
     pub fn behind_remote() -> GitMockBuilder {
-        GitMockBuilder::new()
-            .with_ahead_behind(0, 5)
+        GitMockBuilder::new().with_ahead_behind(0, 5)
     }
 
     /// Repository with diverged history
     pub fn diverged() -> GitMockBuilder {
-        GitMockBuilder::new()
-            .with_ahead_behind(2, 3)
+        GitMockBuilder::new().with_ahead_behind(2, 3)
     }
 
     /// Repository with merge conflicts
@@ -481,14 +500,12 @@ pub mod fixtures {
 
     /// Repository where push fails (e.g., no access)
     pub fn push_denied() -> GitMockBuilder {
-        GitMockBuilder::new()
-            .push_succeeds(false)
+        GitMockBuilder::new().push_succeeds(false)
     }
 
     /// Repository where commit fails (nothing staged)
     pub fn nothing_to_commit() -> GitMockBuilder {
-        GitMockBuilder::new()
-            .commit_succeeds(false)
+        GitMockBuilder::new().commit_succeeds(false)
     }
 
     /// Detached HEAD state
@@ -546,9 +563,7 @@ mod tests {
 
     #[test]
     fn test_ahead_behind_status() {
-        let executor = GitMockBuilder::new()
-            .with_ahead_behind(3, 2)
-            .build();
+        let executor = GitMockBuilder::new().with_ahead_behind(3, 2).build();
 
         let output = executor
             .execute("git", &["status", "--porcelain", "-b"])
@@ -559,9 +574,7 @@ mod tests {
 
     #[test]
     fn test_ahead_only_status() {
-        let executor = GitMockBuilder::new()
-            .with_ahead_behind(5, 0)
-            .build();
+        let executor = GitMockBuilder::new().with_ahead_behind(5, 0).build();
 
         let output = executor
             .execute("git", &["status", "--porcelain", "-b"])
@@ -573,9 +586,7 @@ mod tests {
 
     #[test]
     fn test_behind_only_status() {
-        let executor = GitMockBuilder::new()
-            .with_ahead_behind(0, 3)
-            .build();
+        let executor = GitMockBuilder::new().with_ahead_behind(0, 3).build();
 
         let output = executor
             .execute("git", &["status", "--porcelain", "-b"])
@@ -628,22 +639,16 @@ mod tests {
     #[test]
     fn test_diff_output() {
         let diff = "diff --git a/file.rs b/file.rs\n+new line";
-        let executor = GitMockBuilder::new()
-            .with_diff(diff)
-            .build();
+        let executor = GitMockBuilder::new().with_diff(diff).build();
 
-        let output = executor
-            .execute("git", &["diff"])
-            .expect("should execute");
+        let output = executor.execute("git", &["diff"]).expect("should execute");
 
         assert_eq!(output, diff);
     }
 
     #[test]
     fn test_push_success() {
-        let executor = GitMockBuilder::new()
-            .push_succeeds(true)
-            .build();
+        let executor = GitMockBuilder::new().push_succeeds(true).build();
 
         let result = executor.execute("git", &["push", "origin", "main"]);
         assert!(result.is_ok());
@@ -651,9 +656,7 @@ mod tests {
 
     #[test]
     fn test_push_failure() {
-        let executor = GitMockBuilder::new()
-            .push_succeeds(false)
-            .build();
+        let executor = GitMockBuilder::new().push_succeeds(false).build();
 
         let result = executor.execute("git", &["push", "origin", "main"]);
         assert!(result.is_err());
@@ -661,9 +664,7 @@ mod tests {
 
     #[test]
     fn test_pull_success() {
-        let executor = GitMockBuilder::new()
-            .pull_succeeds(true)
-            .build();
+        let executor = GitMockBuilder::new().pull_succeeds(true).build();
 
         let result = executor.execute("git", &["pull", "origin", "main"]);
         assert!(result.is_ok());
@@ -695,9 +696,7 @@ mod tests {
 
     #[test]
     fn test_gitcrypt_unlock() {
-        let executor = GitMockBuilder::new()
-            .with_gitcrypt(true)
-            .build();
+        let executor = GitMockBuilder::new().with_gitcrypt(true).build();
 
         let result = executor.execute("git-crypt", &["unlock"]);
         assert!(result.is_ok());
@@ -705,9 +704,7 @@ mod tests {
 
     #[test]
     fn test_gitcrypt_lock() {
-        let executor = GitMockBuilder::new()
-            .with_gitcrypt(true)
-            .build();
+        let executor = GitMockBuilder::new().with_gitcrypt(true).build();
 
         let result = executor.execute("git-crypt", &["lock"]);
         assert!(result.is_ok());
@@ -745,9 +742,7 @@ mod tests {
     #[test]
     fn test_fixtures_gitcrypt_unlocked() {
         let executor = fixtures::gitcrypt_unlocked().build();
-        let output = executor
-            .execute("git-crypt", &["status", "-e"])
-            .unwrap();
+        let output = executor.execute("git-crypt", &["status", "-e"]).unwrap();
         assert!(output.contains("secrets/"));
     }
 
@@ -773,7 +768,10 @@ mod tests {
             .build();
 
         let output = executor
-            .execute("git", &["-C", "/home/user/project", "status", "--porcelain", "-b"])
+            .execute(
+                "git",
+                &["-C", "/home/user/project", "status", "--porcelain", "-b"],
+            )
             .expect("should execute");
 
         assert!(output.contains("## main"));

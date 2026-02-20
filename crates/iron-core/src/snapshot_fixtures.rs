@@ -710,7 +710,10 @@ mod tests {
             .with_snapshot("1", "To restore", "2024-01-15_10-30-00")
             .build();
 
-        let result = executor.execute("timeshift", &["--restore", "--snapshot", "1", "--skip-grub"]);
+        let result = executor.execute(
+            "timeshift",
+            &["--restore", "--snapshot", "1", "--skip-grub"],
+        );
         assert!(result.is_ok());
     }
 
@@ -721,7 +724,10 @@ mod tests {
             .restore_succeeds(false)
             .build();
 
-        let result = executor.execute("timeshift", &["--restore", "--snapshot", "1", "--skip-grub"]);
+        let result = executor.execute(
+            "timeshift",
+            &["--restore", "--snapshot", "1", "--skip-grub"],
+        );
         assert!(result.is_err());
     }
 
@@ -751,7 +757,10 @@ mod tests {
         let executor = SnapshotMockBuilder::snapper().build();
 
         let output = executor
-            .execute("snapper", &["-c", "root", "list", "--columns", "number,date,description"])
+            .execute(
+                "snapper",
+                &["-c", "root", "list", "--columns", "number,date,description"],
+            )
             .expect("should execute");
 
         // Should contain header and snapshot 0 (current)
@@ -768,7 +777,10 @@ mod tests {
             .build();
 
         let output = executor
-            .execute("snapper", &["-c", "root", "list", "--columns", "number,date,description"])
+            .execute(
+                "snapper",
+                &["-c", "root", "list", "--columns", "number,date,description"],
+            )
             .expect("should execute");
 
         assert!(output.contains("First backup"));
@@ -777,11 +789,12 @@ mod tests {
 
     #[test]
     fn test_snapper_create_success() {
-        let executor = SnapshotMockBuilder::snapper()
-            .with_next_id(5)
-            .build();
+        let executor = SnapshotMockBuilder::snapper().with_next_id(5).build();
 
-        let result = executor.execute("snapper", &["-c", "root", "create", "-d", "Test", "--print-number"]);
+        let result = executor.execute(
+            "snapper",
+            &["-c", "root", "create", "-d", "Test", "--print-number"],
+        );
         assert!(result.is_ok());
         assert_eq!(result.unwrap().trim(), "5");
     }
@@ -792,7 +805,10 @@ mod tests {
             .create_succeeds(false)
             .build();
 
-        let result = executor.execute("snapper", &["-c", "root", "create", "-d", "Test", "--print-number"]);
+        let result = executor.execute(
+            "snapper",
+            &["-c", "root", "create", "-d", "Test", "--print-number"],
+        );
         assert!(result.is_err());
     }
 
@@ -846,7 +862,10 @@ mod tests {
             .build();
 
         let output = executor
-            .execute("snapper", &["-c", "home", "list", "--columns", "number,date,description"])
+            .execute(
+                "snapper",
+                &["-c", "home", "list", "--columns", "number,date,description"],
+            )
             .expect("should execute");
 
         assert!(output.contains("Home backup"));
@@ -927,7 +946,10 @@ mod tests {
     fn test_fixtures_snapper_empty() {
         let executor = fixtures::snapper_empty().build();
         let output = executor
-            .execute("snapper", &["-c", "root", "list", "--columns", "number,date,description"])
+            .execute(
+                "snapper",
+                &["-c", "root", "list", "--columns", "number,date,description"],
+            )
             .expect("should execute");
         assert!(output.contains("current"));
     }
@@ -936,7 +958,10 @@ mod tests {
     fn test_fixtures_snapper_with_snapshots() {
         let executor = fixtures::snapper_with_snapshots().build();
         let output = executor
-            .execute("snapper", &["-c", "root", "list", "--columns", "number,date,description"])
+            .execute(
+                "snapper",
+                &["-c", "root", "list", "--columns", "number,date,description"],
+            )
             .expect("should execute");
         assert!(output.contains("First snapshot"));
         assert!(output.contains("Second snapshot"));
@@ -946,7 +971,10 @@ mod tests {
     fn test_fixtures_snapper_failing() {
         let executor = fixtures::snapper_failing().build();
 
-        let result = executor.execute("snapper", &["-c", "root", "create", "-d", "Test", "--print-number"]);
+        let result = executor.execute(
+            "snapper",
+            &["-c", "root", "create", "-d", "Test", "--print-number"],
+        );
         assert!(result.is_err());
     }
 

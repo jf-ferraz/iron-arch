@@ -176,7 +176,11 @@ impl<'a> ProgressWidget<'a> {
 
         // Create block with title
         let title = if self.show_elapsed {
-            format!(" {} ({}) ", self.tracker.title, self.tracker.elapsed_string())
+            format!(
+                " {} ({}) ",
+                self.tracker.title,
+                self.tracker.elapsed_string()
+            )
         } else {
             format!(" {} ", self.tracker.title)
         };
@@ -383,7 +387,10 @@ mod tests {
         tracker.tick();
 
         // Frame should advance by exactly 1
-        assert_eq!(tracker.spinner_frame, (initial_frame + 1) % SPINNER_FRAMES.len());
+        assert_eq!(
+            tracker.spinner_frame,
+            (initial_frame + 1) % SPINNER_FRAMES.len()
+        );
     }
 
     #[test]

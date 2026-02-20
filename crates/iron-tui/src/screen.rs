@@ -171,11 +171,7 @@ pub trait Screen {
     ///
     /// Returns a list of (key, description) pairs.
     fn keybindings(&self) -> Vec<(&'static str, &'static str)> {
-        vec![
-            ("[Esc]", "Back"),
-            ("[?]", "Help"),
-            ("[q]", "Quit"),
-        ]
+        vec![("[Esc]", "Back"), ("[?]", "Help"), ("[q]", "Quit")]
     }
 }
 

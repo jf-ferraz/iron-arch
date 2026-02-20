@@ -14,7 +14,9 @@ pub fn render_modules(frame: &mut Frame, area: Rect, app: &App) {
             Line::from(""),
             Line::from(Span::styled(
                 "No modules found.",
-                Style::default().fg(theme::SUBTEXT).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(theme::SUBTEXT)
+                    .add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
             Line::from(Span::styled(
@@ -54,9 +56,7 @@ pub fn render_modules(frame: &mut Frame, area: Rect, app: &App) {
         })
         .collect();
 
-    let list = List::new(items)
-        .block(block)
-        .highlight_symbol("▸ ");
+    let list = List::new(items).block(block).highlight_symbol("▸ ");
 
     let mut state = ListState::default();
     if !app.modules.is_empty() {
@@ -102,7 +102,10 @@ pub fn render_module_detail(frame: &mut Frame, area: Rect, app: &App) {
         ]),
         Line::from(vec![
             Span::styled("Kind        ", Style::default().fg(theme::SUBTEXT)),
-            Span::styled(format!("{:?}", module.kind), Style::default().fg(theme::LAVENDER)),
+            Span::styled(
+                format!("{:?}", module.kind),
+                Style::default().fg(theme::LAVENDER),
+            ),
         ]),
         Line::from(vec![
             Span::styled("Status      ", Style::default().fg(theme::SUBTEXT)),
@@ -123,11 +126,18 @@ pub fn render_module_detail(frame: &mut Frame, area: Rect, app: &App) {
             let module_name = conflict.split(':').next().unwrap_or(conflict.as_str());
             if seen.insert(module_name) {
                 let detail = if conflict.contains(':') {
-                    format!("  [!!] {} (shared dotfile: {})", module_name, &conflict[module_name.len() + 1..])
+                    format!(
+                        "  [!!] {} (shared dotfile: {})",
+                        module_name,
+                        &conflict[module_name.len() + 1..]
+                    )
                 } else {
                     format!("  [!!] {} (explicit conflict)", module_name)
                 };
-                text.push(Line::from(Span::styled(detail, Style::default().fg(theme::RED))));
+                text.push(Line::from(Span::styled(
+                    detail,
+                    Style::default().fg(theme::RED),
+                )));
             }
         }
         text.push(Line::from(Span::styled(
@@ -137,7 +147,10 @@ pub fn render_module_detail(frame: &mut Frame, area: Rect, app: &App) {
     }
 
     text.push(Line::from(""));
-    text.push(Line::from(Span::styled("Packages:", Style::default().fg(theme::YELLOW).bold())));
+    text.push(Line::from(Span::styled(
+        "Packages:",
+        Style::default().fg(theme::YELLOW).bold(),
+    )));
 
     let mut lines = text;
     if module.packages.is_empty() {
@@ -152,7 +165,10 @@ pub fn render_module_detail(frame: &mut Frame, area: Rect, app: &App) {
     }
 
     lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled("Dotfiles:", Style::default().fg(theme::YELLOW).bold())));
+    lines.push(Line::from(Span::styled(
+        "Dotfiles:",
+        Style::default().fg(theme::YELLOW).bold(),
+    )));
     if module.dotfiles.is_empty() {
         lines.push(Line::from(Span::styled(
             "  No dotfile mappings",
@@ -174,7 +190,11 @@ pub fn render_module_detail(frame: &mut Frame, area: Rect, app: &App) {
     };
     lines.push(Line::from(Span::styled(
         hint,
-        Style::default().fg(if has_conflicts { theme::RED } else { theme::SUBTEXT }),
+        Style::default().fg(if has_conflicts {
+            theme::RED
+        } else {
+            theme::SUBTEXT
+        }),
     )));
 
     let title = format!("Module: {}", module.id);

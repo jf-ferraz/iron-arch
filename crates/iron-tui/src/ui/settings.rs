@@ -208,8 +208,8 @@ fn render_hint_bar(frame: &mut Frame, area: Rect, app: &App) {
 mod tests {
     use super::*;
     use chrono::Utc;
-    use ratatui::backend::TestBackend;
     use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
 
     fn create_test_terminal() -> Terminal<TestBackend> {
         let backend = TestBackend::new(100, 30);

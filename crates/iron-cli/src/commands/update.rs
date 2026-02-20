@@ -5,8 +5,8 @@
 use crate::context::{AppContext, require_init};
 use crate::output::{StatusBadge, render_risk};
 use anyhow::Result;
-use iron_core::services::update::{UpdateRisk, UpdateService};
 use iron_core::OperationSpan;
+use iron_core::services::update::{UpdateRisk, UpdateService};
 use serde::Serialize;
 use std::io::{self, Write};
 use tracing::info;

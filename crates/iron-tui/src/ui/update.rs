@@ -8,10 +8,12 @@
 
 use crate::app::{App, UpdateSection};
 use crate::ui::theme;
-use iron_core::services::update::PreflightStatus;
 use iron_core::RiskLevel;
+use iron_core::services::update::PreflightStatus;
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState};
+use ratatui::widgets::{
+    Block, Borders, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
+};
 
 /// Status indicator symbols and colors
 fn status_indicator(status: PreflightStatus) -> (char, Color) {
@@ -75,17 +77,25 @@ pub fn render_update_preview(frame: &mut Frame, area: Rect, app: &App) {
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(5),  // Header with summary
-            Constraint::Length(9),  // Pre-flight checks
-            Constraint::Length(7),  // News section (if any)
-            Constraint::Min(0),     // Package list
+            Constraint::Length(5), // Header with summary
+            Constraint::Length(9), // Pre-flight checks
+            Constraint::Length(7), // News section (if any)
+            Constraint::Min(0),    // Package list
         ])
         .split(area);
 
     // ==========================================================================
     // Header Section
     // ==========================================================================
-    render_header_section(frame, layout[0], app, update_count, risk_symbol, risk_color, risk_text);
+    render_header_section(
+        frame,
+        layout[0],
+        app,
+        update_count,
+        risk_symbol,
+        risk_color,
+        risk_text,
+    );
 
     // ==========================================================================
     // Pre-flight Checks Section
@@ -116,24 +126,22 @@ fn render_header_section(
     let can_proceed = app.can_proceed_with_update();
     let reboot_required = app.reboot_required;
 
-    let mut lines = vec![
-        Line::from(vec![
-            Span::raw("Updates: "),
-            Span::styled(
-                format!("{} package(s)", update_count),
-                Style::default().fg(if update_count > 0 {
-                    theme::YELLOW
-                } else {
-                    theme::GREEN
-                }),
-            ),
-            Span::raw("  │  Risk: "),
-            Span::styled(
-                format!("{} {}", risk_symbol, risk_text),
-                Style::default().fg(risk_color),
-            ),
-        ]),
-    ];
+    let mut lines = vec![Line::from(vec![
+        Span::raw("Updates: "),
+        Span::styled(
+            format!("{} package(s)", update_count),
+            Style::default().fg(if update_count > 0 {
+                theme::YELLOW
+            } else {
+                theme::GREEN
+            }),
+        ),
+        Span::raw("  │  Risk: "),
+        Span::styled(
+            format!("{} {}", risk_symbol, risk_text),
+            Style::default().fg(risk_color),
+        ),
+    ])];
 
     // Reboot warning
     if reboot_required {
@@ -162,7 +170,14 @@ fn render_header_section(
     lines.push(Line::from(vec![
         Span::styled("[r]", Style::default().fg(theme::YELLOW)),
         Span::raw(" Refresh  "),
-        Span::styled("[u]", Style::default().fg(if can_proceed { theme::GREEN } else { theme::OVERLAY })),
+        Span::styled(
+            "[u]",
+            Style::default().fg(if can_proceed {
+                theme::GREEN
+            } else {
+                theme::OVERLAY
+            }),
+        ),
         Span::raw(" Update  "),
         Span::styled("[Tab]", Style::default().fg(theme::YELLOW)),
         Span::raw(" Section  "),
@@ -180,7 +195,11 @@ fn render_header_section(
 fn render_preflight_section(frame: &mut Frame, area: Rect, app: &App) {
     let is_selected = app.update_section == UpdateSection::PreflightChecks;
 
-    let border_color = if is_selected { theme::MAUVE } else { theme::OVERLAY };
+    let border_color = if is_selected {
+        theme::MAUVE
+    } else {
+        theme::OVERLAY
+    };
 
     let block = Block::default()
         .title(" Pre-flight Checks ")
@@ -267,7 +286,11 @@ fn render_news_section(frame: &mut Frame, area: Rect, app: &App) {
 
                 let style = if is_item_selected {
                     Style::default()
-                        .fg(if item.requires_manual { theme::RED } else { theme::YELLOW })
+                        .fg(if item.requires_manual {
+                            theme::RED
+                        } else {
+                            theme::YELLOW
+                        })
                         .bg(theme::SURFACE_HOVER)
                 } else if item.requires_manual {
                     Style::default().fg(theme::RED)
@@ -311,7 +334,11 @@ fn render_packages_section(frame: &mut Frame, area: Rect, app: &App) {
     let is_selected = app.update_section == UpdateSection::Packages;
     let updates = app.pending_updates_list();
 
-    let border_color = if is_selected { theme::MAUVE } else { theme::OVERLAY };
+    let border_color = if is_selected {
+        theme::MAUVE
+    } else {
+        theme::OVERLAY
+    };
 
     let title = if updates.len() > 50 {
         format!(" Packages (showing 50 of {}) ", updates.len())
@@ -373,8 +400,8 @@ fn render_packages_section(frame: &mut Frame, area: Rect, app: &App) {
             .begin_symbol(Some("▲"))
             .end_symbol(Some("▼"));
 
-        let mut scrollbar_state = ScrollbarState::new(updates.len().min(50))
-            .position(app.update_section_index);
+        let mut scrollbar_state =
+            ScrollbarState::new(updates.len().min(50)).position(app.update_section_index);
 
         frame.render_stateful_widget(scrollbar, layout[1], &mut scrollbar_state);
         layout[0]
@@ -399,8 +426,12 @@ pub fn render_sync(frame: &mut Frame, area: Rect, app: &App) {
             iron_core::services::sync::SyncStatus::Ahead => ("↑", "Ahead", theme::YELLOW),
             iron_core::services::sync::SyncStatus::Behind => ("↓", "Behind", theme::BLUE),
             iron_core::services::sync::SyncStatus::Diverged => ("⇅", "Diverged", theme::RED),
-            iron_core::services::sync::SyncStatus::Dirty => ("●", "Uncommitted changes", theme::PEACH),
-            iron_core::services::sync::SyncStatus::NotARepo => ("✗", "Not a git repository", theme::RED),
+            iron_core::services::sync::SyncStatus::Dirty => {
+                ("●", "Uncommitted changes", theme::PEACH)
+            }
+            iron_core::services::sync::SyncStatus::NotARepo => {
+                ("✗", "Not a git repository", theme::RED)
+            }
         };
 
         let branch = info.branch.as_deref().unwrap_or("unknown");
@@ -408,7 +439,10 @@ pub fn render_sync(frame: &mut Frame, area: Rect, app: &App) {
         let mut lines = vec![
             Line::from(""),
             Line::from(vec![
-                Span::styled(format!("  {} ", status_icon), Style::default().fg(status_color).bold()),
+                Span::styled(
+                    format!("  {} ", status_icon),
+                    Style::default().fg(status_color).bold(),
+                ),
                 Span::styled(status_text, Style::default().fg(status_color).bold()),
             ]),
             Line::from(""),
@@ -421,9 +455,15 @@ pub fn render_sync(frame: &mut Frame, area: Rect, app: &App) {
         if info.commits_ahead > 0 || info.commits_behind > 0 {
             lines.push(Line::from(vec![
                 Span::styled("  Ahead      ", Style::default().fg(theme::SUBTEXT)),
-                Span::styled(format!("{}", info.commits_ahead), Style::default().fg(theme::GREEN)),
+                Span::styled(
+                    format!("{}", info.commits_ahead),
+                    Style::default().fg(theme::GREEN),
+                ),
                 Span::styled("  Behind  ", Style::default().fg(theme::SUBTEXT)),
-                Span::styled(format!("{}", info.commits_behind), Style::default().fg(theme::YELLOW)),
+                Span::styled(
+                    format!("{}", info.commits_behind),
+                    Style::default().fg(theme::YELLOW),
+                ),
             ]));
         }
 
@@ -431,7 +471,11 @@ pub fn render_sync(frame: &mut Frame, area: Rect, app: &App) {
             lines.push(Line::from(vec![
                 Span::styled("  Dirty      ", Style::default().fg(theme::SUBTEXT)),
                 Span::styled(
-                    format!("{} file{}", info.dirty_files, if info.dirty_files == 1 { "" } else { "s" }),
+                    format!(
+                        "{} file{}",
+                        info.dirty_files,
+                        if info.dirty_files == 1 { "" } else { "s" }
+                    ),
                     Style::default().fg(theme::PEACH),
                 ),
             ]));

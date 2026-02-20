@@ -44,25 +44,49 @@ pub fn render_profile_builder(frame: &mut Frame, area: Rect, app: &App) {
     // Footer hints
     let hints = match app.profile_builder_step {
         0 => vec![
-            Span::styled(" [Tab] ", Style::default().fg(Color::Black).bg(theme::MAUVE).bold()),
+            Span::styled(
+                " [Tab] ",
+                Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
+            ),
             Span::styled(" Switch field  ", Style::default().fg(theme::SUBTEXT)),
-            Span::styled(" [Enter] ", Style::default().fg(Color::Black).bg(theme::MAUVE).bold()),
+            Span::styled(
+                " [Enter] ",
+                Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
+            ),
             Span::styled(" Next  ", Style::default().fg(theme::SUBTEXT)),
-            Span::styled(" [Esc] ", Style::default().fg(Color::Black).bg(theme::MAUVE).bold()),
+            Span::styled(
+                " [Esc] ",
+                Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
+            ),
             Span::styled(" Cancel", Style::default().fg(theme::SUBTEXT)),
         ],
         1 => vec![
-            Span::styled(" [Space] ", Style::default().fg(Color::Black).bg(theme::MAUVE).bold()),
+            Span::styled(
+                " [Space] ",
+                Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
+            ),
             Span::styled(" Toggle  ", Style::default().fg(theme::SUBTEXT)),
-            Span::styled(" [Enter] ", Style::default().fg(Color::Black).bg(theme::MAUVE).bold()),
+            Span::styled(
+                " [Enter] ",
+                Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
+            ),
             Span::styled(" Next  ", Style::default().fg(theme::SUBTEXT)),
-            Span::styled(" [Esc] ", Style::default().fg(Color::Black).bg(theme::MAUVE).bold()),
+            Span::styled(
+                " [Esc] ",
+                Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
+            ),
             Span::styled(" Back", Style::default().fg(theme::SUBTEXT)),
         ],
         _ => vec![
-            Span::styled(" [Enter] ", Style::default().fg(Color::Black).bg(theme::GREEN).bold()),
+            Span::styled(
+                " [Enter] ",
+                Style::default().fg(Color::Black).bg(theme::GREEN).bold(),
+            ),
             Span::styled(" Create Profile  ", Style::default().fg(theme::SUBTEXT)),
-            Span::styled(" [Esc] ", Style::default().fg(Color::Black).bg(theme::MAUVE).bold()),
+            Span::styled(
+                " [Esc] ",
+                Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
+            ),
             Span::styled(" Back", Style::default().fg(theme::SUBTEXT)),
         ],
     };
@@ -105,7 +129,10 @@ fn render_step_name(frame: &mut Frame, area: Rect, app: &App) {
             Style::default().fg(name_color).bold(),
         ));
     let name_display = if app.profile_builder_name.is_empty() {
-        Span::styled("e.g. developer", Style::default().fg(theme::OVERLAY).italic())
+        Span::styled(
+            "e.g. developer",
+            Style::default().fg(theme::OVERLAY).italic(),
+        )
     } else {
         Span::styled(
             app.profile_builder_name.as_str(),
@@ -183,9 +210,7 @@ fn render_step_modules(frame: &mut Frame, area: Rect, app: &App) {
         .iter()
         .enumerate()
         .map(|(i, module)| {
-            let checked = app
-                .profile_builder_selected_modules
-                .contains(&module.id);
+            let checked = app.profile_builder_selected_modules.contains(&module.id);
             let cursor = i == app.profile_builder_module_cursor;
             let check_sym = if checked { "[✓]" } else { "[ ]" };
             let desc = module.description.as_deref().unwrap_or("");

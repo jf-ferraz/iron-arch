@@ -51,8 +51,8 @@ pub fn render_config_manager(frame: &mut Frame, area: Rect, app: &App) {
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),  // Header
-            Constraint::Min(10),    // Conflicts list
+            Constraint::Length(3), // Header
+            Constraint::Min(10),   // Conflicts list
         ])
         .split(area);
 
@@ -72,13 +72,20 @@ fn render_header(frame: &mut Frame, area: Rect, app: &App) {
         Span::styled("No conflicts", Style::default().fg(theme::GREEN))
     } else {
         Span::styled(
-            format!("{} conflict{}", conflict_count, if conflict_count == 1 { "" } else { "s" }),
+            format!(
+                "{} conflict{}",
+                conflict_count,
+                if conflict_count == 1 { "" } else { "s" }
+            ),
             Style::default().fg(theme::YELLOW),
         )
     };
 
     let header_text = Line::from(vec![
-        Span::styled("Configuration Manager", Style::default().fg(theme::TEXT).bold()),
+        Span::styled(
+            "Configuration Manager",
+            Style::default().fg(theme::TEXT).bold(),
+        ),
         Span::raw("  │  "),
         status,
     ]);
@@ -156,9 +163,9 @@ fn render_conflicts_list(frame: &mut Frame, area: Rect, app: &App) {
         .collect();
 
     let widths = [
-        Constraint::Length(3),   // Icon
-        Constraint::Length(10),  // Type
-        Constraint::Min(30),     // Path
+        Constraint::Length(3),  // Icon
+        Constraint::Length(10), // Type
+        Constraint::Min(30),    // Path
     ];
 
     let table = Table::new(rows, widths)
@@ -175,8 +182,8 @@ fn render_conflicts_list(frame: &mut Frame, area: Rect, app: &App) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ratatui::backend::TestBackend;
     use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
 
     fn create_test_terminal() -> Terminal<TestBackend> {
         let backend = TestBackend::new(100, 25);

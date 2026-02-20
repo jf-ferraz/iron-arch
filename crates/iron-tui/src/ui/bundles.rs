@@ -14,7 +14,9 @@ pub fn render_bundles(frame: &mut Frame, area: Rect, app: &App) {
             Line::from(""),
             Line::from(Span::styled(
                 "No bundles found.",
-                Style::default().fg(theme::SUBTEXT).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(theme::SUBTEXT)
+                    .add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
             Line::from(Span::styled(
@@ -59,9 +61,7 @@ pub fn render_bundles(frame: &mut Frame, area: Rect, app: &App) {
         })
         .collect();
 
-    let list = List::new(items)
-        .block(block)
-        .highlight_symbol("▸ ");
+    let list = List::new(items).block(block).highlight_symbol("▸ ");
 
     let mut state = ListState::default();
     if !app.bundles.is_empty() {
@@ -104,17 +104,27 @@ pub fn render_bundle_detail(frame: &mut Frame, area: Rect, app: &App) {
         ]),
         Line::from(vec![
             Span::styled("Type        ", Style::default().fg(theme::SUBTEXT)),
-            Span::styled(format!("{:?}", bundle.bundle_type), Style::default().fg(theme::LAVENDER)),
+            Span::styled(
+                format!("{:?}", bundle.bundle_type),
+                Style::default().fg(theme::LAVENDER),
+            ),
         ]),
         Line::from(vec![
             Span::styled("Status      ", Style::default().fg(theme::SUBTEXT)),
             Span::styled(
                 status,
-                Style::default().fg(if is_active { theme::GREEN } else { theme::OVERLAY }),
+                Style::default().fg(if is_active {
+                    theme::GREEN
+                } else {
+                    theme::OVERLAY
+                }),
             ),
         ]),
         Line::from(""),
-        Line::from(Span::styled("Profiles:", Style::default().fg(theme::YELLOW).bold())),
+        Line::from(Span::styled(
+            "Profiles:",
+            Style::default().fg(theme::YELLOW).bold(),
+        )),
     ];
 
     let mut lines = text;

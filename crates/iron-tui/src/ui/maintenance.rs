@@ -68,8 +68,8 @@ pub fn render_system_maintenance(frame: &mut Frame, area: Rect, app: &App) {
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),  // Header
-            Constraint::Min(12),    // Action cards
+            Constraint::Length(3), // Header
+            Constraint::Min(12),   // Action cards
         ])
         .split(area);
 
@@ -80,7 +80,10 @@ pub fn render_system_maintenance(frame: &mut Frame, area: Rect, app: &App) {
 /// Render header section
 fn render_header(frame: &mut Frame, area: Rect) {
     let header_text = Line::from(vec![
-        Span::styled("System Maintenance", Style::default().fg(theme::TEXT).bold()),
+        Span::styled(
+            "System Maintenance",
+            Style::default().fg(theme::TEXT).bold(),
+        ),
         Span::raw("  │  "),
         Span::styled("Hub", Style::default().fg(theme::MAUVE)),
     ]);
@@ -112,10 +115,7 @@ fn render_action_cards(frame: &mut Frame, area: Rect, app: &App) {
         .split(inner);
 
     // Get maintenance timestamps
-    let maintenance = app
-        .state_manager
-        .as_ref()
-        .map(|sm| sm.maintenance());
+    let maintenance = app.state_manager.as_ref().map(|sm| sm.maintenance());
 
     let actions = MaintenanceAction::all();
     for (i, action) in actions.iter().enumerate() {
@@ -146,7 +146,15 @@ fn render_action_card(
 
     let block = ratatui::widgets::Block::default()
         .title(format!(" {} {} ", action.icon(), action.name()))
-        .title_style(Style::default().fg(if is_selected { theme::YELLOW } else { theme::TEXT }).bold())
+        .title_style(
+            Style::default()
+                .fg(if is_selected {
+                    theme::YELLOW
+                } else {
+                    theme::TEXT
+                })
+                .bold(),
+        )
         .borders(ratatui::widgets::Borders::ALL)
         .border_style(Style::default().fg(border_color))
         .style(Style::default().bg(bg_color));
@@ -163,9 +171,10 @@ fn render_action_card(
 
     let content = vec![
         Line::from(""),
-        Line::from(vec![
-            Span::styled(action.description(), Style::default().fg(theme::TEXT)),
-        ]),
+        Line::from(vec![Span::styled(
+            action.description(),
+            Style::default().fg(theme::TEXT),
+        )]),
         Line::from(""),
         Line::from(vec![
             Span::styled("Last run: ", Style::default().fg(theme::SUBTEXT)),
@@ -193,8 +202,8 @@ fn render_action_card(
 mod tests {
     use super::*;
     use chrono::Utc;
-    use ratatui::backend::TestBackend;
     use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
 
     fn create_test_terminal() -> Terminal<TestBackend> {
         let backend = TestBackend::new(120, 30);

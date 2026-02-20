@@ -26,7 +26,10 @@ pub fn render_recovery(frame: &mut Frame, area: Rect, app: &App) {
         Span::raw("  "),
         Span::styled("Recovery", Style::default().fg(theme::MAUVE).bold()),
         Span::raw("  "),
-        Span::styled("Backup, export, and restore your configuration", Style::default().fg(theme::SUBTEXT)),
+        Span::styled(
+            "Backup, export, and restore your configuration",
+            Style::default().fg(theme::SUBTEXT),
+        ),
     ]))
     .block(title_block);
     frame.render_widget(title_para, layout[0]);
@@ -40,16 +43,32 @@ pub fn render_recovery(frame: &mut Frame, area: Rect, app: &App) {
     // Footer hints
     let hints = Paragraph::new(Line::from(vec![
         Span::raw("  "),
-        Span::styled(" [g] ", Style::default().fg(Color::Black).bg(theme::MAUVE).bold()),
+        Span::styled(
+            " [g] ",
+            Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
+        ),
         Span::styled(" install.sh  ", Style::default().fg(theme::SUBTEXT)),
-        Span::styled(" [e] ", Style::default().fg(Color::Black).bg(theme::MAUVE).bold()),
+        Span::styled(
+            " [e] ",
+            Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
+        ),
         Span::styled(" Export  ", Style::default().fg(theme::SUBTEXT)),
-        Span::styled(" [s] ", Style::default().fg(Color::Black).bg(theme::MAUVE).bold()),
+        Span::styled(
+            " [s] ",
+            Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
+        ),
         Span::styled(" Snapshot  ", Style::default().fg(theme::SUBTEXT)),
-        Span::styled(" [Esc] ", Style::default().fg(Color::Black).bg(theme::MAUVE).bold()),
+        Span::styled(
+            " [Esc] ",
+            Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
+        ),
         Span::styled(" Back", Style::default().fg(theme::SUBTEXT)),
     ]))
-    .block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(theme::OVERLAY)));
+    .block(
+        Block::default()
+            .borders(Borders::TOP)
+            .border_style(Style::default().fg(theme::OVERLAY)),
+    );
     frame.render_widget(hints, layout[3]);
 }
 
@@ -63,7 +82,13 @@ fn render_recovery_status(frame: &mut Frame, area: Rect, app: &App) {
             .last_backup
             .map(|t| Utc::now().signed_duration_since(t).num_days())
             .unwrap_or(999);
-        if days <= 7 { theme::GREEN } else if days <= 30 { theme::YELLOW } else { theme::RED }
+        if days <= 7 {
+            theme::GREEN
+        } else if days <= 30 {
+            theme::YELLOW
+        } else {
+            theme::RED
+        }
     };
 
     let bundle_id = app
@@ -97,7 +122,12 @@ fn render_recovery_status(frame: &mut Frame, area: Rect, app: &App) {
     ];
 
     let block = theme::themed_block("Current State", theme::MAUVE);
-    frame.render_widget(Paragraph::new(content).block(block).wrap(Wrap { trim: true }), area);
+    frame.render_widget(
+        Paragraph::new(content)
+            .block(block)
+            .wrap(Wrap { trim: true }),
+        area,
+    );
 }
 
 fn render_recovery_actions(frame: &mut Frame, area: Rect) {
@@ -146,5 +176,8 @@ fn render_recovery_actions(frame: &mut Frame, area: Rect) {
     ];
 
     let block = theme::themed_block("Recovery Actions", theme::MAUVE);
-    frame.render_widget(Paragraph::new(lines).block(block).wrap(Wrap { trim: true }), area);
+    frame.render_widget(
+        Paragraph::new(lines).block(block).wrap(Wrap { trim: true }),
+        area,
+    );
 }

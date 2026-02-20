@@ -757,15 +757,16 @@ pub fn parse_package_info(output: &str) -> std::collections::HashMap<String, Str
 pub fn parse_size(size_str: &str) -> u64 {
     let parts: Vec<&str> = size_str.split_whitespace().collect();
     if parts.len() >= 2
-        && let Ok(size) = parts[0].parse::<f64>() {
-            return match parts[1] {
-                "B" => size as u64,
-                "KiB" => (size * 1024.0) as u64,
-                "MiB" => (size * 1024.0 * 1024.0) as u64,
-                "GiB" => (size * 1024.0 * 1024.0 * 1024.0) as u64,
-                _ => size as u64,
-            };
-        }
+        && let Ok(size) = parts[0].parse::<f64>()
+    {
+        return match parts[1] {
+            "B" => size as u64,
+            "KiB" => (size * 1024.0) as u64,
+            "MiB" => (size * 1024.0 * 1024.0) as u64,
+            "GiB" => (size * 1024.0 * 1024.0 * 1024.0) as u64,
+            _ => size as u64,
+        };
+    }
     0
 }
 

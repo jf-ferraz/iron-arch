@@ -170,7 +170,12 @@ pub fn execute(ctx: &AppContext) -> Result<()> {
     if ctx.root.join(".git").exists() {
         // Check for uncommitted changes
         let git_status = Command::new("git")
-            .args(["-C", ctx.root.to_str().unwrap_or("."), "status", "--porcelain"])
+            .args([
+                "-C",
+                ctx.root.to_str().unwrap_or("."),
+                "status",
+                "--porcelain",
+            ])
             .output();
 
         match git_status {
@@ -253,79 +258,83 @@ pub fn execute(ctx: &AppContext) -> Result<()> {
 
     // Check 6: Package installation check (FR-10.3)
     output.subheader("Package Installation");
-    let (packages_status, packages_message): (CheckStatus, String) = if let Some(host_id) = ctx.current_host() {
-        if let Some(bundle_id) = ctx.state.active_bundle(&host_id) {
-            let bundle_service = ctx.bundle_service();
-            match bundle_service.load(&bundle_id) {
-                Ok(bundle) => {
-                    let all_packages: Vec<String> = bundle
-                        .packages
-                        .iter()
-                        .chain(bundle.aur_packages.iter())
-                        .cloned()
-                        .collect();
+    let (packages_status, packages_message): (CheckStatus, String) =
+        if let Some(host_id) = ctx.current_host() {
+            if let Some(bundle_id) = ctx.state.active_bundle(&host_id) {
+                let bundle_service = ctx.bundle_service();
+                match bundle_service.load(&bundle_id) {
+                    Ok(bundle) => {
+                        let all_packages: Vec<String> = bundle
+                            .packages
+                            .iter()
+                            .chain(bundle.aur_packages.iter())
+                            .cloned()
+                            .collect();
 
-                    if all_packages.is_empty() {
-                        output.list_item_status("No packages to verify", StatusBadge::Ok);
-                        (CheckStatus::Pass, "no packages required".to_string())
-                    } else {
-                        let mut missing_packages: Vec<String> = Vec::new();
-                        for pkg in &all_packages {
-                            let installed = Command::new("pacman")
-                                .args(["-Q", pkg])
-                                .output()
-                                .map(|o| o.status.success())
-                                .unwrap_or(false);
-                            if !installed {
-                                missing_packages.push(pkg.clone());
-                            }
-                        }
-
-                        if missing_packages.is_empty() {
-                            output.list_item_status(
-                                &format!("{} packages verified", all_packages.len()),
-                                StatusBadge::Ok,
-                            );
-                            (
-                                CheckStatus::Pass,
-                                format!("{} packages verified", all_packages.len()),
-                            )
+                        if all_packages.is_empty() {
+                            output.list_item_status("No packages to verify", StatusBadge::Ok);
+                            (CheckStatus::Pass, "no packages required".to_string())
                         } else {
-                            for pkg in &missing_packages {
-                                output.list_item_status(
-                                    &format!("Missing: {}", pkg),
-                                    StatusBadge::Warning,
-                                );
+                            let mut missing_packages: Vec<String> = Vec::new();
+                            for pkg in &all_packages {
+                                let installed = Command::new("pacman")
+                                    .args(["-Q", pkg])
+                                    .output()
+                                    .map(|o| o.status.success())
+                                    .unwrap_or(false);
+                                if !installed {
+                                    missing_packages.push(pkg.clone());
+                                }
                             }
-                            warnings += missing_packages.len();
-                            (
-                                CheckStatus::Warn,
-                                format!(
-                                    "{} missing packages: {}",
-                                    missing_packages.len(),
-                                    missing_packages.join(", ")
-                                ),
-                            )
+
+                            if missing_packages.is_empty() {
+                                output.list_item_status(
+                                    &format!("{} packages verified", all_packages.len()),
+                                    StatusBadge::Ok,
+                                );
+                                (
+                                    CheckStatus::Pass,
+                                    format!("{} packages verified", all_packages.len()),
+                                )
+                            } else {
+                                for pkg in &missing_packages {
+                                    output.list_item_status(
+                                        &format!("Missing: {}", pkg),
+                                        StatusBadge::Warning,
+                                    );
+                                }
+                                warnings += missing_packages.len();
+                                (
+                                    CheckStatus::Warn,
+                                    format!(
+                                        "{} missing packages: {}",
+                                        missing_packages.len(),
+                                        missing_packages.join(", ")
+                                    ),
+                                )
+                            }
                         }
                     }
+                    Err(_) => {
+                        output.list_item_status(
+                            &format!("Cannot load bundle '{}'", bundle_id),
+                            StatusBadge::Warning,
+                        );
+                        warnings += 1;
+                        (
+                            CheckStatus::Warn,
+                            format!("cannot load bundle '{}'", bundle_id),
+                        )
+                    }
                 }
-                Err(_) => {
-                    output.list_item_status(
-                        &format!("Cannot load bundle '{}'", bundle_id),
-                        StatusBadge::Warning,
-                    );
-                    warnings += 1;
-                    (CheckStatus::Warn, format!("cannot load bundle '{}'", bundle_id))
-                }
+            } else {
+                output.list_item_status("No active bundle", StatusBadge::Ok);
+                (CheckStatus::Pass, "no active bundle".to_string())
             }
         } else {
-            output.list_item_status("No active bundle", StatusBadge::Ok);
-            (CheckStatus::Pass, "no active bundle".to_string())
-        }
-    } else {
-        output.list_item_status("No host configured", StatusBadge::Ok);
-        (CheckStatus::Pass, "no host configured".to_string())
-    };
+            output.list_item_status("No host configured", StatusBadge::Ok);
+            (CheckStatus::Pass, "no host configured".to_string())
+        };
 
     checks.push(HealthCheck {
         name: "packages".to_string(),
@@ -362,7 +371,10 @@ pub fn execute(ctx: &AppContext) -> Result<()> {
             message: "snapper available".to_string(),
         });
     } else {
-        output.list_item_status("No snapshot backend (timeshift/snapper)", StatusBadge::Warning);
+        output.list_item_status(
+            "No snapshot backend (timeshift/snapper)",
+            StatusBadge::Warning,
+        );
         warnings += 1;
         checks.push(HealthCheck {
             name: "snapshot".to_string(),
@@ -404,7 +416,10 @@ pub fn execute(ctx: &AppContext) -> Result<()> {
                     });
                 }
             } else {
-                output.list_item_status("secrets dir exists, git-crypt not configured", StatusBadge::Warning);
+                output.list_item_status(
+                    "secrets dir exists, git-crypt not configured",
+                    StatusBadge::Warning,
+                );
                 warnings += 1;
                 checks.push(HealthCheck {
                     name: "secrets".to_string(),

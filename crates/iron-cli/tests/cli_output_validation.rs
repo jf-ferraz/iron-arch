@@ -382,7 +382,8 @@ mod json_structure {
             .success();
 
         let stdout = String::from_utf8_lossy(&output.get_output().stdout);
-        let json: Value = serde_json::from_str(&stdout).expect("Doctor output should be valid JSON");
+        let json: Value =
+            serde_json::from_str(&stdout).expect("Doctor output should be valid JSON");
 
         // Verify top-level structure
         assert!(json.get("checks").is_some(), "Missing 'checks' array");
@@ -390,7 +391,9 @@ mod json_structure {
         assert!(json.get("timestamp").is_some(), "Missing 'timestamp'");
 
         // Verify checks array structure
-        let checks = json["checks"].as_array().expect("'checks' should be an array");
+        let checks = json["checks"]
+            .as_array()
+            .expect("'checks' should be an array");
         assert!(!checks.is_empty(), "Should have at least one health check");
 
         // Each check should have name, status, and message
@@ -409,7 +412,9 @@ mod json_structure {
         }
 
         // Verify overall status is valid
-        let overall = json["overall"].as_str().expect("'overall' should be a string");
+        let overall = json["overall"]
+            .as_str()
+            .expect("'overall' should be a string");
         assert!(
             ["pass", "warn", "fail"].contains(&overall),
             "Invalid overall status: {}",
@@ -432,13 +437,13 @@ mod json_structure {
             .success();
 
         let stdout = String::from_utf8_lossy(&output.get_output().stdout);
-        let json: Value = serde_json::from_str(&stdout).expect("Doctor output should be valid JSON");
+        let json: Value =
+            serde_json::from_str(&stdout).expect("Doctor output should be valid JSON");
 
-        let checks = json["checks"].as_array().expect("'checks' should be an array");
-        let check_names: Vec<&str> = checks
-            .iter()
-            .filter_map(|c| c["name"].as_str())
-            .collect();
+        let checks = json["checks"]
+            .as_array()
+            .expect("'checks' should be an array");
+        let check_names: Vec<&str> = checks.iter().filter_map(|c| c["name"].as_str()).collect();
 
         // FR-10.1: State file validation
         assert!(

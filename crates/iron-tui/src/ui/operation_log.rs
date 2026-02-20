@@ -52,9 +52,17 @@ impl OperationFilter {
             Self::All => true,
             Self::Update => operation.contains("update") || operation.contains("upgrade"),
             Self::Clean => operation.contains("clean") || operation.contains("cleanup"),
-            Self::Sync => operation.contains("sync") || operation.contains("push") || operation.contains("pull"),
+            Self::Sync => {
+                operation.contains("sync")
+                    || operation.contains("push")
+                    || operation.contains("pull")
+            }
             Self::Switch => operation.contains("switch") || operation.contains("activate"),
-            Self::Module => operation.contains("module") || operation.contains("enable") || operation.contains("disable"),
+            Self::Module => {
+                operation.contains("module")
+                    || operation.contains("enable")
+                    || operation.contains("disable")
+            }
         }
     }
 }
@@ -65,8 +73,8 @@ pub fn render_operation_log(frame: &mut Frame, area: Rect, app: &App) {
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),  // Header
-            Constraint::Min(10),    // Log list
+            Constraint::Length(3), // Header
+            Constraint::Min(10),   // Log list
         ])
         .split(area);
 
@@ -93,7 +101,11 @@ fn render_header(frame: &mut Frame, area: Rect, app: &App) {
         Span::raw("  │  "),
         Span::styled(
             format!("Filter: {}", app.operation_filter.name()),
-            Style::default().fg(if app.operation_filter == OperationFilter::All { theme::SUBTEXT } else { theme::YELLOW }),
+            Style::default().fg(if app.operation_filter == OperationFilter::All {
+                theme::SUBTEXT
+            } else {
+                theme::YELLOW
+            }),
         ),
     ]);
 
@@ -180,10 +192,10 @@ fn render_log_list(frame: &mut Frame, area: Rect, app: &App) {
         .collect();
 
     let widths = [
-        Constraint::Length(3),   // Status icon
-        Constraint::Length(17),  // Timestamp
-        Constraint::Length(20),  // Operation
-        Constraint::Min(20),     // Details
+        Constraint::Length(3),  // Status icon
+        Constraint::Length(17), // Timestamp
+        Constraint::Length(20), // Operation
+        Constraint::Min(20),    // Details
     ];
 
     let table = Table::new(rows, widths)
@@ -200,8 +212,8 @@ fn render_log_list(frame: &mut Frame, area: Rect, app: &App) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ratatui::backend::TestBackend;
     use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
 
     fn create_test_terminal() -> Terminal<TestBackend> {
         let backend = TestBackend::new(100, 25);

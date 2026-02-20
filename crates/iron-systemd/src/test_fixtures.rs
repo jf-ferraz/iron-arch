@@ -64,7 +64,9 @@ impl ServiceFixture {
     /// Generate systemctl status output
     pub fn to_status_output(&self) -> String {
         let state_line = match self.state {
-            ServiceState::Active => "     Active: active (running) since Mon 2024-01-01 00:00:00 UTC",
+            ServiceState::Active => {
+                "     Active: active (running) since Mon 2024-01-01 00:00:00 UTC"
+            }
             ServiceState::Inactive => "     Active: inactive (dead)",
             ServiceState::Failed => "     Active: failed (Result: exit-code)",
             ServiceState::Unknown => "     Active: unknown",
@@ -157,10 +159,8 @@ impl SystemdMockBuilder {
 
     /// Add a service with the given state
     pub fn with_service(mut self, name: &str, state: ServiceState, enabled: EnabledState) -> Self {
-        self.services.insert(
-            name.to_string(),
-            ServiceFixture::new(name, state, enabled),
-        );
+        self.services
+            .insert(name.to_string(), ServiceFixture::new(name, state, enabled));
         self
     }
 
@@ -321,11 +321,7 @@ impl SystemdMockBuilder {
                     .copied()
                     .collect();
                 if self.start_succeeds {
-                    executor.add_response(
-                        "systemctl",
-                        &start_args,
-                        MockResponse::success(""),
-                    );
+                    executor.add_response("systemctl", &start_args, MockResponse::success(""));
                 } else {
                     executor.add_response(
                         "systemctl",
@@ -341,11 +337,7 @@ impl SystemdMockBuilder {
                     .copied()
                     .collect();
                 if self.stop_succeeds {
-                    executor.add_response(
-                        "systemctl",
-                        &stop_args,
-                        MockResponse::success(""),
-                    );
+                    executor.add_response("systemctl", &stop_args, MockResponse::success(""));
                 } else {
                     executor.add_response(
                         "systemctl",
@@ -361,11 +353,7 @@ impl SystemdMockBuilder {
                     .copied()
                     .collect();
                 if self.restart_succeeds {
-                    executor.add_response(
-                        "systemctl",
-                        &restart_args,
-                        MockResponse::success(""),
-                    );
+                    executor.add_response("systemctl", &restart_args, MockResponse::success(""));
                 } else {
                     executor.add_response(
                         "systemctl",
@@ -377,7 +365,16 @@ impl SystemdMockBuilder {
                 // Service doesn't exist - return errors
                 let not_found_msg = format!("Unit {}.service not found.", name);
 
-                for cmd in &["status", "is-enabled", "enable", "disable", "start", "stop", "restart", "cat"] {
+                for cmd in &[
+                    "status",
+                    "is-enabled",
+                    "enable",
+                    "disable",
+                    "start",
+                    "stop",
+                    "restart",
+                    "cat",
+                ] {
                     let args: Vec<&str> = user_prefix
                         .iter()
                         .chain([*cmd, name].iter())
@@ -406,11 +403,7 @@ impl SystemdMockBuilder {
             .chain(["list-units", "--type=service", "--all", "--no-legend"].iter())
             .copied()
             .collect();
-        executor.add_response(
-            "systemctl",
-            &list_args,
-            MockResponse::success(&list_output),
-        );
+        executor.add_response("systemctl", &list_args, MockResponse::success(&list_output));
 
         // Add systemctl to existing commands
         executor.add_existing_command("systemctl");
@@ -432,8 +425,16 @@ pub mod fixtures {
         SystemdMockBuilder::new()
             .with_service("pipewire", ServiceState::Active, EnabledState::Enabled)
             .with_service("wireplumber", ServiceState::Active, EnabledState::Enabled)
-            .with_service("xdg-desktop-portal", ServiceState::Active, EnabledState::Enabled)
-            .with_service("xdg-desktop-portal-hyprland", ServiceState::Active, EnabledState::Enabled)
+            .with_service(
+                "xdg-desktop-portal",
+                ServiceState::Active,
+                EnabledState::Enabled,
+            )
+            .with_service(
+                "xdg-desktop-portal-hyprland",
+                ServiceState::Active,
+                EnabledState::Enabled,
+            )
             .user_scope()
     }
 
@@ -441,7 +442,11 @@ pub mod fixtures {
     pub fn system_services() -> SystemdMockBuilder {
         SystemdMockBuilder::new()
             .with_service("sshd", ServiceState::Active, EnabledState::Enabled)
-            .with_service("NetworkManager", ServiceState::Active, EnabledState::Enabled)
+            .with_service(
+                "NetworkManager",
+                ServiceState::Active,
+                EnabledState::Enabled,
+            )
             .with_service("docker", ServiceState::Inactive, EnabledState::Disabled)
             .with_service("cups", ServiceState::Inactive, EnabledState::Disabled)
     }
@@ -449,12 +454,36 @@ pub mod fixtures {
     /// Services with various states
     pub fn mixed_states() -> SystemdMockBuilder {
         SystemdMockBuilder::new()
-            .with_service("active-enabled", ServiceState::Active, EnabledState::Enabled)
-            .with_service("active-disabled", ServiceState::Active, EnabledState::Disabled)
-            .with_service("inactive-enabled", ServiceState::Inactive, EnabledState::Enabled)
-            .with_service("inactive-disabled", ServiceState::Inactive, EnabledState::Disabled)
-            .with_service("failed-service", ServiceState::Failed, EnabledState::Enabled)
-            .with_service("masked-service", ServiceState::Inactive, EnabledState::Masked)
+            .with_service(
+                "active-enabled",
+                ServiceState::Active,
+                EnabledState::Enabled,
+            )
+            .with_service(
+                "active-disabled",
+                ServiceState::Active,
+                EnabledState::Disabled,
+            )
+            .with_service(
+                "inactive-enabled",
+                ServiceState::Inactive,
+                EnabledState::Enabled,
+            )
+            .with_service(
+                "inactive-disabled",
+                ServiceState::Inactive,
+                EnabledState::Disabled,
+            )
+            .with_service(
+                "failed-service",
+                ServiceState::Failed,
+                EnabledState::Enabled,
+            )
+            .with_service(
+                "masked-service",
+                ServiceState::Inactive,
+                EnabledState::Masked,
+            )
             .with_service("static-service", ServiceState::Active, EnabledState::Static)
     }
 
@@ -462,7 +491,11 @@ pub mod fixtures {
     pub fn failed_services() -> SystemdMockBuilder {
         SystemdMockBuilder::new()
             .with_service("crashed-app", ServiceState::Failed, EnabledState::Enabled)
-            .with_service("broken-daemon", ServiceState::Failed, EnabledState::Disabled)
+            .with_service(
+                "broken-daemon",
+                ServiceState::Failed,
+                EnabledState::Disabled,
+            )
     }
 
     /// Services where operations fail

@@ -188,6 +188,20 @@ impl StateManager {
         )
     }
 
+    /// Clear active bundle for a host (used on deactivation)
+    pub fn clear_active_bundle(&self, host_id: &str) -> IronResult<()> {
+        {
+            let mut state = self.state.lock().unwrap();
+            state.active_bundles.remove(host_id);
+        }
+        self.persist()?;
+        self.audit(
+            "clear_active_bundle",
+            OperationStatus::Success,
+            Some(host_id.to_string()),
+        )
+    }
+
     /// Get active profile for a host
     pub fn active_profile(&self, host_id: &str) -> Option<String> {
         self.state().active_profiles.get(host_id).cloned()
@@ -683,6 +697,24 @@ mod tests {
             manager.active_bundle("laptop"),
             Some("hyprland".to_string())
         );
+    }
+
+    #[test]
+    fn test_clear_active_bundle() {
+        let (manager, _temp) = create_test_manager();
+        manager.set_active_bundle("laptop", "hyprland").unwrap();
+        assert!(manager.active_bundle("laptop").is_some());
+
+        manager.clear_active_bundle("laptop").unwrap();
+        assert!(manager.active_bundle("laptop").is_none());
+    }
+
+    #[test]
+    fn test_clear_active_bundle_nonexistent_host() {
+        let (manager, _temp) = create_test_manager();
+        // Clearing a non-existent host should succeed (no-op remove)
+        manager.clear_active_bundle("nonexistent").unwrap();
+        assert!(manager.active_bundle("nonexistent").is_none());
     }
 
     #[test]

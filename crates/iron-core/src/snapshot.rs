@@ -968,8 +968,8 @@ mod tests {
 
     #[test]
     fn test_mock_fixtures_timeshift_list_parsing() {
-        use crate::snapshot_fixtures::SnapshotMockBuilder;
         use crate::resilience::CommandExecutor;
+        use crate::snapshot_fixtures::SnapshotMockBuilder;
 
         let executor = SnapshotMockBuilder::timeshift()
             .with_snapshot("1", "First backup", "2024-01-15_10-30-00")
@@ -989,8 +989,8 @@ mod tests {
 
     #[test]
     fn test_mock_fixtures_snapper_list_parsing() {
-        use crate::snapshot_fixtures::SnapshotMockBuilder;
         use crate::resilience::CommandExecutor;
+        use crate::snapshot_fixtures::SnapshotMockBuilder;
 
         let executor = SnapshotMockBuilder::snapper()
             .with_snapshot("1", "First backup", "2024-01-15 10:30:00")
@@ -998,7 +998,10 @@ mod tests {
             .build();
 
         let output = executor
-            .execute("snapper", &["-c", "root", "list", "--columns", "number,date,description"])
+            .execute(
+                "snapper",
+                &["-c", "root", "list", "--columns", "number,date,description"],
+            )
             .expect("should execute");
 
         let snapshots = parse_snapper_list_output(&output);
@@ -1011,8 +1014,8 @@ mod tests {
 
     #[test]
     fn test_mock_fixtures_backend_detection() {
-        use crate::snapshot_fixtures::SnapshotMockBuilder;
         use crate::resilience::CommandExecutor;
+        use crate::snapshot_fixtures::SnapshotMockBuilder;
 
         // Timeshift available
         let executor = SnapshotMockBuilder::timeshift().build();
@@ -1026,8 +1029,8 @@ mod tests {
 
     #[test]
     fn test_mock_fixtures_no_backend() {
-        use crate::snapshot_fixtures::SnapshotMockBuilder;
         use crate::resilience::CommandExecutor;
+        use crate::snapshot_fixtures::SnapshotMockBuilder;
 
         let executor = SnapshotMockBuilder::none().build();
 
@@ -1040,13 +1043,11 @@ mod tests {
 
     #[test]
     fn test_mock_fixtures_create_workflow() {
-        use crate::snapshot_fixtures::SnapshotMockBuilder;
         use crate::resilience::CommandExecutor;
+        use crate::snapshot_fixtures::SnapshotMockBuilder;
 
         // Test Timeshift create
-        let executor = SnapshotMockBuilder::timeshift()
-            .with_next_id(5)
-            .build();
+        let executor = SnapshotMockBuilder::timeshift().with_next_id(5).build();
 
         let result = executor.execute("timeshift", &["--create", "--comments", "Test backup"]);
         assert!(result.is_ok());
@@ -1054,19 +1055,20 @@ mod tests {
         assert!(output.contains("Tagged snapshot"));
 
         // Test Snapper create
-        let executor = SnapshotMockBuilder::snapper()
-            .with_next_id(10)
-            .build();
+        let executor = SnapshotMockBuilder::snapper().with_next_id(10).build();
 
-        let result = executor.execute("snapper", &["-c", "root", "create", "-d", "Test", "--print-number"]);
+        let result = executor.execute(
+            "snapper",
+            &["-c", "root", "create", "-d", "Test", "--print-number"],
+        );
         assert!(result.is_ok());
         assert_eq!(result.unwrap().trim(), "10");
     }
 
     #[test]
     fn test_mock_fixtures_delete_workflow() {
-        use crate::snapshot_fixtures::SnapshotMockBuilder;
         use crate::resilience::CommandExecutor;
+        use crate::snapshot_fixtures::SnapshotMockBuilder;
 
         let executor = SnapshotMockBuilder::timeshift()
             .with_snapshot("1", "To delete", "2024-01-15_10-30-00")
@@ -1078,8 +1080,8 @@ mod tests {
 
     #[test]
     fn test_mock_fixtures_failing_operations() {
-        use crate::snapshot_fixtures::fixtures;
         use crate::resilience::CommandExecutor;
+        use crate::snapshot_fixtures::fixtures;
 
         let executor = fixtures::timeshift_failing().build();
 

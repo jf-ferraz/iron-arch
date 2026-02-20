@@ -1383,7 +1383,9 @@ encrypted: secrets/token.txt
         // No .git-crypt
 
         let manager = DefaultSecretsManager::new(root);
-        let files = manager.list_encrypted().expect("list_encrypted should succeed");
+        let files = manager
+            .list_encrypted()
+            .expect("list_encrypted should succeed");
         assert!(files.is_empty());
     }
 
@@ -1439,8 +1441,16 @@ encrypted: secrets/token.txt
         let output = "## main\n M file with spaces.rs\n?? another file.txt\n";
         let status = parse_git_status(output);
         assert!(!status.is_clean);
-        assert!(status.modified.contains(&PathBuf::from("file with spaces.rs")));
-        assert!(status.untracked.contains(&PathBuf::from("another file.txt")));
+        assert!(
+            status
+                .modified
+                .contains(&PathBuf::from("file with spaces.rs"))
+        );
+        assert!(
+            status
+                .untracked
+                .contains(&PathBuf::from("another file.txt"))
+        );
     }
 
     #[test]
@@ -1467,7 +1477,8 @@ encrypted: secrets/token.txt
 
     #[test]
     fn test_parse_encrypted_files_with_special_chars() {
-        let output = "encrypted: secrets/key-with-dash.txt\nencrypted: secrets/key_with_underscore.env\n";
+        let output =
+            "encrypted: secrets/key-with-dash.txt\nencrypted: secrets/key_with_underscore.env\n";
         let files = parse_encrypted_files(output);
         assert_eq!(files.len(), 2);
     }

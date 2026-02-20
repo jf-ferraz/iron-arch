@@ -16,6 +16,10 @@ pub mod update;
 
 // Re-export service traits and implementations
 pub use bundle::{BundleService, DefaultBundleService};
+pub use clean::{
+    CleanupCategory, CleanupPreview, CleanupResult, CleanupService, CleanupSummary,
+    DefaultCleanupService,
+};
 pub use host::{DefaultHostService, HostService};
 pub use module::{DefaultModuleService, ModuleService};
 pub use profile::{DefaultProfileService, ProfileService};
@@ -23,10 +27,6 @@ pub use recovery::{DefaultRecoveryService, RecoveryService};
 pub use secrets::{DefaultSecretsService, SecretsService};
 pub use state::{StateManager, Transaction, TransactionGuard};
 pub use sync::{DefaultSyncService, SyncService};
-pub use clean::{
-    CleanupCategory, CleanupPreview, CleanupResult, CleanupService, CleanupSummary,
-    DefaultCleanupService,
-};
 pub use update::{
     ConfigConflict, ConfigConflictType, DefaultUpdateService, FailedService, PostUpdateResult,
     UpdateService,

@@ -498,14 +498,16 @@ mod tests {
         let mut app = App::default();
         app.update_risk = RiskLevel::Low;
         // More than 50 updates triggers warning
-        app.pending_updates = (0..51).map(|i| PackageUpdate {
-            name: format!("pkg-{}", i),
-            current_version: "1.0.0".to_string(),
-            new_version: "1.1.0".to_string(),
-            is_aur: false,
-            is_flagged: false,
-            repository: "extra".to_string(),
-        }).collect();
+        app.pending_updates = (0..51)
+            .map(|i| PackageUpdate {
+                name: format!("pkg-{}", i),
+                current_version: "1.0.0".to_string(),
+                new_version: "1.1.0".to_string(),
+                is_aur: false,
+                is_flagged: false,
+                repository: "extra".to_string(),
+            })
+            .collect();
 
         assert_eq!(app.system_health(), HealthStatus::Warning);
     }
@@ -533,16 +535,14 @@ mod tests {
         use iron_core::PackageUpdate;
 
         let mut app = App::default();
-        app.pending_updates = vec![
-            PackageUpdate {
-                name: "test-pkg".to_string(),
-                current_version: "1.0.0".to_string(),
-                new_version: "2.0.0".to_string(),
-                is_aur: false,
-                is_flagged: false,
-                repository: "core".to_string(),
-            }
-        ];
+        app.pending_updates = vec![PackageUpdate {
+            name: "test-pkg".to_string(),
+            current_version: "1.0.0".to_string(),
+            new_version: "2.0.0".to_string(),
+            is_aur: false,
+            is_flagged: false,
+            repository: "core".to_string(),
+        }];
 
         let updates = app.pending_updates_list();
         assert_eq!(updates.len(), 1);

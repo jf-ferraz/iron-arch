@@ -2,11 +2,13 @@
 //!
 //! Multi-step wizard for first-time setup and configuration.
 
+use iron_core::PackageManager;
 use iron_core::services::{
     BundleService, DefaultBundleService, DefaultModuleService, DefaultProfileService,
     ProfileService, StateManager,
 };
 use std::path::Path;
+use std::sync::Arc;
 
 /// Summary of a bundle for display in the setup wizard.
 #[derive(Debug, Clone, Default)]
@@ -321,7 +323,11 @@ impl WizardState {
     }
 
     /// Apply wizard configuration
-    pub fn apply(&mut self, config_dir: &Path) -> Result<(), String> {
+    pub fn apply(
+        &mut self,
+        config_dir: &Path,
+        package_manager: Arc<dyn PackageManager>,
+    ) -> Result<(), String> {
         self.processing = true;
         self.error = None;
 
@@ -344,7 +350,8 @@ impl WizardState {
 
         // Activate bundle if selected
         if let Some(bundle_id) = self.selected_bundle() {
-            let bundle_service = DefaultBundleService::new(config_dir, state_manager.clone());
+            let bundle_service = DefaultBundleService::new(config_dir, state_manager.clone())
+                .with_package_manager(package_manager);
             if let Err(e) = bundle_service.activate(bundle_id) {
                 self.processing = false;
                 self.error = Some(format!("Failed to activate bundle: {:?}", e));

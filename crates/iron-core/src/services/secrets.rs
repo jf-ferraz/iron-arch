@@ -652,14 +652,8 @@ mod tests {
 
         // Create both .git-crypt and keys dir
         std::fs::create_dir_all(temp_dir.path().join(".git-crypt")).unwrap();
-        std::fs::create_dir_all(
-            temp_dir
-                .path()
-                .join(".git")
-                .join("git-crypt")
-                .join("keys"),
-        )
-        .unwrap();
+        std::fs::create_dir_all(temp_dir.path().join(".git").join("git-crypt").join("keys"))
+            .unwrap();
 
         let status = service.status().unwrap();
         // Will be NotAvailable if git-crypt not installed, otherwise Unlocked

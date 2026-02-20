@@ -214,10 +214,7 @@ pub fn key_hint(key: &str, label: &str) -> Vec<Span<'static>> {
 /// Render a compact keyboard hint
 pub fn key_hint_compact(key: &str, label: &str) -> Vec<Span<'static>> {
     vec![
-        Span::styled(
-            format!("[{}]", key),
-            Style::default().fg(MAUVE).bold(),
-        ),
+        Span::styled(format!("[{}]", key), Style::default().fg(MAUVE).bold()),
         Span::styled(format!(" {} ", label), Style::default().fg(SUBTEXT)),
     ]
 }

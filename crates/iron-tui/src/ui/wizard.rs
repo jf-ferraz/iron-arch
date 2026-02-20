@@ -163,7 +163,10 @@ fn render_wizard_bundle_selection(frame: &mut Frame, area: Rect, app: &App) {
         app.wizard
             .available_bundles
             .iter()
-            .map(|n| BundleSummary { name: n.clone(), ..Default::default() })
+            .map(|n| BundleSummary {
+                name: n.clone(),
+                ..Default::default()
+            })
             .collect()
     };
 
@@ -188,9 +191,15 @@ fn render_wizard_bundle_selection(frame: &mut Frame, area: Rect, app: &App) {
         )));
     } else {
         for (i, summary) in summaries.iter().enumerate() {
-            let prefix = if i == selected_idx { "  ● " } else { "  ○ " };
+            let prefix = if i == selected_idx {
+                "  ● "
+            } else {
+                "  ○ "
+            };
             let style = if i == selected_idx {
-                Style::default().fg(theme::GREEN).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(theme::GREEN)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(theme::TEXT)
             };
@@ -224,7 +233,10 @@ fn render_wizard_profile_selection(frame: &mut Frame, area: Rect, app: &App) {
         app.wizard
             .available_profiles
             .iter()
-            .map(|n| ProfileSummary { name: n.clone(), description: String::new() })
+            .map(|n| ProfileSummary {
+                name: n.clone(),
+                description: String::new(),
+            })
             .collect()
     };
 
@@ -249,9 +261,15 @@ fn render_wizard_profile_selection(frame: &mut Frame, area: Rect, app: &App) {
         )));
     } else {
         for (i, summary) in summaries.iter().enumerate() {
-            let prefix = if i == selected_idx { "  ● " } else { "  ○ " };
+            let prefix = if i == selected_idx {
+                "  ● "
+            } else {
+                "  ○ "
+            };
             let style = if i == selected_idx {
-                Style::default().fg(theme::GREEN).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(theme::GREEN)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(theme::TEXT)
             };

@@ -16,13 +16,13 @@ state of the code vs. what the user-workflow document describes:
 | Doctor TUI | `[STUB]` | **REAL** – 7 health checks rendered from `app.state` |
 | ProfileBuilder | `[STUB]` | **REAL** – 3-step wizard (Name → Modules → Preview) |
 | ModuleCreator | `[STUB]` | **REAL** – 2-step wizard (ID/Desc/Pkgs → Preview) |
-| Secrets TUI | `[STUB]` | **REAL** – git-crypt status, encrypted file list, action keys |
-| Recovery TUI | `[STUB]` | **REAL** – status panel, export/import/generate keys |
+| Secrets TUI | `[STUB]` | **RENDER-ONLY SHELL** – renders status/file list/keybind hints but NO action handlers wired; state never populated |
+| Recovery TUI | `[STUB]` | **RENDER-ONLY SHELL** – renders status/actions/hints but NO action handlers wired; state never populated |
 | System Scan | described in Phase 1.5 | **MISSING** – no scan service or TUI view exists |
 | Host Selection | described in Phase 2 | **MISSING** – no multi-host selection UI exists |
-| TUI Bundle activate | uses real PM | **BUG** – `App::init()` creates `BundleService` with `NoopPackageManager` |
+| TUI Bundle activate | uses real PM | **PARTIAL FIX** (S1-P1-001) – 4/5 call sites fixed; `refresh_current_view` + wizard `apply()` still use `NoopPackageManager` |
 | TUI System Update | dry-run hinted | **REAL** – calls `pacman -Syu --noconfirm` (not dry-run) |
-| Typed confirmation | CRITICAL updates | **MISSING** – all risk levels use same Y/N dialog |
+| Typed confirmation | CRITICAL updates | **FIXED** (S1-P6-001) – `ConfirmStyle` enum with Simple/EnhancedWarning/TypedConfirmation |
 | Dormant directory | bundle deactivate moves configs | **PARTIAL** – `deactivate()` unlinks symlinks only, no move to `dormant/` |
 | Snapshot integration | pre-update snapshot | **MISSING** – TODO comments exist, no timeshift/snapper integration |
 
@@ -41,7 +41,25 @@ state of the code vs. what the user-workflow document describes:
   - **Test**: Activate a bundle via TUI → packages are actually installed.
   - **Deps**: None
   - **Completed**: 2026-02-19 — Chained `.with_package_manager(self.package_manager.clone())`
-    on all 4 `DefaultBundleService::new()` call sites in actions.rs.
+    on 4 of 5 `DefaultBundleService::new()` call sites in actions.rs.
+    **NOTE**: `refresh_current_view()` at L325 still uses bare `DefaultBundleService::new()`
+    without `.with_package_manager()`. See S1-P1-005 for the wizard gap.
+
+- [x] **S1-P1-005** | **P0** | Fix wizard `apply()` PM injection
+  - **Why**: `WizardState.apply()` (wizard.rs L348) creates `DefaultBundleService::new()`
+    without `.with_package_manager()`. Bundle activation during the Setup Wizard
+    silently skips all package installs (same root cause as S1-P1-001).
+  - **Action**: Chain `.with_package_manager()` in `WizardState.apply()`. Also fix
+    the `refresh_current_view()` call site at actions.rs L325.
+  - **Files**: `crates/iron-tui/src/wizard.rs`, `crates/iron-tui/src/app/actions.rs`
+  - **Test**: Wizard bundle activation installs packages.
+  - **Deps**: None
+  - **Source**: Discovered in `docs/scenario-1-phase-1.md` (S1-P1-005)
+  - **Completed**: 2026-02-19 — Added `Arc<dyn PackageManager>` parameter to
+    `WizardState::apply()`, chained `.with_package_manager()` on `DefaultBundleService`
+    in wizard.rs. Updated handler call site in handlers.rs to pass `self.package_manager.clone()`.
+    Also fixed `refresh_current_view()` in actions.rs to chain `.with_package_manager()`
+    for consistency. All 362 tests pass.
 
 - [x] **S1-P1-002** | **P1** | Correct `[STUB]` annotations in user-workflow.md
   - **Why**: 6 features marked `[STUB]` are fully implemented. Misleads contributors.
@@ -171,6 +189,44 @@ state of the code vs. what the user-workflow document describes:
   - **Test**: Test that activation is blocked when conflicts exist.
   - **Deps**: None
 
+- [ ] **S1-P4-003** | **P0** | Fix `switch_bundle()` missing service manager injection
+  - **Why**: `switch_bundle()` creates `BundleService` without `.with_service_manager()`.
+    Systemd services defined in bundles are never started/stopped via TUI.
+  - **Action**: Add service manager injection to `switch_bundle()` and all activation paths.
+  - **Files**: `crates/iron-tui/src/app/actions.rs`
+  - **Test**: Bundle switch starts/stops systemd services.
+  - **Deps**: None
+  - **Source**: Discovered in `docs/scenario-1-phase-4.md` (B1)
+
+- [x] **S1-P4-004** | **P0** | Fix `deactivate()` not clearing `active_bundles` state
+  - **Why**: After deactivation, the bundle entry persists in `active_bundles` state.
+    Causes false conflict detections and stale dashboard info.
+  - **Action**: Clear the bundle entry from state on deactivation.
+  - **Files**: `crates/iron-core/src/services/bundle.rs`, `crates/iron-core/src/services/state.rs`
+  - **Test**: Deactivate → verify `active_bundles` is empty.
+  - **Deps**: None
+  - **Source**: Discovered in `docs/scenario-1-phase-4.md` (B2)
+  - **Completed**: 2026-02-19 — Added `clear_active_bundle()` to StateManager, called
+    from `deactivate()`. 3 new tests (2 in state.rs, 1 in bundle.rs). 803+362 tests pass.
+
+- [ ] **S1-P4-005** | **P1** | Fix `switch()` rollback — failed activate leaves no active bundle
+  - **Why**: `switch()` calls `deactivate(from)` then `activate(to)`. If `activate(to)`
+    fails, user is left with no active bundle and no rollback.
+  - **Action**: Implement rollback: re-activate `from` bundle on failure.
+  - **Files**: `crates/iron-core/src/services/bundle.rs`
+  - **Test**: Simulate failed switch → verify original bundle still active.
+  - **Deps**: None
+  - **Source**: Discovered in `docs/scenario-1-phase-4.md` (B3)
+
+- [ ] **S1-P4-006** | **P1** | Fix dotfiles directory mismatch (`dotfiles/` vs `config/`)
+  - **Why**: `BundleService.link_dotfiles()` looks for `dotfiles/` directory but
+    workspace bundles use `config/` directory. Symlink creation finds nothing.
+  - **Action**: Support both `dotfiles/` and `config/` conventions, or document one.
+  - **Files**: `crates/iron-core/src/services/bundle.rs`
+  - **Test**: Bundle with `config/` dir creates symlinks correctly.
+  - **Deps**: None
+  - **Source**: Discovered in `docs/scenario-1-phase-4.md` (B4)
+
 ### Phase 5 — Profile & Module Management
 
 - [ ] **S1-P5-001** | **P2** | ProfileBuilder – persist created profiles
@@ -188,6 +244,24 @@ state of the code vs. what the user-workflow document describes:
   - **Files**: `crates/iron-tui/src/app/handlers.rs`, `crates/iron-core/src/services/module.rs`
   - **Test**: Create module via TUI → verify TOML + directory structure.
   - **Deps**: None
+
+- [ ] **S1-P5-003** | **P1** | Fix TUI profile activation — state-only, no symlinks
+  - **Why**: TUI calls `sm.set_active_profile()` (state change only) but never calls
+    `ProfileService::apply()`. No symlinks created, no hooks run.
+  - **Action**: Call `ProfileService::apply()` after state update.
+  - **Files**: `crates/iron-tui/src/app/actions.rs`
+  - **Test**: Activate profile via TUI → verify symlinks created.
+  - **Deps**: None
+  - **Source**: Discovered in `docs/scenario-1-phase-5.md` (S1-P5-NEW-001)
+
+- [ ] **S1-P5-004** | **P1** | Fix TUI module enable/disable — state-only, no symlinks
+  - **Why**: TUI calls `sm.enable_module()`/`sm.disable_module()` (state change only)
+    but never calls `ModuleService::enable()`/`disable()`. No symlinks, no hooks.
+  - **Action**: Call `ModuleService::enable()`/`disable()` after state update.
+  - **Files**: `crates/iron-tui/src/app/actions.rs`
+  - **Test**: Enable module via TUI → verify symlinks created.
+  - **Deps**: None
+  - **Source**: Discovered in `docs/scenario-1-phase-5.md` (S1-P5-NEW-002)
 
 ### Phase 6 — System Updates
 
@@ -236,6 +310,36 @@ state of the code vs. what the user-workflow document describes:
   - **Test**: Same input → same output from both interfaces.
   - **Deps**: None
 
+- [x] **S1-P7-002** | **P0** | Fix TUI cleanup `dry_run=false` → `true` per spec
+  - **Why**: TUI cleanup executes with `dry_run=false` at actions.rs L569, meaning
+    it actually deletes files and removes packages. Spec says TUI should preview only.
+  - **Action**: Change `false` to `true` in the `execute()` call, or add explicit
+    confirmation before real execution.
+  - **Files**: `crates/iron-tui/src/app/actions.rs`
+  - **Test**: Verify cleanup preview doesn't delete files.
+  - **Deps**: None
+  - **Source**: Discovered in `docs/scenario-1-phase-7.md` (S1-P7-NEW-001)
+  - **Completed**: 2026-02-19 — Changed `dry_run: false` to `dry_run: true` in
+    `execute_cleanup()`. 362 tests pass.
+
+- [ ] **S1-P7-003** | **P1** | Fix TUI Doctor `[r]` refresh key handler
+  - **Why**: Doctor view shows `[r]` to re-run checks but the handler is broken.
+    Health checks go stale on navigation.
+  - **Action**: Wire `[r]` key to re-run all health checks.
+  - **Files**: `crates/iron-tui/src/app/handlers.rs`
+  - **Test**: Press `r` in Doctor view → checks refresh.
+  - **Deps**: None
+  - **Source**: Discovered in `docs/scenario-1-phase-7.md` (S1-P7-NEW-004)
+
+- [ ] **S1-P7-004** | **P1** | Rewire CLI `iron clean` to use `CleanupService`
+  - **Why**: CLI `iron clean` has 149 lines of ad-hoc cleanup covering 3 of 8
+    categories. `DefaultCleanupService` covers all 8 but CLI doesn't use it.
+  - **Action**: Replace ad-hoc CLI cleanup with `CleanupService` calls.
+  - **Files**: `crates/iron-cli/src/commands/clean.rs`
+  - **Test**: CLI clean uses same logic as TUI clean.
+  - **Deps**: None
+  - **Source**: Discovered in `docs/scenario-1-phase-7.md` (S1-P7-NEW-003)
+
 ### Phase 8 — Sync & Collaboration
 
 - [ ] **S1-P8-001** | **P2** | Sync conflict resolution UI
@@ -247,18 +351,106 @@ state of the code vs. what the user-workflow document describes:
   - **Test**: Render test with conflict state.
   - **Deps**: None
 
+- [ ] **S1-P8-002** | **P1** | Fix TUI push to auto-commit before pushing
+  - **Why**: TUI `sync_push()` calls only `sync_service.push()` which runs bare
+    `git push`. Uncommitted changes are NOT included. User expects push to
+    commit+push.
+  - **Action**: Call `sync_service.commit()` before `push()`, or show warning
+    when working tree is dirty.
+  - **Files**: `crates/iron-tui/src/app/actions.rs`
+  - **Test**: Push with uncommitted changes → verify they are committed.
+  - **Deps**: None
+  - **Source**: Discovered in `docs/scenario-1-phase-8.md` (D-P8-001)
+
+- [ ] **S1-P8-003** | **P1** | Fix TUI pull dirty-tree handling
+  - **Why**: TUI `sync_pull()` runs `git pull --rebase` without checking for
+    uncommitted changes. Fails on dirty tree with no recovery.
+  - **Action**: Check for dirty tree, stash changes, pull, unstash.
+  - **Files**: `crates/iron-tui/src/app/actions.rs`, `crates/iron-core/src/services/sync.rs`
+  - **Test**: Pull on dirty tree → stash + pull + unstash succeeds.
+  - **Deps**: None
+  - **Source**: Discovered in `docs/scenario-1-phase-8.md` (D-P8-002)
+
 ### Phase 9 — Security & Secrets
 
-*(Secrets and Recovery TUI views are already implemented. Remaining work:)*
+*(Secrets and Recovery TUI views have render code but zero action wiring.
+All keybind hints shown in the UI are dead — no handlers, no actions, state never populated.
+SecurityModules view is the only partially functional Phase 9 view. See `docs/scenario-1-phase-9.md` for full analysis.)*
 
-- [ ] **S1-P9-001** | **P2** | Secrets — encrypt/decrypt file actions
-  - **Why**: Secrets view renders status and file list but action keys may not
-    trigger actual git-crypt operations.
-  - **Action**: Verify 'e' (encrypt) and 'd' (decrypt) keys actually invoke
-    git-crypt lock/unlock. Wire if missing.
-  - **Files**: `crates/iron-tui/src/app/handlers.rs`, `crates/iron-core/src/services/secrets.rs`
-  - **Test**: Integration test with git-crypt.
+- [x] **S1-P9-001** | ~~P2~~ **P0** | Secrets view — wire action handlers and populate state
+  - **Why**: The Secrets view renders `[i] Init`, `[u] Unlock`, `[l] Lock`, `[a] Add GPG key`
+    but there is NO `View::Secrets` match arm in handlers.rs. All keybinds are dead.
+    State fields `secrets_status` and `encrypted_files` are initialized to `None`/empty
+    and never populated by any code path.
+  - **Action**: Add `View::Secrets =>` handler block with `i`/`u`/`l`/`a` keybinds.
+    Create action methods: `refresh_secrets()`, `secrets_init()`, `secrets_unlock()`,
+    `secrets_lock()`, `secrets_add_gpg_key()`. Auto-refresh on navigation.
+  - **Files**: `crates/iron-tui/src/app/handlers.rs`, `crates/iron-tui/src/app/actions.rs`,
+    `crates/iron-tui/src/app/mod.rs`
+  - **Test**: 5 handler tests (init, unlock, lock, refresh, unhandled key).
   - **Deps**: None
+  - **Source**: Elevated from P2 per `docs/scenario-1-phase-9.md` (D-P9-001, D-P9-003)
+  - **Completed**: 2026-02-19 — Added `View::Secrets` handler arm (i/u/l/r keys),
+    4 action methods (refresh_secrets, secrets_init, secrets_unlock, secrets_lock),
+    auto-refresh on navigate. `[a] Add GPG key` deferred (needs text input widget).
+
+- [x] **S1-P9-002** | **P0** | Recovery view — wire action handlers and populate state
+  - **Why**: Recovery view renders `[g] install.sh`, `[e] Export`, `[i] Import`,
+    `[r] Recovery wizard`, `[s] Snapshot` but there is NO `View::Recovery` match arm
+    in handlers.rs. All keybinds are dead. `last_backup` is always `None`.
+  - **Action**: Add `View::Recovery =>` handler block. Create action methods:
+    `recovery_export()`, `recovery_import()`, `recovery_generate_script()`,
+    `recovery_create_snapshot()`. Auto-refresh on navigation.
+  - **Files**: `crates/iron-tui/src/app/handlers.rs`, `crates/iron-tui/src/app/actions.rs`,
+    `crates/iron-tui/src/app/mod.rs`
+  - **Test**: 4 handler tests (export, generate script, snapshot, unhandled key).
+  - **Deps**: None
+  - **Source**: Discovered in `docs/scenario-1-phase-9.md` (D-P9-002, D-P9-004)
+  - **Completed**: 2026-02-19 — Added `View::Recovery` handler arm (e/g/s keys),
+    3 action methods (recovery_export, recovery_generate_script, recovery_create_snapshot),
+    auto-populate last_backup from audit log on navigate. `[i] Import` and `[r] Recovery
+    wizard` deferred (need file path input widget).
+
+- [ ] **S1-P9-003** | **P1** | Fix `list_encrypted()` pattern matching
+  - **Why**: `list_encrypted()` parses `.gitattributes` for git-crypt patterns but then
+    ignores them — returns ALL files in `secrets/` regardless of encryption status.
+  - **Action**: Either filter by parsed patterns or use `git-crypt status -e`.
+  - **Files**: `crates/iron-core/src/services/secrets.rs`
+  - **Test**: Unit test: non-encrypted file in secrets/ is excluded.
+  - **Deps**: None
+  - **Source**: Discovered in `docs/scenario-1-phase-9.md` (D-P9-005)
+
+- [ ] **S1-P9-004** | **P2** | Consolidate SecretsService and SecretsManager
+  - **Why**: `iron-core::SecretsService` (10 methods) and `iron-git::SecretsManager`
+    (4 methods) both wrap git-crypt independently. Different detection approaches
+    can disagree on status. `SecretsManager` has circuit breaker but is unused.
+  - **Action**: Route SecretsService through SecretsManager for overlapping methods,
+    or consolidate into one layer.
+  - **Files**: `crates/iron-core/src/services/secrets.rs`, `crates/iron-git/src/lib.rs`
+  - **Test**: Status agreement test.
+  - **Deps**: None
+  - **Source**: Discovered in `docs/scenario-1-phase-9.md` (D-P9-006)
+
+- [ ] **S1-P9-005** | **P2** | Add audit logging to secrets operations
+  - **Why**: `SecretsService` has no `StateManager` dependency. unlock/lock/init
+    leave no trace in the operation audit log.
+  - **Action**: Add `StateManager` to `DefaultSecretsService::new()`, call
+    `record_operation()` for init/unlock/lock/add_gpg_user.
+  - **Files**: `crates/iron-core/src/services/secrets.rs`
+  - **Test**: Verify operation recorded after unlock.
+  - **Deps**: None
+  - **Source**: Discovered in `docs/scenario-1-phase-9.md` (D-P9-007)
+
+- [ ] **S1-P9-006** | **P2** | Add missing CLI secrets + recovery subcommands
+  - **Why**: `SecretsService` has `add_gpg_user()`/`export_key()` but no CLI wiring.
+    `RecoveryService` has `create_backup()`/`restore_backup()` but no CLI flags.
+  - **Action**: Add `iron secrets add-key`, `iron secrets export-key`,
+    `iron recover --backup`, `iron recover --restore`.
+  - **Files**: `crates/iron-cli/src/cli.rs`, `crates/iron-cli/src/commands/secrets.rs`,
+    `crates/iron-cli/src/commands/recover.rs`
+  - **Test**: CLI parse + integration tests.
+  - **Deps**: None
+  - **Source**: Discovered in `docs/scenario-1-phase-9.md` (D-P9-008, D-P9-009)
 
 ### Cross-Phase — Documentation
 
@@ -300,21 +492,36 @@ state of the code vs. what the user-workflow document describes:
 ### Sprint 1 — Critical Fixes (P0)
 | Task | Description | Est |
 |---|---|---|
-| S1-P1-001 | Inject real PM into BundleService | 1h |
-| S1-P6-001 | Risk-differentiated confirmation | 3h |
-| S1-P1-002 | Fix [STUB] annotations in docs | 30m |
-| **Total** | | **4.5h** |
+| ~~S1-P1-001~~ | ~~Inject real PM into BundleService~~ | ~~1h~~ ✅ |
+| ~~S1-P6-001~~ | ~~Risk-differentiated confirmation~~ | ~~3h~~ ✅ |
+| ~~S1-P1-002~~ | ~~Fix [STUB] annotations in docs~~ | ~~30m~~ ✅ |
+| ~~S1-P1-005~~ | ~~Fix wizard `apply()` PM injection~~ | ~~1h~~ ✅ |
+| ~~S1-P4-004~~ | ~~Fix `deactivate()` not clearing state~~ | ~~1h~~ ✅ |
+| ~~S1-P7-002~~ | ~~Fix TUI cleanup `dry_run=false`~~ | ~~30m~~ ✅ |
+| ~~S1-P9-001~~ | ~~Wire Secrets view handlers + state~~ | ~~3h~~ ✅ |
+| ~~S1-P9-002~~ | ~~Wire Recovery view handlers + state~~ | ~~3h~~ ✅ |
+| S1-P4-003 | Fix `switch_bundle()` missing service manager | ⏩ **Deferred to Sprint 2** |
+| **Total** | **(7 done, 1 deferred)** | **Sprint 1 P0 complete** |
 
 ### Sprint 2 — Core Gaps (P1)
 | Task | Description | Est |
 |---|---|---|
 | S1-P4-001 | Dormant directory management | 3h |
 | S1-P4-002 | Block activation on conflicts | 2h |
+| S1-P4-005 | Fix `switch()` rollback on failure | 2h |
+| S1-P4-006 | Fix dotfiles dir mismatch (`dotfiles/` vs `config/`) | 1h |
+| S1-P5-003 | Fix TUI profile activation (state-only, no symlinks) | 2h |
+| S1-P5-004 | Fix TUI module enable/disable (state-only, no symlinks) | 2h |
 | S1-P6-002 | Decision: TUI update behavior | 1h |
 | S1-P6-003 | Pre-update snapshot integration | 4h |
+| S1-P7-003 | Fix TUI Doctor `[r]` refresh key | 1h |
+| S1-P7-004 | Rewire CLI `iron clean` to use CleanupService | 2h |
+| S1-P8-002 | Fix TUI push auto-commit | 1h |
+| S1-P8-003 | Fix TUI pull dirty-tree handling | 2h |
+| S1-P9-003 | Fix `list_encrypted()` pattern matching | 1h |
 | S1-X-001 | Update architecture.md | 1h |
 | S1-X-002 | Update EXAMPLES.md | 1h |
-| **Total** | | **12h** |
+| **Total** | | **~26h** |
 
 ### Sprint 3 — New Features (P2)
 | Task | Description | Est |
@@ -326,10 +533,12 @@ state of the code vs. what the user-workflow document describes:
 | S1-P5-002 | ModuleCreator persistence | 2h |
 | S1-P7-001 | Doctor TUI/CLI parity | 2h |
 | S1-P8-001 | Sync conflict resolution | 4h |
-| S1-P9-001 | Secrets encrypt/decrypt actions | 2h |
+| S1-P9-004 | Consolidate SecretsService + SecretsManager | 3h |
+| S1-P9-005 | Add audit logging to secrets ops | 1h |
+| S1-P9-006 | Add missing CLI secrets/recovery subcommands | 3h |
 | S1-XI-001 | Scan integration tests | 2h |
 | S1-XI-002 | Coverage gate | 1h |
-| **Total** | | **31h** |
+| **Total** | | **~36h** |
 
 ### Sprint 4 — Polish (P3)
 | Task | Description | Est |
@@ -337,31 +546,53 @@ state of the code vs. what the user-workflow document describes:
 | S1-P1.5-005 | Scan history / re-scan | 2h |
 | S1-P2-001 → 003 | Host Selection (full feature) | 6h |
 | S1-P3-002 | Divergence guidance tooltip | 2h |
-| **Total** | | **10h** |
+| **Total** | | **~10h** |
 
 ---
 
 ## Summary
 
-| Priority | Count | Estimated |
-|---|---|---|
-| P0 (Critical) | 2 | 4h |
-| P1 (High) | 8 | 12h |
-| P2 (Medium) | 15 | 31h |
-| P3 (Low) | 5 | 10h |
-| **Total** | **30** | **57h** |
+| Priority | Count | Status | Estimated |
+|---|---|---|---|
+| P0 (Critical) | 8 | 2 done, 6 remaining | ~9.5h remaining |
+| P1 (High) | 16 | 1 done, 15 remaining | ~26h remaining |
+| P2 (Medium) | 16 | 0 done | ~36h |
+| P3 (Low) | 5 | 0 done | ~10h |
+| **Total** | **45** | **3 done, 42 open** | **~81.5h remaining** |
 
 | Phase | Tasks | Focus |
 |---|---|---|
-| Phase 1 | 3 | PM injection, stubs fix, progress indicator |
+| Phase 1 | 4 | PM injection ✅, stubs fix ✅, progress indicator, wizard PM fix |
 | Phase 1.5 | 6 | System Scan (entirely new) |
 | Phase 2 | 3 | Host Selection (entirely new) |
 | Phase 3 | 2 | Dashboard divergence |
-| Phase 4 | 2 | Dormant mgmt, conflict blocking |
-| Phase 5 | 2 | Persistence verification |
-| Phase 6 | 3 | Confirmation UX, snapshots |
-| Phase 7 | 1 | Doctor parity |
-| Phase 8 | 1 | Sync conflicts |
-| Phase 9 | 1 | Secrets actions |
+| Phase 4 | 6 | Dormant mgmt, conflict blocking, service manager, state clearing, rollback, dotfiles dir |
+| Phase 5 | 4 | Persistence verification, profile/module activation fix |
+| Phase 6 | 3 | Confirmation UX ✅, update behavior, snapshots |
+| Phase 7 | 4 | Doctor parity, cleanup dry-run fix, doctor refresh, CLI clean rewire |
+| Phase 8 | 3 | Sync conflicts, push auto-commit, pull dirty-tree |
+| Phase 9 | 6 | Secrets/Recovery view wiring, list_encrypted fix, consolidation, audit, CLI subcommands |
 | Cross-Docs | 2 | Architecture, examples |
 | Cross-Infra | 2 | Tests, coverage |
+
+---
+
+## Guideline Cross-Reference
+
+Each phase has a detailed implementation guideline document with deeper analysis,
+code references, and additional discovered issues beyond those tracked above:
+
+| Phase | Guideline | Discovered Issues | Notes |
+|---|---|---|---|
+| Phase 1 | `docs/scenario-1-phase-1.md` | S1-P1-004 through S1-P1-007 | First-launch detection, wizard PM, refresh PM, wizard tests |
+| Phase 2 | `docs/scenario-1-phase-2.md` | S1-P2-004 through S1-P2-006 | Host TOML creation, config convention, stale reference |
+| Phase 3 | `docs/scenario-1-phase-3.md` | 6 issues (unnumbered) | SyncStatus naming, sync_info unused, no dashboard handler scope |
+| Phase 4 | `docs/scenario-1-phase-4.md` | B1 through B8 | Service manager, state clearing, rollback, dotfiles, dormant, packages |
+| Phase 5 | `docs/scenario-1-phase-5.md` | S1-P5-NEW-001 through -013 | Activation gaps, CLI create, validation, templates, tests |
+| Phase 6 | `docs/scenario-1-phase-6.md` | S1-P6-NEW-001 through -012 | UpdateService wiring, snapshot, pre-flight, type unification |
+| Phase 7 | `docs/scenario-1-phase-7.md` | S1-P7-NEW-001 through -014 | Cleanup dry_run, DoctorService, CLI clean, refresh, tests |
+| Phase 8 | `docs/scenario-1-phase-8.md` | D-P8-001 through D-P8-012 | Auto-commit, dirty-tree, confirm, auto-refresh, SyncService duplication |
+| Phase 9 | `docs/scenario-1-phase-9.md` | D-P9-001 through D-P9-013 | Dead shells, state never populated, two secrets layers, audit logging |
+
+> **~80 issues discovered across guidelines; 47 highest-priority tracked above.**
+> Remaining lower-priority items (P2–P3) are documented in individual guideline files.

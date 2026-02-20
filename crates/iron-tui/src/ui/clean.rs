@@ -12,7 +12,7 @@
 
 use crate::app::App;
 use crate::ui::theme;
-use iron_core::services::clean::{format_bytes, CleanupCategory};
+use iron_core::services::clean::{CleanupCategory, format_bytes};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Cell, List, ListItem, Paragraph, Row, Table};
 
@@ -22,10 +22,10 @@ pub fn render_clean_system(frame: &mut Frame, area: Rect, app: &App) {
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),  // Header
-            Constraint::Min(12),    // Category list
-            Constraint::Length(5),  // Summary
-            Constraint::Length(3),  // Help bar
+            Constraint::Length(3), // Header
+            Constraint::Min(12),   // Category list
+            Constraint::Length(5), // Summary
+            Constraint::Length(3), // Help bar
         ])
         .split(area);
 
@@ -125,10 +125,10 @@ fn render_categories(frame: &mut Frame, area: Rect, app: &App) {
         .collect();
 
     let widths = [
-        Constraint::Length(5),   // Checkbox
-        Constraint::Length(18),  // Name
-        Constraint::Length(12),  // Space
-        Constraint::Min(20),     // Details
+        Constraint::Length(5),  // Checkbox
+        Constraint::Length(18), // Name
+        Constraint::Length(12), // Space
+        Constraint::Min(20),    // Details
     ];
 
     let table = Table::new(rows, widths)
@@ -148,30 +148,25 @@ fn render_summary(frame: &mut Frame, area: Rect, app: &App) {
 
     let selected_count = app.cleanup_categories.len();
     let total_space = app.cleanup_total_space();
-    let has_aggressive = app
-        .cleanup_categories
-        .iter()
-        .any(|c| c.is_aggressive());
+    let has_aggressive = app.cleanup_categories.iter().any(|c| c.is_aggressive());
 
-    let mut lines = vec![
-        Line::from(vec![
-            Span::raw("Selected: "),
-            Span::styled(
-                format!("{} categories", selected_count),
-                Style::default().fg(if selected_count > 0 {
-                    theme::GREEN
-                } else {
-                    theme::SUBTEXT
-                }),
-            ),
-            Span::raw("  │  "),
-            Span::raw("Total reclaimable: "),
-            Span::styled(
-                format_bytes(total_space),
-                Style::default().fg(theme::LAVENDER).bold(),
-            ),
-        ]),
-    ];
+    let mut lines = vec![Line::from(vec![
+        Span::raw("Selected: "),
+        Span::styled(
+            format!("{} categories", selected_count),
+            Style::default().fg(if selected_count > 0 {
+                theme::GREEN
+            } else {
+                theme::SUBTEXT
+            }),
+        ),
+        Span::raw("  │  "),
+        Span::raw("Total reclaimable: "),
+        Span::styled(
+            format_bytes(total_space),
+            Style::default().fg(theme::LAVENDER).bold(),
+        ),
+    ])];
 
     if has_aggressive {
         lines.push(Line::from(vec![
@@ -216,20 +211,14 @@ fn render_help(frame: &mut Frame, area: Rect, app: &App) {
             ("Esc", "Back"),
         ]
     } else {
-        vec![
-            ("Enter", "Confirm"),
-            ("Esc", "Cancel"),
-        ]
+        vec![("Enter", "Confirm"), ("Esc", "Cancel")]
     };
 
     let help_spans: Vec<Span> = help_items
         .iter()
         .flat_map(|(key, action)| {
             vec![
-                Span::styled(
-                    format!("[{}]", key),
-                    Style::default().fg(theme::YELLOW),
-                ),
+                Span::styled(format!("[{}]", key), Style::default().fg(theme::YELLOW)),
                 Span::raw(format!(" {}  ", action)),
             ]
         })
@@ -255,8 +244,8 @@ pub fn render_cleanup_preview(frame: &mut Frame, area: Rect, app: &App) {
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Min(0),     // Preview items
-            Constraint::Length(5),  // Warnings
+            Constraint::Min(0),    // Preview items
+            Constraint::Length(5), // Warnings
         ])
         .split(inner);
 
@@ -296,10 +285,12 @@ pub fn render_cleanup_preview(frame: &mut Frame, area: Rect, app: &App) {
 
         let warning_text = warnings
             .iter()
-            .map(|w| Line::from(vec![
-                Span::styled("⚠ ", Style::default().fg(theme::YELLOW)),
-                Span::raw(w.as_str()),
-            ]))
+            .map(|w| {
+                Line::from(vec![
+                    Span::styled("⚠ ", Style::default().fg(theme::YELLOW)),
+                    Span::raw(w.as_str()),
+                ])
+            })
             .collect::<Vec<_>>();
 
         let paragraph = Paragraph::new(warning_text).block(warning_block);
@@ -363,8 +354,8 @@ pub fn render_cleanup_results(frame: &mut Frame, area: Rect, app: &App) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ratatui::backend::TestBackend;
     use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
 
     fn create_test_terminal() -> Terminal<TestBackend> {
         let backend = TestBackend::new(80, 24);
@@ -389,10 +380,7 @@ mod tests {
         let mut app = App::default();
 
         // Select some categories
-        app.cleanup_categories = vec![
-            CleanupCategory::PackageCache,
-            CleanupCategory::Thumbnails,
-        ];
+        app.cleanup_categories = vec![CleanupCategory::PackageCache, CleanupCategory::Thumbnails];
 
         terminal
             .draw(|f| {

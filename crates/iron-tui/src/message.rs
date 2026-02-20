@@ -135,10 +135,22 @@ mod tests {
 
     #[test]
     fn test_message_level_default_duration() {
-        assert_eq!(MessageLevel::Success.default_duration(), DEFAULT_MESSAGE_DURATION);
-        assert_eq!(MessageLevel::Info.default_duration(), DEFAULT_MESSAGE_DURATION);
-        assert_eq!(MessageLevel::Warning.default_duration(), EXTENDED_MESSAGE_DURATION);
-        assert_eq!(MessageLevel::Error.default_duration(), EXTENDED_MESSAGE_DURATION);
+        assert_eq!(
+            MessageLevel::Success.default_duration(),
+            DEFAULT_MESSAGE_DURATION
+        );
+        assert_eq!(
+            MessageLevel::Info.default_duration(),
+            DEFAULT_MESSAGE_DURATION
+        );
+        assert_eq!(
+            MessageLevel::Warning.default_duration(),
+            EXTENDED_MESSAGE_DURATION
+        );
+        assert_eq!(
+            MessageLevel::Error.default_duration(),
+            EXTENDED_MESSAGE_DURATION
+        );
     }
 
     #[test]
@@ -186,11 +198,7 @@ mod tests {
 
     #[test]
     fn test_status_message_time_remaining() {
-        let msg = StatusMessage::with_duration(
-            "Test",
-            MessageLevel::Info,
-            Duration::from_secs(10),
-        );
+        let msg = StatusMessage::with_duration("Test", MessageLevel::Info, Duration::from_secs(10));
         let remaining = msg.time_remaining();
         assert!(remaining.as_secs() >= 9);
     }

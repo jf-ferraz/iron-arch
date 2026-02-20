@@ -330,6 +330,9 @@ impl BundleService for DefaultBundleService {
         // Note: We typically don't remove packages on deactivation
         // as they might be shared with other bundles
 
+        // Clear active bundle from state
+        self.state_manager.clear_active_bundle(&host_id)?;
+
         Ok(())
     }
 
@@ -532,6 +535,23 @@ mod tests {
         // Deactivating a non-active bundle should fail
         let result = service.deactivate("hyprland");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_deactivate_clears_active_bundle_state() {
+        let (service, temp_dir) = create_test_service();
+        create_test_bundle(temp_dir.path(), "hyprland");
+
+        // Activate then deactivate
+        service.activate("hyprland").unwrap();
+        assert_eq!(service.state("hyprland").unwrap(), BundleState::Active);
+
+        service.deactivate("hyprland").unwrap();
+
+        // State should no longer show hyprland as active
+        let active = service.active().unwrap();
+        assert!(active.is_none());
+        assert_ne!(service.state("hyprland").unwrap(), BundleState::Active);
     }
 
     #[test]

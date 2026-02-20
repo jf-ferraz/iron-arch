@@ -6,9 +6,9 @@ mod actions;
 mod handlers;
 
 use crate::message::{MessageLevel, StatusMessage};
+use crate::ui::operation_log::OperationFilter;
 use crate::widgets::ProgressTracker;
 use crate::wizard::{TextInput, WizardState};
-use crate::ui::operation_log::OperationFilter;
 use iron_core::{
     ArchNewsItem, Bundle, Module, NoopPackageManager, PackageManager, PackageUpdate, Profile,
     RiskLevel,
@@ -351,6 +351,24 @@ impl App {
         if matches!(view, View::ModuleDetail) {
             self.load_module_conflicts();
         }
+        // Auto-refresh secrets state when entering Secrets view
+        if matches!(view, View::Secrets) {
+            self.refresh_secrets();
+        }
+        // Auto-refresh recovery state when entering Recovery view
+        if matches!(view, View::Recovery) {
+            if let Some(ref sm) = self.state_manager {
+                // Populate last_backup from the most recent backup operation in audit log
+                let ops = sm.recent_audit(50);
+                self.last_backup = ops
+                    .iter()
+                    .filter(|op| {
+                        op.operation == "create_backup" || op.operation == "recovery_export"
+                    })
+                    .map(|op| op.timestamp)
+                    .next();
+            }
+        }
     }
 
     /// Go back to previous view
@@ -582,9 +600,11 @@ impl App {
     /// Get max items in current update section
     pub fn update_section_max_index(&self) -> usize {
         match self.update_section {
-            UpdateSection::PreflightChecks => {
-                self.preflight_result.as_ref().map(|r| r.checks.len()).unwrap_or(0)
-            }
+            UpdateSection::PreflightChecks => self
+                .preflight_result
+                .as_ref()
+                .map(|r| r.checks.len())
+                .unwrap_or(0),
             UpdateSection::News => self.unacknowledged_news_count(),
             UpdateSection::Packages => self.pending_updates.len().min(50),
         }
@@ -622,10 +642,8 @@ impl App {
                     if let Some(ref mut result) = self.preflight_result {
                         result.unacknowledged_news.retain(|n| n.url != url);
                         // Update news_blocks_update flag
-                        result.news_blocks_update = result
-                            .unacknowledged_news
-                            .iter()
-                            .any(|n| n.requires_manual);
+                        result.news_blocks_update =
+                            result.unacknowledged_news.iter().any(|n| n.requires_manual);
                     }
                     return Some(url);
                 }
@@ -769,7 +787,9 @@ impl App {
 
     /// Get preview for a specific category
     pub fn cleanup_preview_for(&self, category: &CleanupCategory) -> Option<&CleanupPreview> {
-        self.cleanup_previews.iter().find(|p| &p.category == category)
+        self.cleanup_previews
+            .iter()
+            .find(|p| &p.category == category)
     }
 
     /// Check if cleanup has been executed

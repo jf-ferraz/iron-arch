@@ -12,7 +12,7 @@ use clap::{CommandFactory, Parser};
 use clap_complete::generate;
 use cli::{Cli, Commands};
 use context::AppContext;
-use iron_core::logging::{init_logging, LogConfig};
+use iron_core::logging::{LogConfig, init_logging};
 
 fn main() -> Result<()> {
     // Initialize structured JSON logging (NFR-9, NFR-10)
@@ -71,7 +71,8 @@ fn main() -> Result<()> {
         Some(Commands::Go) => {
             ctx.output.info("Launching Iron TUI...");
             let root = std::path::PathBuf::from(&cli.root);
-            let package_manager = std::sync::Arc::new(iron_pacman::DefaultPackageManager::default());
+            let package_manager =
+                std::sync::Arc::new(iron_pacman::DefaultPackageManager::default());
             iron_tui::run_with_config(root, package_manager)
         }
         Some(Commands::Completions { shell }) => {
@@ -89,7 +90,10 @@ fn main() -> Result<()> {
                     "version": env!("CARGO_PKG_VERSION"),
                     "hint": "Run 'iron --help' for CLI commands, 'iron go' for TUI"
                 });
-                println!("{}", serde_json::to_string_pretty(&welcome).unwrap_or_default());
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&welcome).unwrap_or_default()
+                );
             } else {
                 ctx.output.header("Welcome to Iron");
                 ctx.output

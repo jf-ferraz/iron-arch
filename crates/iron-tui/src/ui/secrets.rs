@@ -25,7 +25,10 @@ pub fn render_secrets(frame: &mut Frame, area: Rect, app: &App) {
         Span::raw("  "),
         Span::styled("Secrets", Style::default().fg(theme::MAUVE).bold()),
         Span::raw("  "),
-        Span::styled("git-crypt encrypted file management", Style::default().fg(theme::SUBTEXT)),
+        Span::styled(
+            "git-crypt encrypted file management",
+            Style::default().fg(theme::SUBTEXT),
+        ),
     ]))
     .block(title_block);
     frame.render_widget(title_para, layout[0]);
@@ -39,30 +42,58 @@ pub fn render_secrets(frame: &mut Frame, area: Rect, app: &App) {
     // Footer hints
     let hints = Paragraph::new(Line::from(vec![
         Span::raw("  "),
-        Span::styled(" [i] ", Style::default().fg(Color::Black).bg(theme::MAUVE).bold()),
+        Span::styled(
+            " [i] ",
+            Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
+        ),
         Span::styled(" Init  ", Style::default().fg(theme::SUBTEXT)),
-        Span::styled(" [u] ", Style::default().fg(Color::Black).bg(theme::MAUVE).bold()),
+        Span::styled(
+            " [u] ",
+            Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
+        ),
         Span::styled(" Unlock  ", Style::default().fg(theme::SUBTEXT)),
-        Span::styled(" [l] ", Style::default().fg(Color::Black).bg(theme::MAUVE).bold()),
+        Span::styled(
+            " [l] ",
+            Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
+        ),
         Span::styled(" Lock  ", Style::default().fg(theme::SUBTEXT)),
-        Span::styled(" [Esc] ", Style::default().fg(Color::Black).bg(theme::MAUVE).bold()),
+        Span::styled(
+            " [Esc] ",
+            Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
+        ),
         Span::styled(" Back", Style::default().fg(theme::SUBTEXT)),
     ]))
-    .block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(theme::OVERLAY)));
+    .block(
+        Block::default()
+            .borders(Borders::TOP)
+            .border_style(Style::default().fg(theme::OVERLAY)),
+    );
     frame.render_widget(hints, layout[3]);
 }
 
 fn render_secrets_status(frame: &mut Frame, area: Rect, app: &App) {
     let (status_icon, status_text, status_color) = match app.secrets_status.as_deref() {
-        Some("Unlocked") => ("[OK]", "Unlocked — secrets are decrypted and readable", theme::GREEN),
+        Some("Unlocked") => (
+            "[OK]",
+            "Unlocked — secrets are decrypted and readable",
+            theme::GREEN,
+        ),
         Some("Locked") => ("[--]", "Locked — secrets are encrypted", theme::YELLOW),
-        Some("NotInitialized") => ("[!!]", "Not initialized — press [i] to set up git-crypt", theme::YELLOW),
-        Some("NotAvailable") => ("[XX]", "git-crypt not installed — install it to use secrets", theme::RED),
+        Some("NotInitialized") => (
+            "[!!]",
+            "Not initialized — press [i] to set up git-crypt",
+            theme::YELLOW,
+        ),
+        Some("NotAvailable") => (
+            "[XX]",
+            "git-crypt not installed — install it to use secrets",
+            theme::RED,
+        ),
         _ => ("[ ?]", "Unknown — press [r] to refresh", theme::OVERLAY),
     };
 
     let git_crypt_note = "  git-crypt encrypts specific files in your git repository.";
-    let age_note     = "  Use [a] to add an authorized GPG key.";
+    let age_note = "  Use [a] to add an authorized GPG key.";
 
     let content = vec![
         Line::from(""),
@@ -73,12 +104,20 @@ fn render_secrets_status(frame: &mut Frame, area: Rect, app: &App) {
             Span::styled(status_text, Style::default().fg(status_color)),
         ]),
         Line::from(""),
-        Line::from(Span::styled(git_crypt_note, Style::default().fg(theme::OVERLAY))),
+        Line::from(Span::styled(
+            git_crypt_note,
+            Style::default().fg(theme::OVERLAY),
+        )),
         Line::from(Span::styled(age_note, Style::default().fg(theme::OVERLAY))),
     ];
 
     let block = theme::themed_block("Status", theme::MAUVE);
-    frame.render_widget(Paragraph::new(content).block(block).wrap(Wrap { trim: true }), area);
+    frame.render_widget(
+        Paragraph::new(content)
+            .block(block)
+            .wrap(Wrap { trim: true }),
+        area,
+    );
 }
 
 fn render_encrypted_files(frame: &mut Frame, area: Rect, app: &App) {
@@ -109,10 +148,7 @@ fn render_encrypted_files(frame: &mut Frame, area: Rect, app: &App) {
             Span::raw("  "),
             Span::styled("[enc]", Style::default().fg(theme::MAUVE)),
             Span::raw("  "),
-            Span::styled(
-                path.display().to_string(),
-                Style::default().fg(theme::TEXT),
-            ),
+            Span::styled(path.display().to_string(), Style::default().fg(theme::TEXT)),
         ]));
     }
 

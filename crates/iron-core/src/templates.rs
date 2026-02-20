@@ -16,10 +16,7 @@ pub fn module_toml(id: &str, description: Option<&str>, packages: &[&str]) -> St
         _ => String::new(),
     };
 
-    let packages_list: String = packages
-        .iter()
-        .map(|p| format!("  \"{}\",\n", p))
-        .collect();
+    let packages_list: String = packages.iter().map(|p| format!("  \"{}\",\n", p)).collect();
 
     format!(
         "# Module: {id}\n\
@@ -83,10 +80,7 @@ pub fn profile_toml(id: &str, description: Option<&str>, modules: &[&str]) -> St
         _ => String::new(),
     };
 
-    let modules_list: String = modules
-        .iter()
-        .map(|m| format!("  \"{}\",\n", m))
-        .collect();
+    let modules_list: String = modules.iter().map(|m| format!("  \"{}\",\n", m)).collect();
 
     format!(
         "# Profile: {id}\n\

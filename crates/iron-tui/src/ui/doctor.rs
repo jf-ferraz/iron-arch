@@ -25,7 +25,10 @@ pub fn render_doctor(frame: &mut Frame, area: Rect, app: &App) {
         Span::raw("  "),
         Span::styled("System Doctor", Style::default().fg(theme::MAUVE).bold()),
         Span::raw("  "),
-        Span::styled("Health checks for your Iron installation", Style::default().fg(theme::SUBTEXT)),
+        Span::styled(
+            "Health checks for your Iron installation",
+            Style::default().fg(theme::SUBTEXT),
+        ),
     ]))
     .block(title_block);
     frame.render_widget(title_para, layout[0]);
@@ -44,18 +47,30 @@ pub fn render_doctor(frame: &mut Frame, area: Rect, app: &App) {
     }
 
     let checks_block = theme::themed_block("Health Checks", theme::MAUVE);
-    let checks_para = Paragraph::new(lines).block(checks_block).wrap(Wrap { trim: true });
+    let checks_para = Paragraph::new(lines)
+        .block(checks_block)
+        .wrap(Wrap { trim: true });
     frame.render_widget(checks_para, layout[1]);
 
     // Footer hints
     let hints = Paragraph::new(Line::from(vec![
         Span::raw("  "),
-        Span::styled(" [r] ", Style::default().fg(Color::Black).bg(theme::MAUVE).bold()),
+        Span::styled(
+            " [r] ",
+            Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
+        ),
         Span::styled(" Re-run  ", Style::default().fg(theme::SUBTEXT)),
-        Span::styled(" [Esc] ", Style::default().fg(Color::Black).bg(theme::MAUVE).bold()),
+        Span::styled(
+            " [Esc] ",
+            Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
+        ),
         Span::styled(" Back", Style::default().fg(theme::SUBTEXT)),
     ]))
-    .block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(theme::OVERLAY)));
+    .block(
+        Block::default()
+            .borders(Borders::TOP)
+            .border_style(Style::default().fg(theme::OVERLAY)),
+    );
     frame.render_widget(hints, layout[2]);
 }
 
@@ -84,7 +99,11 @@ fn build_health_checks(app: &App) -> Vec<(&'static str, &'static str, String, Co
             .as_ref()
             .map(|b| b.id.clone())
             .unwrap_or_else(|| "No bundle active — press [b] to select one".to_string()),
-        if bundle_ok { theme::GREEN } else { theme::YELLOW },
+        if bundle_ok {
+            theme::GREEN
+        } else {
+            theme::YELLOW
+        },
     ));
 
     // 3. Modules available
@@ -92,11 +111,12 @@ fn build_health_checks(app: &App) -> Vec<(&'static str, &'static str, String, Co
     checks.push((
         if modules_ok { "[OK]" } else { "[!!]" },
         "Modules discovered",
-        format!(
-            "{} module(s) found",
-            app.modules.len()
-        ),
-        if modules_ok { theme::GREEN } else { theme::YELLOW },
+        format!("{} module(s) found", app.modules.len()),
+        if modules_ok {
+            theme::GREEN
+        } else {
+            theme::YELLOW
+        },
     ));
 
     // 4. Pending updates
@@ -109,7 +129,11 @@ fn build_health_checks(app: &App) -> Vec<(&'static str, &'static str, String, Co
         } else {
             format!("{} update(s) available — press [u] to review", updates)
         },
-        if updates == 0 { theme::GREEN } else { theme::YELLOW },
+        if updates == 0 {
+            theme::GREEN
+        } else {
+            theme::YELLOW
+        },
     ));
 
     // 5. Arch news
@@ -133,7 +157,11 @@ fn build_health_checks(app: &App) -> Vec<(&'static str, &'static str, String, Co
         app.active_profile
             .clone()
             .unwrap_or_else(|| "None (optional)".to_string()),
-        if profile_ok { theme::GREEN } else { theme::OVERLAY },
+        if profile_ok {
+            theme::GREEN
+        } else {
+            theme::OVERLAY
+        },
     ));
 
     // 7. Snapshot backend
@@ -150,7 +178,8 @@ fn build_health_checks(app: &App) -> Vec<(&'static str, &'static str, String, Co
         ),
         SnapshotBackend::None => (
             "[!!]",
-            "No snapshot tool detected — install timeshift or snapper for rollback support".to_string(),
+            "No snapshot tool detected — install timeshift or snapper for rollback support"
+                .to_string(),
             theme::YELLOW,
         ),
     };

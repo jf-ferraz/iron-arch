@@ -8,10 +8,10 @@ mod config;
 mod dashboard;
 mod doctor;
 mod maintenance;
-mod modules;
 mod module_creator;
-mod profile_builder;
+mod modules;
 pub mod operation_log;
+mod profile_builder;
 mod profiles;
 mod recovery;
 mod secrets;
@@ -23,7 +23,10 @@ pub mod utils;
 mod wizard;
 
 use crate::app::{App, View};
-use crate::widgets::{render_confirm_dialog, render_footer, render_header, render_help_overlay, render_progress_dialog};
+use crate::widgets::{
+    render_confirm_dialog, render_footer, render_header, render_help_overlay,
+    render_progress_dialog,
+};
 use ratatui::prelude::*;
 
 // Re-export for external use
@@ -33,9 +36,9 @@ pub use config::render_config_manager;
 pub use dashboard::render_dashboard;
 pub use doctor::render_doctor;
 pub use maintenance::render_system_maintenance;
+pub use module_creator::render_module_creator;
 pub use modules::{render_module_detail, render_modules};
 pub use operation_log::render_operation_log;
-pub use module_creator::render_module_creator;
 pub use profile_builder::render_profile_builder;
 pub use profiles::{render_profile_detail, render_profiles};
 pub use recovery::render_recovery;
