@@ -10,6 +10,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 /// Recovery export format
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -103,6 +104,10 @@ pub struct DefaultRecoveryService<S: SnapshotManager> {
     state_manager: StateManager,
     /// Snapshot manager
     snapshot_manager: S,
+    /// C-009: Optional package manager for full import (install packages)
+    package_manager: Option<Arc<dyn crate::PackageManager>>,
+    /// C-009: Optional system service for full import (enable services)
+    service_manager: Option<Arc<dyn crate::SystemService>>,
 }
 
 impl<S: SnapshotManager> DefaultRecoveryService<S> {
@@ -112,7 +117,21 @@ impl<S: SnapshotManager> DefaultRecoveryService<S> {
             iron_root: iron_root.to_path_buf(),
             state_manager,
             snapshot_manager,
+            package_manager: None,
+            service_manager: None,
         }
+    }
+
+    /// C-009: Inject a PackageManager for full import (install packages)
+    pub fn with_package_manager(mut self, pm: Arc<dyn crate::PackageManager>) -> Self {
+        self.package_manager = Some(pm);
+        self
+    }
+
+    /// C-009: Inject a SystemService for full import (enable services)
+    pub fn with_service_manager(mut self, sm: Arc<dyn crate::SystemService>) -> Self {
+        self.service_manager = Some(sm);
+        self
     }
 
     /// Get list of explicitly installed packages
@@ -196,24 +215,76 @@ impl<S: SnapshotManager> RecoveryService for DefaultRecoveryService<S> {
     }
 
     fn import(&self, export: &RecoveryExport) -> IronResult<()> {
-        // Set current host
+        // Step 1: Set current host
         self.state_manager.set_current_host(&export.host_id)?;
 
-        // Set active bundle
+        // Step 2: Set active bundle
         if let Some(bundle_id) = &export.active_bundle {
             self.state_manager
                 .set_active_bundle(&export.host_id, bundle_id)?;
         }
 
-        // Set active profile
+        // Step 3: Set active profile
         if let Some(profile_id) = &export.active_profile {
             self.state_manager
                 .set_active_profile(&export.host_id, profile_id)?;
         }
 
-        // Enable modules
+        // Step 4: Enable modules
         for module_id in &export.active_modules {
             self.state_manager.enable_module(module_id)?;
+        }
+
+        // C-009 Step 5: Install packages (when PackageManager is injected)
+        if let Some(ref pm) = self.package_manager {
+            // Official packages (exclude AUR ones)
+            let official: Vec<String> = export
+                .packages
+                .iter()
+                .filter(|p| !export.aur_packages.contains(p))
+                .cloned()
+                .collect();
+
+            if !official.is_empty() {
+                // Best-effort: log but don't fail the whole import if packages
+                // can't be installed (e.g., offline)
+                if let Err(e) = pm.install(&official) {
+                    self.state_manager.record_operation(
+                        "import_packages",
+                        OperationStatus::Failed,
+                        Some(format!("Failed to install {} packages: {}", official.len(), e)),
+                    )?;
+                }
+            }
+
+            // AUR packages
+            if !export.aur_packages.is_empty() {
+                if let Err(e) = pm.install(&export.aur_packages) {
+                    self.state_manager.record_operation(
+                        "import_aur_packages",
+                        OperationStatus::Failed,
+                        Some(format!(
+                            "Failed to install {} AUR packages: {}",
+                            export.aur_packages.len(),
+                            e
+                        )),
+                    )?;
+                }
+            }
+        }
+
+        // C-009 Step 6: Enable systemd user services (when SystemService is injected)
+        if let Some(ref svc_mgr) = self.service_manager {
+            for service in &export.services {
+                // Best-effort: log failures but continue
+                if let Err(e) = svc_mgr.enable_service(service) {
+                    self.state_manager.record_operation(
+                        "import_service_enable",
+                        OperationStatus::Failed,
+                        Some(format!("Failed to enable service '{}': {}", service, e)),
+                    )?;
+                }
+            }
         }
 
         self.state_manager

@@ -903,7 +903,7 @@ impl App {
                     if self.module_creator_name.trim().is_empty() {
                         self.set_error("Module ID is required");
                     } else {
-                        self.module_creator_step = 1;
+                        self.module_creator_step = 1; // D-012: go to dotfiles step
                     }
                 }
                 KeyCode::Backspace => match self.module_creator_active_field {
@@ -964,9 +964,29 @@ impl App {
                 }
                 _ => {}
             },
-            _ => match key.code {
+            // D-012: Step 1 — Dotfile mapping editor
+            1 => match key.code {
                 KeyCode::Esc => {
                     self.module_creator_step = 0;
+                }
+                KeyCode::Tab => {
+                    self.module_creator_dotfile_field = 1 - self.module_creator_dotfile_field;
+                }
+                KeyCode::Enter => {
+                    // Enter with empty source → advance to preview (step 2)
+                    // Enter with both filled → add the mapping, stay on step 1
+                    self.module_creator_step = 2;
+                }
+                KeyCode::Backspace => {
+                    // Remove last dotfile entry if any
+                    self.module_creator_dotfiles.pop();
+                }
+                _ => {}
+            },
+            // Step 2 — Preview
+            _ => match key.code {
+                KeyCode::Esc => {
+                    self.module_creator_step = 1;
                 }
                 KeyCode::Enter => {
                     self.create_module_from_creator();

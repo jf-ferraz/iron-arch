@@ -36,8 +36,8 @@ use std::sync::Arc;
 
 // Re-export types from iron-core for backward compatibility
 pub use iron_core::{
-    ArchNewsItem, InstalledPackage, PackageManager, PackageUpdate, RiskLevel, UpdatePreview,
-    assess_risk,
+    ArchNewsItem, CleanCacheResult, InstalledPackage, PackageManager, PackageUpdate, RiskLevel,
+    UpdatePreview, assess_risk,
 };
 
 /// AUR helper type
@@ -461,6 +461,49 @@ impl PackageManager for DefaultPackageManager {
 
     fn fetch_news(&self) -> IronResult<Vec<ArchNewsItem>> {
         fetch_arch_news()
+    }
+
+    /// F-005: List orphaned packages (installed as deps, no longer required by anything)
+    fn get_orphans(&self) -> IronResult<Vec<String>> {
+        let stdout = self.run_pacman(&["-Qtdq"]).unwrap_or_default();
+        Ok(stdout
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(|s| s.to_string())
+            .collect())
+    }
+
+    /// F-005: Clean the package cache, keeping `keep` most recent versions per package
+    fn clean_cache(&self, keep: u32) -> IronResult<CleanCacheResult> {
+        if self.dry_run {
+            return Ok(CleanCacheResult {
+                removed_count: 0,
+                output: format!("[DRY RUN] Would run: paccache -rk{}", keep),
+            });
+        }
+
+        let output = Command::new("sudo")
+            .args(["paccache", "-r", &format!("-k{}", keep)])
+            .output()
+            .map_err(|e| PackageError::PacmanError {
+                message: format!("Failed to run paccache: {}", e),
+            })?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+        if output.status.success() {
+            let removed = stdout.lines().filter(|l| l.contains("removing")).count();
+            Ok(CleanCacheResult {
+                removed_count: removed,
+                output: stdout,
+            })
+        } else {
+            Err(PackageError::PacmanError {
+                message: format!("paccache failed: {}", stderr),
+            }
+            .into())
+        }
     }
 }
 

@@ -20,7 +20,10 @@ pub fn execute(
     require_init(ctx)?;
 
     let output = &ctx.output;
-    let service = DefaultCleanupService::new();
+    let service = DefaultCleanupService::new()
+        .with_package_manager(std::sync::Arc::new(
+            iron_pacman::DefaultPackageManager::new(),
+        ));
 
     // Build category list from flags
     let has_any_flag = orphans || cache || symlinks || journal || logs;

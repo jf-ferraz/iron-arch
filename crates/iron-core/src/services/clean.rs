@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 // ==========================================================================
@@ -296,6 +297,8 @@ pub struct DefaultCleanupService {
     package_cache_keep: u32,
     /// State manager for audit logging (F-003)
     state_manager: Option<crate::services::StateManager>,
+    /// F-005: Injected package manager for orphan/cache operations
+    package_manager: Option<Arc<dyn crate::PackageManager>>,
 }
 
 impl Default for DefaultCleanupService {
@@ -314,6 +317,7 @@ impl DefaultCleanupService {
             journal_max_size_mb: 100,
             package_cache_keep: 3,
             state_manager: None,
+            package_manager: None,
         }
     }
 
@@ -330,12 +334,19 @@ impl DefaultCleanupService {
             journal_max_size_mb,
             package_cache_keep,
             state_manager: None,
+            package_manager: None,
         }
     }
 
     /// Add state manager for audit logging (F-003)
     pub fn with_state_manager(mut self, sm: crate::services::StateManager) -> Self {
         self.state_manager = Some(sm);
+        self
+    }
+
+    /// F-005: Inject a PackageManager for orphan/cache operations
+    pub fn with_package_manager(mut self, pm: Arc<dyn crate::PackageManager>) -> Self {
+        self.package_manager = Some(pm);
         self
     }
 
@@ -367,16 +378,24 @@ impl DefaultCleanupService {
     }
 
     fn preview_orphan_packages(&self) -> CleanupPreview {
-        let output = Command::new("pacman").args(["-Qtdq"]).output();
-
-        let (count, _packages) = match output {
-            Ok(result) => {
-                let stdout = String::from_utf8_lossy(&result.stdout);
-                let pkgs: Vec<&str> = stdout.lines().filter(|l| !l.is_empty()).collect();
-                (pkgs.len(), pkgs.join(", "))
+        // F-005: Delegate to injected PackageManager when available
+        let orphans = if let Some(ref pm) = self.package_manager {
+            pm.get_orphans().unwrap_or_default()
+        } else {
+            let output = Command::new("pacman").args(["-Qtdq"]).output();
+            match output {
+                Ok(result) => {
+                    let stdout = String::from_utf8_lossy(&result.stdout);
+                    stdout
+                        .lines()
+                        .filter(|l| !l.is_empty())
+                        .map(|s| s.to_string())
+                        .collect()
+                }
+                Err(_) => Vec::new(),
             }
-            Err(_) => (0, String::new()),
         };
+        let count = orphans.len();
 
         // Estimate 50MB per orphan package on average
         let reclaimable = count as u64 * 50 * 1024 * 1024;
@@ -631,52 +650,71 @@ impl DefaultCleanupService {
             );
         }
 
-        let output = Command::new("sudo")
-            .args(["paccache", "-r", &format!("-k{}", self.package_cache_keep)])
-            .output();
-
-        match output {
-            Ok(result) => {
-                let stdout = String::from_utf8_lossy(&result.stdout).to_string();
-                let stderr = String::from_utf8_lossy(&result.stderr).to_string();
-
-                if result.status.success() {
-                    // Parse output to count removed packages
-                    let removed = stdout.lines().filter(|l| l.contains("removing")).count();
-                    CleanupResult::success(
-                        CleanupCategory::PackageCache,
-                        removed,
-                        0, // Actual space reclaimed not easily determined
-                        stdout,
-                    )
-                } else {
-                    CleanupResult::failure(
-                        CleanupCategory::PackageCache,
-                        format!("paccache failed: {}", stderr),
-                    )
-                }
+        // F-005: Delegate to injected PackageManager when available
+        if let Some(ref pm) = self.package_manager {
+            match pm.clean_cache(self.package_cache_keep) {
+                Ok(result) => CleanupResult::success(
+                    CleanupCategory::PackageCache,
+                    result.removed_count,
+                    0,
+                    result.output,
+                ),
+                Err(e) => CleanupResult::failure(
+                    CleanupCategory::PackageCache,
+                    format!("Package cache clean failed: {}", e),
+                ),
             }
-            Err(e) => CleanupResult::failure(
-                CleanupCategory::PackageCache,
-                format!("Failed to run paccache: {}", e),
-            ),
+        } else {
+            let output = Command::new("sudo")
+                .args(["paccache", "-r", &format!("-k{}", self.package_cache_keep)])
+                .output();
+
+            match output {
+                Ok(result) => {
+                    let stdout = String::from_utf8_lossy(&result.stdout).to_string();
+                    let stderr = String::from_utf8_lossy(&result.stderr).to_string();
+
+                    if result.status.success() {
+                        let removed =
+                            stdout.lines().filter(|l| l.contains("removing")).count();
+                        CleanupResult::success(
+                            CleanupCategory::PackageCache,
+                            removed,
+                            0,
+                            stdout,
+                        )
+                    } else {
+                        CleanupResult::failure(
+                            CleanupCategory::PackageCache,
+                            format!("paccache failed: {}", stderr),
+                        )
+                    }
+                }
+                Err(e) => CleanupResult::failure(
+                    CleanupCategory::PackageCache,
+                    format!("Failed to run paccache: {}", e),
+                ),
+            }
         }
     }
 
     fn execute_orphan_packages(&self, dry_run: bool) -> CleanupResult {
-        // First, get the list of orphans
-        let orphan_output = Command::new("pacman").args(["-Qtdq"]).output();
-
-        let orphans = match orphan_output {
-            Ok(result) => {
-                let stdout = String::from_utf8_lossy(&result.stdout);
-                stdout
-                    .lines()
-                    .filter(|l| !l.is_empty())
-                    .map(|s| s.to_string())
-                    .collect::<Vec<_>>()
+        // F-005: Delegate orphan listing to injected PackageManager when available
+        let orphans = if let Some(ref pm) = self.package_manager {
+            pm.get_orphans().unwrap_or_default()
+        } else {
+            let orphan_output = Command::new("pacman").args(["-Qtdq"]).output();
+            match orphan_output {
+                Ok(result) => {
+                    let stdout = String::from_utf8_lossy(&result.stdout);
+                    stdout
+                        .lines()
+                        .filter(|l| !l.is_empty())
+                        .map(|s| s.to_string())
+                        .collect::<Vec<_>>()
+                }
+                Err(_) => vec![],
             }
-            Err(_) => vec![],
         };
 
         if orphans.is_empty() {
@@ -701,35 +739,51 @@ impl DefaultCleanupService {
             );
         }
 
-        // Remove orphans
-        let output = Command::new("sudo")
-            .args(["pacman", "-Rns", "--noconfirm"])
-            .args(&orphans)
-            .output();
-
-        match output {
-            Ok(result) => {
-                let stdout = String::from_utf8_lossy(&result.stdout).to_string();
-                let stderr = String::from_utf8_lossy(&result.stderr).to_string();
-
-                if result.status.success() {
-                    CleanupResult::success(
-                        CleanupCategory::OrphanPackages,
-                        orphans.len(),
-                        orphans.len() as u64 * 50 * 1024 * 1024,
-                        stdout,
-                    )
-                } else {
-                    CleanupResult::failure(
-                        CleanupCategory::OrphanPackages,
-                        format!("pacman removal failed: {}", stderr),
-                    )
-                }
+        // F-005: Delegate removal to injected PackageManager when available
+        if let Some(ref pm) = self.package_manager {
+            match pm.remove(&orphans, true) {
+                Ok(()) => CleanupResult::success(
+                    CleanupCategory::OrphanPackages,
+                    orphans.len(),
+                    orphans.len() as u64 * 50 * 1024 * 1024,
+                    format!("Removed {} orphan packages", orphans.len()),
+                ),
+                Err(e) => CleanupResult::failure(
+                    CleanupCategory::OrphanPackages,
+                    format!("Orphan removal failed: {}", e),
+                ),
             }
-            Err(e) => CleanupResult::failure(
-                CleanupCategory::OrphanPackages,
-                format!("Failed to remove orphans: {}", e),
-            ),
+        } else {
+            // Fallback: raw Command
+            let output = Command::new("sudo")
+                .args(["pacman", "-Rns", "--noconfirm"])
+                .args(&orphans)
+                .output();
+
+            match output {
+                Ok(result) => {
+                    let stdout = String::from_utf8_lossy(&result.stdout).to_string();
+                    let stderr = String::from_utf8_lossy(&result.stderr).to_string();
+
+                    if result.status.success() {
+                        CleanupResult::success(
+                            CleanupCategory::OrphanPackages,
+                            orphans.len(),
+                            orphans.len() as u64 * 50 * 1024 * 1024,
+                            stdout,
+                        )
+                    } else {
+                        CleanupResult::failure(
+                            CleanupCategory::OrphanPackages,
+                            format!("pacman removal failed: {}", stderr),
+                        )
+                    }
+                }
+                Err(e) => CleanupResult::failure(
+                    CleanupCategory::OrphanPackages,
+                    format!("Failed to remove orphans: {}", e),
+                ),
+            }
         }
     }
 
@@ -1636,6 +1690,7 @@ mod tests {
             journal_max_size_mb: 100,
             package_cache_keep: 3,
             state_manager: None,
+            package_manager: None,
         }
     }
 

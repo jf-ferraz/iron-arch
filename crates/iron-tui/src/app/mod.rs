@@ -14,7 +14,7 @@ use iron_core::{
     PackageUpdate, Profile, RiskLevel, SystemService,
     services::StateManager,
     services::clean::{CleanupCategory, CleanupPreview, CleanupSummary},
-    services::sync::SyncInfo,
+    services::sync::{DefaultSyncService, SyncInfo},
     services::update::{PostUpdateResult, PreflightResult, UnacknowledgedNews},
 };
 use std::path::PathBuf;
@@ -124,6 +124,12 @@ pub struct App {
     pub sync_info: Option<SyncInfo>,
     /// Conflicted files detected during sync (unmerged paths)
     pub sync_conflicts: Vec<String>,
+    /// A-009: Reusable sync service (initialized after state_manager is set)
+    pub sync_service: Option<DefaultSyncService>,
+    /// D-009: Whether a background sync operation is running
+    pub sync_in_progress: bool,
+    /// D-009: Channel receiver for background sync result
+    pub sync_result_rx: Option<std::sync::mpsc::Receiver<Result<String, String>>>,
     // -------------------------------------------------------------------------
     // Operation Log State
     // -------------------------------------------------------------------------
@@ -188,6 +194,10 @@ pub struct App {
     pub module_creator_active_field: usize, // 0=name, 1=desc, 2=packages, 3=kind
     /// F-010: Selected ModuleKind index
     pub module_creator_kind_index: usize,
+    /// D-012: Dotfile mappings (source, target) being built in the wizard
+    pub module_creator_dotfiles: Vec<(String, String)>,
+    /// D-012: 0 = editing source, 1 = editing target within current dotfile entry
+    pub module_creator_dotfile_field: usize,
     // -------------------------------------------------------------------------
     // System Scan State (Sprint 3 / S1-P1.5-003)
     // -------------------------------------------------------------------------
@@ -366,6 +376,9 @@ impl App {
             // Sync state
             sync_info: None,
             sync_conflicts: Vec::new(),
+            sync_service: None,
+            sync_in_progress: false,
+            sync_result_rx: None,
             // Operation log state
             operation_filter: OperationFilter::default(),
             // Progress dialog
@@ -388,6 +401,8 @@ impl App {
             module_creator_packages: String::new(),
             module_creator_active_field: 0,
             module_creator_kind_index: 0,
+            module_creator_dotfiles: Vec::new(),
+            module_creator_dotfile_field: 0,
             scan_report: None,
             scan_scroll: 0,
             diverged_modules: Vec::new(),
@@ -553,6 +568,9 @@ impl App {
             && msg.is_expired() {
                 self.error_message = None;
             }
+
+        // D-009: Poll background sync result
+        self.poll_sync_result();
     }
 
     /// Get system health status based on update risk and pending updates

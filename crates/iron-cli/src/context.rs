@@ -72,9 +72,17 @@ impl AppContext {
         DefaultProfileService::new(&self.root, self.state.clone(), module_service)
     }
 
-    /// Get sync service
+    /// Get sync service (resilient via CommandExecutor + pre-push secrets lock)
     pub fn sync_service(&self) -> impl SyncService {
-        DefaultSyncService::new(&self.root, self.state.clone())
+        let mut svc = DefaultSyncService::with_resilience(&self.root, self.state.clone());
+
+        // Wire secrets service so push auto-locks secrets first (A-010)
+        if self.root.join(".git").exists() {
+            let secrets = std::sync::Arc::new(self.secrets_service_inner());
+            svc = svc.with_secrets_service(secrets);
+        }
+
+        svc
     }
 
     /// Get secrets service
@@ -82,6 +90,11 @@ impl AppContext {
     /// When the root is a git repository, injects the resilient
     /// `DefaultSecretsManager` from iron-git as a `SecretsBackend`.
     pub fn secrets_service(&self) -> impl SecretsService {
+        self.secrets_service_inner()
+    }
+
+    /// Internal helper returning a concrete type so it can be wrapped in `Arc<dyn>`.
+    fn secrets_service_inner(&self) -> DefaultSecretsService {
         let mut svc = DefaultSecretsService::new(&self.root);
 
         // Wire in the resilient backend when a .git dir exists
@@ -101,10 +114,13 @@ impl AppContext {
         DefaultUpdateService::new(self.state.clone(), snapshot_manager)
     }
 
-    /// Get recovery service
+    /// Get recovery service (C-009: with package/service managers for full import)
     pub fn recovery_service(&self) -> impl RecoveryService {
         let snapshot_manager = NoopManager;
         DefaultRecoveryService::new(&self.root, self.state.clone(), snapshot_manager)
+            .with_package_manager(std::sync::Arc::new(
+                iron_pacman::DefaultPackageManager::new(),
+            ))
     }
 
     /// Check if Iron is initialized

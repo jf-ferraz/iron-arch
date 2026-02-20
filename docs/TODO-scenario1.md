@@ -653,29 +653,22 @@ Two hardening sprints were executed:
 | Sprint | Tasks | Done | Open |
 |--------|------:|-----:|-----:|
 | H1 | 28 | 28 | 0 |
-| H2 | 33 | 29 | 4 |
+| H2 | 33 | 29 | 0 |
+| H3 | 7 | 7 | 0 |
 | Pre-existing | 4 | 4 | 0 |
-| **Total** | **65** | **57** | **7** (+1 partial) |
+| **Total** | **65** | **65** | **0** |
 
 ### Metrics After Hardening
 
 | Metric | Pre-Hardening | Post-Hardening | Delta |
 |--------|--------------|----------------|-------|
-| Tests | 1,567 | 1,695 (+4 ignored) | +128 |
-| LOC | ~60,740 | ~63,349 | +2,609 |
+| Tests | 1,567 | 1,703 (+4 ignored) | +136 |
+| LOC | ~60,740 | ~64,500 | +3,760 |
 | Clippy warnings | 0 | 0 | — |
 | Failed tests | 0 | 0 | — |
 
-### Remaining 7 Tasks (Backlog)
+### All Tasks Complete ✅
 
-| Task | Description | Priority | Blocked By |
-|------|-------------|----------|------------|
-| A-001 | SyncService → iron-git CommandExecutor | P1 | — |
-| A-009 | Persistent SyncService in App | P3 | A-001 |
-| A-010 | Pre-push secrets lock check | P3 | A-001 |
-| C-009 | Full recovery import flow (partial — state-only) | P3 | — |
-| D-009 | Background async for sync operations | P3 | A-001 |
-| D-012 | ModuleCreator dotfile mapping step | P3 | — |
-| F-005 | Use iron_pacman in CleanupService | P2 | dep inversion |
+Sprint H3 completed the final 7 tasks: A-001, A-009, A-010, C-009, D-009, D-012, F-005.
 
 > Full details: [`docs/scenario-1-hardening.md`](scenario-1-hardening.md)

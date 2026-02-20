@@ -1,4 +1,4 @@
-//! Module Creator wizard — 2-step UI for creating modules
+//! Module Creator wizard — 3-step UI for creating modules (D-012: dotfiles step)
 
 use crate::app::App;
 use crate::ui::theme;
@@ -18,8 +18,9 @@ pub fn render_module_creator(frame: &mut Frame, area: Rect, app: &App) {
 
     // Title bar
     let step_label = match app.module_creator_step {
-        0 => "Step 1/2 — Name, Description & Packages",
-        _ => "Step 2/2 — Preview & Create",
+        0 => "Step 1/3 — Name, Description & Packages",
+        1 => "Step 2/3 — Dotfile Mappings",
+        _ => "Step 3/3 — Preview & Create",
     };
     let title_block = Block::default()
         .borders(Borders::BOTTOM)
@@ -35,6 +36,7 @@ pub fn render_module_creator(frame: &mut Frame, area: Rect, app: &App) {
 
     match app.module_creator_step {
         0 => render_step_details(frame, layout[1], app),
+        1 => render_step_dotfiles(frame, layout[1], app),
         _ => render_step_preview(frame, layout[1], app),
     }
 
@@ -50,12 +52,34 @@ pub fn render_module_creator(frame: &mut Frame, area: Rect, app: &App) {
                 " [Enter] ",
                 Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
             ),
-            Span::styled(" Preview  ", Style::default().fg(theme::SUBTEXT)),
+            Span::styled(" Next step  ", Style::default().fg(theme::SUBTEXT)),
             Span::styled(
                 " [Esc] ",
                 Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
             ),
             Span::styled(" Cancel", Style::default().fg(theme::SUBTEXT)),
+        ],
+        1 => vec![
+            Span::styled(
+                " [Tab] ",
+                Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
+            ),
+            Span::styled(" Source/Target  ", Style::default().fg(theme::SUBTEXT)),
+            Span::styled(
+                " [Enter] ",
+                Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
+            ),
+            Span::styled(" Add / Preview  ", Style::default().fg(theme::SUBTEXT)),
+            Span::styled(
+                " [Backspace] ",
+                Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
+            ),
+            Span::styled(" Delete entry  ", Style::default().fg(theme::SUBTEXT)),
+            Span::styled(
+                " [Esc] ",
+                Style::default().fg(Color::Black).bg(theme::MAUVE).bold(),
+            ),
+            Span::styled(" Back", Style::default().fg(theme::SUBTEXT)),
         ],
         _ => vec![
             Span::styled(
@@ -188,7 +212,99 @@ fn render_step_details(frame: &mut Frame, area: Rect, app: &App) {
     );
 }
 
-/// Step 2: Preview the module before creating
+/// D-012: Step 2 — Dotfile mapping configuration
+fn render_step_dotfiles(frame: &mut Frame, area: Rect, app: &App) {
+    let block = theme::themed_block("Dotfile Mappings (optional)", theme::MAUVE);
+    frame.render_widget(block, area);
+
+    let inner = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(2), // Help text
+            Constraint::Length(1), // Spacer
+            Constraint::Min(0),    // Entries + input
+        ])
+        .split(area);
+
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(Span::styled(
+                "  Add source → target mappings for dotfiles managed by this module.",
+                Style::default().fg(theme::SUBTEXT),
+            )),
+            Line::from(Span::styled(
+                "  Source is relative to the module dir; target supports ~ for $HOME.",
+                Style::default().fg(theme::OVERLAY),
+            )),
+        ]),
+        inner[0],
+    );
+
+    let mut lines: Vec<Line> = Vec::new();
+
+    // Show existing entries
+    for (i, (src, tgt)) in app.module_creator_dotfiles.iter().enumerate() {
+        let prefix = format!("  {}. ", i + 1);
+        lines.push(Line::from(vec![
+            Span::styled(prefix, Style::default().fg(theme::SUBTEXT)),
+            Span::styled(src.as_str(), Style::default().fg(theme::LAVENDER)),
+            Span::styled(" → ", Style::default().fg(theme::OVERLAY)),
+            Span::styled(tgt.as_str(), Style::default().fg(theme::GREEN)),
+        ]));
+    }
+
+    if !app.module_creator_dotfiles.is_empty() {
+        lines.push(Line::from(""));
+    }
+
+    // Current input row
+    let entry_num = app.module_creator_dotfiles.len() + 1;
+    let src_color = if app.module_creator_dotfile_field == 0 {
+        theme::MAUVE
+    } else {
+        theme::OVERLAY
+    };
+    let tgt_color = if app.module_creator_dotfile_field == 1 {
+        theme::MAUVE
+    } else {
+        theme::OVERLAY
+    };
+
+    // Get the "in-progress" values from the last empty entry or defaults
+    lines.push(Line::from(vec![
+        Span::styled(
+            format!("  {}. Source: ", entry_num),
+            Style::default().fg(theme::SUBTEXT),
+        ),
+        Span::styled("▏ ", Style::default().fg(src_color)),
+        Span::styled(
+            format!("(e.g. config/{}/)", app.module_creator_name),
+            Style::default().fg(theme::OVERLAY).italic(),
+        ),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled(
+            format!("     Target: "),
+            Style::default().fg(theme::SUBTEXT),
+        ),
+        Span::styled("▏ ", Style::default().fg(tgt_color)),
+        Span::styled(
+            format!("(e.g. ~/.config/{}/)", app.module_creator_name),
+            Style::default().fg(theme::OVERLAY).italic(),
+        ),
+    ]));
+
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "  Enter to add mapping & continue, Esc to go back, Tab to toggle source/target",
+        Style::default().fg(theme::SUBTEXT),
+    )));
+
+    frame.render_widget(Paragraph::new(lines), inner[2]);
+}
+
+/// Step 3: Preview the module before creating
 fn render_step_preview(frame: &mut Frame, area: Rect, app: &App) {
     let block = theme::themed_block("Preview", theme::MAUVE);
 
@@ -245,6 +361,27 @@ fn render_step_preview(frame: &mut Frame, area: Rect, app: &App) {
     } else {
         for pkg in &packages {
             lines.push(Line::from(format!("  - {}", pkg)));
+        }
+    }
+
+    // D-012: Show dotfile mappings in preview
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "Dotfiles:",
+        Style::default().fg(theme::YELLOW).bold(),
+    )));
+    if app.module_creator_dotfiles.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  (none — you can add dotfiles later by editing module.toml)",
+            Style::default().fg(theme::OVERLAY).italic(),
+        )));
+    } else {
+        for (src, tgt) in &app.module_creator_dotfiles {
+            lines.push(Line::from(vec![
+                Span::raw(format!("  {} ", src)),
+                Span::styled("→ ", Style::default().fg(theme::OVERLAY)),
+                Span::raw(tgt.as_str()),
+            ]));
         }
     }
 

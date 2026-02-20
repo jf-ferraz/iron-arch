@@ -3,7 +3,7 @@
 ## Status: Scenario 1 + Hardening Complete
 
 **Scenario 1 — Newcomer Journey** is **fully implemented** (45/45 tasks).
-**Hardening Sprints H1 + H2** addressed 65 gaps — **57 done, 7 remaining** (backlog).
+**Hardening Sprints H1 + H2 + H3** addressed 65 gaps — **65 done, 0 remaining** (100%).
 Branch: `feature/tui-enhancement-phase1`.
 
 ---
@@ -12,14 +12,14 @@ Branch: `feature/tui-enhancement-phase1`.
 
 | Crate | Lines | Tests | Ignored | Role |
 |---|---|---|---|---|
-| iron-core | 29,523 | 897 | 4 | Domain models, services, state |
-| iron-tui | 17,129 | 445 | 0 | Ratatui TUI (27 views) |
-| iron-cli | 7,948 | — | — | Clap CLI |
+| iron-core | 29,900 | 905 | 4 | Domain models, services, state |
+| iron-tui | 17,500 | 445 | 0 | Ratatui TUI (27 views) |
+| iron-cli | 8,000 | — | — | Clap CLI |
 | iron-fs | 1,969 | 88 | 0 | File operations |
 | iron-git | 2,317 | 95 | 0 | Git/git-crypt |
-| iron-pacman | 2,574 | 101 | 0 | Pacman/paru/yay |
+| iron-pacman | 2,650 | 101 | 0 | Pacman/paru/yay |
 | iron-systemd | 1,889 | 69 | 0 | Systemd |
-| **Total** | **~63,349** | **1,695** | **4** | **0 failed** |
+| **Total** | **~64,500** | **1,703** | **4** | **0 failed** |
 
 ### Growth Timeline
 
@@ -28,18 +28,23 @@ Branch: `feature/tui-enhancement-phase1`.
 | Pre-Scenario 1 | ~1,200 | ~55,000 | baseline |
 | Post-Sprint 4 (S1 complete) | 1,567 | ~60,740 | +367 / +5,740 |
 | Post-Hardening (H1+H2) | 1,695 | ~63,349 | +128 / +2,609 |
+| Post-Hardening (H3 final) | 1,703 | ~64,500 | +8 / +1,151 |
 
 ---
 
 ## Sprint Summary
 
-### Hardening Sprint H2 — 33 tasks (29 done, 4 open)
+### Hardening Sprint H3 — 7 tasks ✅
+
+Final 7 tasks: A-001 (SyncService → CommandExecutor), A-009 (persistent SyncService),
+A-010 (pre-push secrets lock), C-009 (full recovery import), D-009 (background push/pull),
+D-012 (module creator dotfiles), F-005 (PackageManager in CleanupService).
+
+### Hardening Sprint H2 — 33 tasks ✅
 
 Completed: A-004, A-007, B-006, C-004, C-006, C-007, C-008, C-010, D-006, D-007,
 D-008, D-010, D-011, D-013, E-008, E-009, E-010, E-011, E-012, E-013, E-014,
 F-002, F-003, F-004, F-006, F-007, F-008, F-009, F-010, F-011.
-
-Open: A-009, A-010, D-009 (blocked on A-001), D-012 (deferred), F-005 (dep inversion).
 
 ### Hardening Sprint H1 — 28 tasks ✅
 

@@ -151,6 +151,29 @@ pub trait PackageManager: Send + Sync {
     fn installed_count(&self) -> IronResult<usize> {
         Ok(self.query_installed()?.len())
     }
+
+    /// F-005: List orphaned packages (installed as deps, no longer required)
+    fn get_orphans(&self) -> IronResult<Vec<String>> {
+        Ok(Vec::new())
+    }
+
+    /// F-005: Clean package cache, keeping `keep` most recent versions
+    fn clean_cache(&self, keep: u32) -> IronResult<CleanCacheResult> {
+        let _ = keep;
+        Ok(CleanCacheResult {
+            removed_count: 0,
+            output: String::new(),
+        })
+    }
+}
+
+/// Result of a package cache clean operation (F-005)
+#[derive(Debug, Clone, Default)]
+pub struct CleanCacheResult {
+    /// Number of package files removed
+    pub removed_count: usize,
+    /// Raw command output
+    pub output: String,
 }
 
 /// No-op package manager for testing

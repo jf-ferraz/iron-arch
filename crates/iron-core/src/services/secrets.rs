@@ -63,7 +63,7 @@ pub trait SecretsBackend: Send + Sync {
 }
 
 /// Secrets service trait
-pub trait SecretsService {
+pub trait SecretsService: Send + Sync {
     /// Get secrets encryption status
     fn status(&self) -> IronResult<SecretsStatus>;
 

@@ -35,7 +35,15 @@ impl App {
                     self.active_profile = sm.active_profile(host_id);
                 }
 
-                self.state_manager = Some(sm);
+                self.state_manager = Some(sm.clone());
+
+                // A-009: Initialise the reusable sync service now that we have a StateManager
+                self.sync_service = Some(
+                    iron_core::services::sync::DefaultSyncService::with_resilience(
+                        &self.config_dir,
+                        sm,
+                    ),
+                );
 
                 // Host selection logic (S1-P2-002)
                 self.load_hosts();
@@ -708,7 +716,8 @@ impl App {
 
         self.set_info("Scanning cleanup categories...");
 
-        let service = DefaultCleanupService::new();
+        let service = DefaultCleanupService::new()
+            .with_package_manager(self.package_manager.clone());
         self.cleanup_previews = service.preview(&self.cleanup_categories);
 
         let total_space = self.cleanup_total_space();
@@ -732,7 +741,8 @@ impl App {
 
         self.set_info("Executing cleanup...");
 
-        let service = DefaultCleanupService::new();
+        let service = DefaultCleanupService::new()
+            .with_package_manager(self.package_manager.clone());
 
         let summary = service.execute(&self.cleanup_categories, true);
 
@@ -762,109 +772,188 @@ impl App {
 
     /// Refresh git sync status
     pub fn refresh_sync_status(&mut self) {
-        use iron_core::services::sync::{DefaultSyncService, SyncService};
+        use iron_core::services::sync::SyncService;
 
-        if let Some(ref sm) = self.state_manager {
-            let sync_service = DefaultSyncService::new(&self.config_dir, sm.clone());
-            match sync_service.status() {
-                Ok(info) => {
-                    self.sync_info = Some(info);
-                    self.set_status("Sync status refreshed");
-                }
-                Err(e) => {
-                    self.set_error(format!("Failed to get sync status: {}", e));
-                }
-            }
-            // Check for merge conflicts (S1-P8-001)
-            match sync_service.check_conflicts() {
-                Ok(conflicts) => {
-                    self.sync_conflicts = conflicts;
-                }
-                Err(_) => {
-                    self.sync_conflicts.clear();
-                }
-            }
-        } else {
+        // Collect results while borrowing self.sync_service immutably
+        let (status_result, conflict_result) = match self.sync_service {
+            Some(ref svc) => (Some(svc.status()), Some(svc.check_conflicts())),
+            None => (None, None),
+        };
+
+        if status_result.is_none() {
             self.set_error("No state manager available");
+            return;
+        }
+
+        match status_result.unwrap() {
+            Ok(info) => {
+                self.sync_info = Some(info);
+                self.set_status("Sync status refreshed");
+            }
+            Err(e) => {
+                self.set_error(format!("Failed to get sync status: {}", e));
+            }
+        }
+        // Check for merge conflicts (S1-P8-001)
+        match conflict_result.unwrap() {
+            Ok(conflicts) => {
+                self.sync_conflicts = conflicts;
+            }
+            Err(_) => {
+                self.sync_conflicts.clear();
+            }
         }
     }
 
-    /// Push local changes to remote (auto-commits first if dirty)
+    /// Push local changes to remote (auto-commits first if dirty) — D-009: runs in background
     pub fn sync_push(&mut self) {
-        use iron_core::services::sync::{DefaultSyncService, SyncService};
+        use iron_core::services::sync::SyncService;
 
-        if let Some(ref sm) = self.state_manager {
-            let sync_service = DefaultSyncService::new(&self.config_dir, sm.clone());
+        if self.sync_in_progress {
+            self.set_warning("Sync operation already in progress");
+            return;
+        }
 
-            // Auto-commit uncommitted changes before push
-            if let Ok(status) = sync_service.status()
-                && status.dirty_files > 0 {
-                    let msg = format!("iron: auto-commit {} change(s)", status.dirty_files);
-                    if let Err(e) = sync_service.commit(&msg) {
-                        self.set_error(format!("Auto-commit failed: {}", e));
-                        return;
+        // Phase 1: auto-commit if dirty (must happen on main thread before background push)
+        let commit_err = match self.sync_service {
+            Some(ref svc) => {
+                if let Ok(status) = svc.status() {
+                    if status.dirty_files > 0 {
+                        let msg = format!("iron: auto-commit {} change(s)", status.dirty_files);
+                        svc.commit(&msg).err()
+                    } else {
+                        None
                     }
-                }
-
-            match sync_service.push() {
-                Ok(()) => {
-                    self.set_status("Changes pushed successfully");
-                    self.refresh_sync_status();
-                }
-                Err(e) => {
-                    self.set_error(format!("Push failed: {}", e));
+                } else {
+                    None
                 }
             }
-        } else {
-            self.set_error("No state manager available");
+            None => {
+                self.set_error("No state manager available");
+                return;
+            }
+        };
+
+        if let Some(e) = commit_err {
+            self.set_error(format!("Auto-commit failed: {}", e));
+            return;
         }
+
+        // Phase 2: background push
+        let svc = self.sync_service.clone().unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.sync_in_progress = true;
+        self.sync_result_rx = Some(rx);
+        self.set_info("Pushing changes...");
+
+        std::thread::spawn(move || {
+            let result = svc.push();
+            let _ = tx.send(match result {
+                Ok(()) => Ok("Changes pushed successfully".to_string()),
+                Err(e) => Err(format!("Push failed: {}", e)),
+            });
+        });
     }
 
-    /// Pull remote changes (stashes dirty tree first if needed)
+    /// Pull remote changes (stashes dirty tree first if needed) — D-009: runs in background
     pub fn sync_pull(&mut self) {
-        use iron_core::services::sync::{DefaultSyncService, SyncService};
+        use iron_core::services::sync::SyncService;
 
-        if let Some(ref sm) = self.state_manager {
-            let sync_service = DefaultSyncService::new(&self.config_dir, sm.clone());
+        if self.sync_in_progress {
+            self.set_warning("Sync operation already in progress");
+            return;
+        }
 
-            // Check for dirty tree and stash if needed
-            let did_stash = if let Ok(status) = sync_service.status() {
-                if status.dirty_files > 0 {
-                    if let Err(e) = sync_service.stash() {
-                        self.set_error(format!("Stash failed: {}", e));
-                        return;
+        // Phase 1: stash if dirty (must happen on main thread)
+        let (did_stash, stash_err) = match self.sync_service {
+            Some(ref svc) => {
+                if let Ok(status) = svc.status() {
+                    if status.dirty_files > 0 {
+                        match svc.stash() {
+                            Ok(()) => (true, None),
+                            Err(e) => (false, Some(e)),
+                        }
+                    } else {
+                        (false, None)
                     }
-                    true
                 } else {
-                    false
+                    (false, None)
                 }
-            } else {
-                false
-            };
+            }
+            None => {
+                self.set_error("No state manager available");
+                return;
+            }
+        };
 
-            match sync_service.pull() {
+        if let Some(e) = stash_err {
+            self.set_error(format!("Stash failed: {}", e));
+            return;
+        }
+
+        // Phase 2: background pull + stash pop
+        let svc = self.sync_service.clone().unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.sync_in_progress = true;
+        self.sync_result_rx = Some(rx);
+        self.set_info("Pulling changes...");
+
+        std::thread::spawn(move || {
+            let result = svc.pull();
+            let msg = match result {
                 Ok(()) => {
-                    // Restore stashed changes
-                    if did_stash
-                        && let Err(e) = sync_service.stash_pop() {
-                            self.set_warning(format!(
+                    if did_stash {
+                        if let Err(e) = svc.stash_pop() {
+                            Err(format!(
                                 "Pull succeeded but unstash failed: {}. Run 'git stash pop' manually.",
                                 e
-                            ));
+                            ))
+                        } else {
+                            Ok("Changes pulled successfully".to_string())
                         }
-                    self.set_status("Changes pulled successfully");
-                    self.refresh_sync_status();
+                    } else {
+                        Ok("Changes pulled successfully".to_string())
+                    }
                 }
                 Err(e) => {
-                    // Restore stashed changes even on pull failure
                     if did_stash {
-                        let _ = sync_service.stash_pop();
+                        let _ = svc.stash_pop();
                     }
-                    self.set_error(format!("Pull failed: {}", e));
+                    Err(format!("Pull failed: {}", e))
+                }
+            };
+            let _ = tx.send(msg);
+        });
+    }
+
+    /// D-009: Poll background sync result (called on each tick)
+    pub fn poll_sync_result(&mut self) {
+        if !self.sync_in_progress {
+            return;
+        }
+
+        if let Some(ref rx) = self.sync_result_rx {
+            match rx.try_recv() {
+                Ok(Ok(msg)) => {
+                    self.sync_in_progress = false;
+                    self.sync_result_rx = None;
+                    self.set_status(msg);
+                    self.refresh_sync_status();
+                }
+                Ok(Err(msg)) => {
+                    self.sync_in_progress = false;
+                    self.sync_result_rx = None;
+                    self.set_error(msg);
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    // Still running, check again next tick
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.sync_in_progress = false;
+                    self.sync_result_rx = None;
+                    self.set_error("Sync thread disconnected unexpectedly");
                 }
             }
-        } else {
-            self.set_error("No state manager available");
         }
     }
 
@@ -1046,7 +1135,10 @@ impl App {
 
         if let Some(ref sm) = self.state_manager {
             let snapshot_mgr = iron_core::snapshot::create_manager();
-            let service = DefaultRecoveryService::new(&self.config_dir, sm.clone(), snapshot_mgr);
+            // C-009: Wire package/service managers for full import flow
+            let service = DefaultRecoveryService::new(&self.config_dir, sm.clone(), snapshot_mgr)
+                .with_package_manager(self.package_manager.clone())
+                .with_service_manager(self.service_manager.clone());
 
             let file_path = std::path::Path::new(path);
             if !file_path.exists() {
@@ -1314,6 +1406,8 @@ impl App {
         self.module_creator_packages = String::new();
         self.module_creator_active_field = 0;
         self.module_creator_kind_index = 0;
+        self.module_creator_dotfiles = Vec::new();
+        self.module_creator_dotfile_field = 0;
         self.navigate(crate::app::View::ModuleCreator);
     }
 
@@ -1370,6 +1464,20 @@ impl App {
             "kind = \"utility\"",
             &format!("kind = \"{}\"", kind_str),
         );
+
+        // D-012: Replace empty dotfiles = [] with user-defined mappings
+        let toml_content = if self.module_creator_dotfiles.is_empty() {
+            toml_content
+        } else {
+            let mut dotfile_block = String::new();
+            for (src, tgt) in &self.module_creator_dotfiles {
+                dotfile_block.push_str(&format!(
+                    "[[dotfiles]]\nsource = \"{}\"\ntarget = \"{}\"\n\n",
+                    src, tgt
+                ));
+            }
+            toml_content.replace("dotfiles = []\n", &dotfile_block)
+        };
 
         let module_path = module_dir.join("module.toml");
         if let Err(e) = std::fs::write(&module_path, toml_content) {

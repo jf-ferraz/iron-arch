@@ -43,8 +43,8 @@ pub use error::{
 pub use host::{BootloaderType, ChassisType, HardwareSpec, Host, InstallParams, MonitorConfig};
 pub use module::{DotfileMapping, Module, ModuleKind, ModuleState};
 pub use packages::{
-    ArchNewsItem, InstalledPackage, NoopPackageManager, PackageManager, PackageUpdate, RiskLevel,
-    UpdatePreview, assess_risk,
+    ArchNewsItem, CleanCacheResult, InstalledPackage, NoopPackageManager, PackageManager,
+    PackageUpdate, RiskLevel, UpdatePreview, assess_risk,
 };
 pub use profile::{Profile, ProfileState};
 pub use snapshot::{
