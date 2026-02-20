@@ -639,3 +639,43 @@ code references, and additional discovered issues beyond those tracked above:
 
 > **~80 issues discovered across guidelines; 47 highest-priority tracked above.**
 > Remaining lower-priority items (P2–P3) are documented in individual guideline files.
+
+---
+
+## Hardening Sprints (H1 + H2) — Post-Scenario 1
+
+After completing all 45 Scenario 1 tasks above, a comprehensive hardening analysis
+identified **65 additional gaps** across 6 categories (Architecture Debt, Bug Fixes,
+CLI Parity, TUI Completeness, Test Coverage, UX Polish).
+
+Two hardening sprints were executed:
+
+| Sprint | Tasks | Done | Open |
+|--------|------:|-----:|-----:|
+| H1 | 28 | 28 | 0 |
+| H2 | 33 | 29 | 4 |
+| Pre-existing | 4 | 4 | 0 |
+| **Total** | **65** | **57** | **7** (+1 partial) |
+
+### Metrics After Hardening
+
+| Metric | Pre-Hardening | Post-Hardening | Delta |
+|--------|--------------|----------------|-------|
+| Tests | 1,567 | 1,695 (+4 ignored) | +128 |
+| LOC | ~60,740 | ~63,349 | +2,609 |
+| Clippy warnings | 0 | 0 | — |
+| Failed tests | 0 | 0 | — |
+
+### Remaining 7 Tasks (Backlog)
+
+| Task | Description | Priority | Blocked By |
+|------|-------------|----------|------------|
+| A-001 | SyncService → iron-git CommandExecutor | P1 | — |
+| A-009 | Persistent SyncService in App | P3 | A-001 |
+| A-010 | Pre-push secrets lock check | P3 | A-001 |
+| C-009 | Full recovery import flow (partial — state-only) | P3 | — |
+| D-009 | Background async for sync operations | P3 | A-001 |
+| D-012 | ModuleCreator dotfile mapping step | P3 | — |
+| F-005 | Use iron_pacman in CleanupService | P2 | dep inversion |
+
+> Full details: [`docs/scenario-1-hardening.md`](scenario-1-hardening.md)
