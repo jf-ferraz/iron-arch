@@ -112,3 +112,84 @@ pub fn execute(ctx: &AppContext) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_badge_for_pass() {
+        assert!(matches!(badge_for(CheckStatus::Pass), StatusBadge::Ok));
+    }
+
+    #[test]
+    fn test_badge_for_warn() {
+        assert!(matches!(badge_for(CheckStatus::Warn), StatusBadge::Warning));
+    }
+
+    #[test]
+    fn test_badge_for_fail() {
+        assert!(matches!(badge_for(CheckStatus::Fail), StatusBadge::Error));
+    }
+
+    #[test]
+    fn test_section_header_known() {
+        assert_eq!(section_header("directories"), Some("Directory Structure"));
+        assert_eq!(section_header("current_host"), Some("Host Configuration"));
+        assert_eq!(section_header("git"), Some("Git Status"));
+        assert_eq!(section_header("tools"), Some("External Tools"));
+        assert_eq!(section_header("packages"), Some("Package Installation"));
+        assert_eq!(section_header("snapshot"), Some("Snapshot Backend"));
+        assert_eq!(section_header("secrets"), Some("Secrets Status"));
+        assert_eq!(section_header("symlinks"), Some("Symlink Integrity"));
+        assert_eq!(section_header("services"), Some("Service Availability"));
+    }
+
+    #[test]
+    fn test_section_header_unknown() {
+        assert_eq!(section_header("unknown_check"), None);
+        assert_eq!(section_header(""), None);
+    }
+
+    #[test]
+    fn test_health_check_with_details() {
+        let check = HealthCheck {
+            name: "packages".to_string(),
+            status: CheckStatus::Warn,
+            message: "2 missing packages".to_string(),
+            details: vec!["git-delta".to_string(), "starship".to_string()],
+        };
+        assert_eq!(check.details.len(), 2);
+        assert_eq!(check.status, CheckStatus::Warn);
+    }
+
+    #[test]
+    fn test_health_report_error_counting() {
+        let report = HealthReport {
+            checks: vec![
+                HealthCheck {
+                    name: "a".to_string(),
+                    status: CheckStatus::Pass,
+                    message: "ok".to_string(),
+                    details: vec![],
+                },
+                HealthCheck {
+                    name: "b".to_string(),
+                    status: CheckStatus::Fail,
+                    message: "fail".to_string(),
+                    details: vec![],
+                },
+                HealthCheck {
+                    name: "c".to_string(),
+                    status: CheckStatus::Warn,
+                    message: "warn".to_string(),
+                    details: vec![],
+                },
+            ],
+            overall: CheckStatus::Fail,
+            timestamp: "2025-01-01T00:00:00Z".to_string(),
+        };
+        assert_eq!(report.errors(), 1);
+        assert_eq!(report.warnings(), 1);
+    }
+}

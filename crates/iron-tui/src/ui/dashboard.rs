@@ -501,3 +501,149 @@ pub fn render_divergence_popup(frame: &mut Frame, area: Rect, app: &App) {
 
     frame.render_widget(Paragraph::new(lines), inner);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    fn create_test_terminal() -> Terminal<TestBackend> {
+        let backend = TestBackend::new(100, 40);
+        Terminal::new(backend).unwrap()
+    }
+
+    #[test]
+    fn test_render_dashboard_no_panic() {
+        let mut terminal = create_test_terminal();
+        let app = App::default();
+
+        terminal
+            .draw(|f| {
+                render_dashboard(f, f.area(), &app);
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn test_render_dashboard_no_divergence() {
+        let mut terminal = create_test_terminal();
+        let app = App::default();
+
+        // Default app has no diverged modules
+        assert_eq!(app.diverged_count(), 0);
+
+        terminal
+            .draw(|f| {
+                render_dashboard(f, f.area(), &app);
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn test_render_dashboard_with_divergence() {
+        let mut terminal = create_test_terminal();
+        let mut app = App::default();
+        app.diverged_modules = vec!["nvim-ide".to_string(), "tmux-config".to_string()];
+
+        assert_eq!(app.diverged_count(), 2);
+
+        terminal
+            .draw(|f| {
+                render_dashboard(f, f.area(), &app);
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn test_render_dashboard_single_divergence() {
+        let mut terminal = create_test_terminal();
+        let mut app = App::default();
+        app.diverged_modules = vec!["git-config".to_string()];
+
+        assert_eq!(app.diverged_count(), 1);
+
+        terminal
+            .draw(|f| {
+                render_dashboard(f, f.area(), &app);
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn test_render_dashboard_with_pending_updates() {
+        let mut terminal = create_test_terminal();
+        let mut app = App::default();
+        app.pending_updates = vec![
+            iron_core::PackageUpdate {
+                name: "firefox".to_string(),
+                current_version: "120.0".to_string(),
+                new_version: "121.0".to_string(),
+                ..Default::default()
+            },
+        ];
+
+        assert_eq!(app.pending_update_count(), 1);
+
+        terminal
+            .draw(|f| {
+                render_dashboard(f, f.area(), &app);
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn test_render_divergence_popup_no_panic() {
+        let mut terminal = create_test_terminal();
+        let mut app = App::default();
+        app.diverged_modules = vec!["nvim-ide".to_string()];
+
+        terminal
+            .draw(|f| {
+                render_divergence_popup(f, f.area(), &app);
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn test_render_divergence_popup_multiple_modules() {
+        let mut terminal = create_test_terminal();
+        let mut app = App::default();
+        app.diverged_modules = vec![
+            "nvim-ide".to_string(),
+            "tmux-config".to_string(),
+            "starship-prompt".to_string(),
+        ];
+
+        terminal
+            .draw(|f| {
+                render_divergence_popup(f, f.area(), &app);
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn test_render_divergence_popup_empty_returns_early() {
+        let mut terminal = create_test_terminal();
+        let app = App::default();
+
+        // Empty diverged_modules should return early
+        terminal
+            .draw(|f| {
+                render_divergence_popup(f, f.area(), &app);
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn test_diverged_count_reflects_modules() {
+        let mut app = App::default();
+        assert_eq!(app.diverged_count(), 0);
+
+        app.diverged_modules.push("mod1".to_string());
+        assert_eq!(app.diverged_count(), 1);
+
+        app.diverged_modules.push("mod2".to_string());
+        assert_eq!(app.diverged_count(), 2);
+    }
+}

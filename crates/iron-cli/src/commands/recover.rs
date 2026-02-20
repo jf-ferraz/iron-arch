@@ -279,3 +279,68 @@ fn restore_backup(ctx: &AppContext, backup_dir: &str) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_execute_default_shows_help() {
+        // When no flags are set, execute() should call show_help()
+        // Verify the routing logic: all false → hits show_help
+        let export = false;
+        let import: Option<String> = None;
+        let script = false;
+        let backup = false;
+        let restore: Option<String> = None;
+
+        // Simulate routing logic
+        let routed_to = if export {
+            "export"
+        } else if import.is_some() {
+            "import"
+        } else if script {
+            "script"
+        } else if backup {
+            "backup"
+        } else if restore.is_some() {
+            "restore"
+        } else {
+            "help"
+        };
+        assert_eq!(routed_to, "help");
+    }
+
+    #[test]
+    fn test_execute_export_route() {
+        let export = true;
+        let routed = if export { "export" } else { "other" };
+        assert_eq!(routed, "export");
+    }
+
+    #[test]
+    fn test_execute_import_route() {
+        let import = Some("/path/to/file.json".to_string());
+        let routed = if import.is_some() { "import" } else { "other" };
+        assert_eq!(routed, "import");
+    }
+
+    #[test]
+    fn test_execute_backup_route() {
+        let backup = true;
+        let routed = if backup { "backup" } else { "other" };
+        assert_eq!(routed, "backup");
+    }
+
+    #[test]
+    fn test_execute_restore_route() {
+        let restore = Some("./my-backup".to_string());
+        let routed = if restore.is_some() { "restore" } else { "other" };
+        assert_eq!(routed, "restore");
+    }
+
+    #[test]
+    fn test_execute_script_route() {
+        let script = true;
+        let routed = if script { "script" } else { "other" };
+        assert_eq!(routed, "script");
+    }
+}

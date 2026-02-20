@@ -181,3 +181,104 @@ fn render_recovery_actions(frame: &mut Frame, area: Rect) {
         area,
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    fn create_test_terminal() -> Terminal<TestBackend> {
+        let backend = TestBackend::new(80, 24);
+        Terminal::new(backend).unwrap()
+    }
+
+    #[test]
+    fn test_render_recovery_no_panic() {
+        let mut terminal = create_test_terminal();
+        let app = App::default();
+
+        terminal
+            .draw(|f| {
+                render_recovery(f, f.area(), &app);
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn test_render_recovery_with_backup() {
+        let mut terminal = create_test_terminal();
+        let mut app = App::default();
+        app.last_backup = Some(chrono::Utc::now());
+
+        terminal
+            .draw(|f| {
+                render_recovery(f, f.area(), &app);
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn test_render_recovery_old_backup() {
+        let mut terminal = create_test_terminal();
+        let mut app = App::default();
+        app.last_backup = Some(chrono::Utc::now() - chrono::Duration::days(45));
+
+        terminal
+            .draw(|f| {
+                render_recovery(f, f.area(), &app);
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn test_render_recovery_no_backup() {
+        let mut terminal = create_test_terminal();
+        let mut app = App::default();
+        app.last_backup = None;
+
+        terminal
+            .draw(|f| {
+                render_recovery(f, f.area(), &app);
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn test_render_recovery_with_active_bundle() {
+        let mut terminal = create_test_terminal();
+        let mut app = App::default();
+        app.active_bundle = Some(iron_core::Bundle {
+            id: "hyprland".to_string(),
+            name: "Hyprland".to_string(),
+            description: None,
+            bundle_type: iron_core::BundleType::WaylandCompositor,
+            packages: vec![],
+            aur_packages: vec![],
+            profiles: vec![],
+            default_profile: None,
+            conflicts: vec![],
+            services: vec![],
+            post_install: None,
+        });
+
+        terminal
+            .draw(|f| {
+                render_recovery(f, f.area(), &app);
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn test_render_recovery_footer_hints() {
+        let mut terminal = create_test_terminal();
+        let app = App::default();
+
+        // Render and verify no panic (footer rendered within render_recovery)
+        terminal
+            .draw(|f| {
+                render_recovery(f, f.area(), &app);
+            })
+            .unwrap();
+    }
+}

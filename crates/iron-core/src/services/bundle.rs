@@ -29,6 +29,9 @@ pub trait BundleService {
     /// Deactivate a bundle (move to dormant)
     fn deactivate(&self, id: &str) -> IronResult<()>;
 
+    /// Remove a bundle completely (deactivate + uninstall packages)
+    fn remove(&self, id: &str) -> IronResult<()>;
+
     /// Switch from one bundle to another
     fn switch(&self, from: &str, to: &str) -> IronResult<()>;
 
@@ -212,7 +215,6 @@ impl DefaultBundleService {
     ///
     /// Note: not called during deactivation by default — packages may be shared
     /// with other bundles. Called explicitly when the user asks to uninstall.
-    #[allow(dead_code)]
     fn remove_packages(&self, bundle: &Bundle) -> IronResult<()> {
         let mut all_packages = bundle.packages.clone();
         all_packages.extend(bundle.aur_packages.iter().cloned());
@@ -457,6 +459,33 @@ impl BundleService for DefaultBundleService {
         Ok(())
     }
 
+    fn remove(&self, id: &str) -> IronResult<()> {
+        let bundle = self.load(id)?;
+
+        // Deactivate first (unlink dotfiles, disable services, archive)
+        // If not currently active, we still want to remove packages
+        let host_id = self.current_host()?;
+        if self
+            .state_manager
+            .active_bundle(&host_id)
+            .as_deref()
+            == Some(id)
+        {
+            self.deactivate(id)?;
+        }
+
+        // Remove packages (B-004: the key addition)
+        self.remove_packages(&bundle)?;
+
+        // Clean up dormant archive if it exists
+        let dormant = self.bundles_dir.parent().unwrap_or(&self.bundles_dir).join("dormant").join(id);
+        if dormant.exists() {
+            fs::remove_dir_all(&dormant).ok();
+        }
+
+        Ok(())
+    }
+
     fn switch(&self, from: &str, to: &str) -> IronResult<()> {
         // Deactivate current bundle
         self.deactivate(from)?;
@@ -493,26 +522,6 @@ impl BundleService for DefaultBundleService {
         // Check if archived in dormant/
         if self.dormant_dir(id).exists() {
             return Ok(BundleState::Dormant);
-        }
-
-        // Fallback: check if any dotfile symlinks exist (legacy heuristic)
-        if let Some(dotfiles_dir) = self.resolve_dotfiles_dir(id) {
-            for entry in walkdir::WalkDir::new(&dotfiles_dir)
-                .min_depth(1)
-                .into_iter()
-                .filter_map(|e| e.ok())
-                .filter(|e| e.file_type().is_file())
-            {
-                let Ok(relative) = entry.path().strip_prefix(&dotfiles_dir) else {
-                    continue;
-                };
-                let relative_str = format!("~/.{}", relative.display());
-                let target = expand_home(Path::new(&relative_str));
-
-                if target.is_symlink() {
-                    return Ok(BundleState::Dormant);
-                }
-            }
         }
 
         Ok(BundleState::NotInstalled)

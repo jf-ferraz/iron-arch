@@ -39,6 +39,8 @@ pub enum CleanupCategory {
     BrowserCache,
     /// Developer cache - npm/yarn/pip/cargo/go (aggressive)
     DevCache,
+    /// Broken symlinks in ~/.config (F-006)
+    BrokenSymlinks,
 }
 
 impl CleanupCategory {
@@ -53,6 +55,7 @@ impl CleanupCategory {
             CleanupCategory::AppLogs,
             CleanupCategory::BrowserCache,
             CleanupCategory::DevCache,
+            CleanupCategory::BrokenSymlinks,
         ]
     }
 
@@ -65,6 +68,7 @@ impl CleanupCategory {
             CleanupCategory::UserCache,
             CleanupCategory::Thumbnails,
             CleanupCategory::AppLogs,
+            CleanupCategory::BrokenSymlinks,
         ]
     }
 
@@ -92,6 +96,7 @@ impl CleanupCategory {
             CleanupCategory::AppLogs => "Application Logs",
             CleanupCategory::BrowserCache => "Browser Cache",
             CleanupCategory::DevCache => "Developer Cache",
+            CleanupCategory::BrokenSymlinks => "Broken Symlinks",
         }
     }
 
@@ -106,6 +111,7 @@ impl CleanupCategory {
             CleanupCategory::AppLogs => "Old logs in ~/.local/share",
             CleanupCategory::BrowserCache => "Firefox and Chrome cache (aggressive)",
             CleanupCategory::DevCache => "npm, yarn, pip, cargo, go cache (aggressive)",
+            CleanupCategory::BrokenSymlinks => "Broken symlinks in ~/.config",
         }
     }
 
@@ -120,6 +126,7 @@ impl CleanupCategory {
             CleanupCategory::AppLogs => "app_logs",
             CleanupCategory::BrowserCache => "browser_cache",
             CleanupCategory::DevCache => "dev_cache",
+            CleanupCategory::BrokenSymlinks => "broken_symlinks",
         }
     }
 }
@@ -287,6 +294,8 @@ pub struct DefaultCleanupService {
     journal_max_size_mb: u64,
     /// Package cache versions to keep
     package_cache_keep: u32,
+    /// State manager for audit logging (F-003)
+    state_manager: Option<crate::services::StateManager>,
 }
 
 impl Default for DefaultCleanupService {
@@ -304,6 +313,7 @@ impl DefaultCleanupService {
             cache_max_age_days: 30,
             journal_max_size_mb: 100,
             package_cache_keep: 3,
+            state_manager: None,
         }
     }
 
@@ -319,7 +329,14 @@ impl DefaultCleanupService {
             cache_max_age_days,
             journal_max_size_mb,
             package_cache_keep,
+            state_manager: None,
         }
+    }
+
+    /// Add state manager for audit logging (F-003)
+    pub fn with_state_manager(mut self, sm: crate::services::StateManager) -> Self {
+        self.state_manager = Some(sm);
+        self
     }
 
     // -----------------------------------------------------------------------
@@ -573,6 +590,29 @@ impl DefaultCleanupService {
                 "This will clear developer tool caches".to_string(),
                 "Next build may take longer".to_string(),
             ],
+        }
+    }
+
+    // F-006: Broken symlinks in ~/.config
+    fn preview_broken_symlinks(&self) -> CleanupPreview {
+        let config_dir = self.home_dir.join(".config");
+        let broken = if config_dir.exists() {
+            find_broken_symlinks(&config_dir)
+        } else {
+            vec![]
+        };
+
+        let count = broken.len();
+        CleanupPreview {
+            category: CleanupCategory::BrokenSymlinks,
+            items_count: count,
+            space_reclaimable: 0, // symlinks use negligible space
+            details: if count == 0 {
+                "No broken symlinks found".to_string()
+            } else {
+                format!("{} broken symlinks in ~/.config", count)
+            },
+            warnings: vec![],
         }
     }
 
@@ -972,6 +1012,57 @@ impl DefaultCleanupService {
             format!("Cleaned: {}", details.join(", ")),
         )
     }
+
+    // F-006: Remove broken symlinks in ~/.config
+    fn execute_broken_symlinks(&self, dry_run: bool) -> CleanupResult {
+        let config_dir = self.home_dir.join(".config");
+        if !config_dir.exists() {
+            return CleanupResult::success(
+                CleanupCategory::BrokenSymlinks,
+                0,
+                0,
+                "~/.config directory not found".to_string(),
+            );
+        }
+
+        let broken = find_broken_symlinks(&config_dir);
+        let count = broken.len();
+
+        if dry_run {
+            return CleanupResult::success(
+                CleanupCategory::BrokenSymlinks,
+                count,
+                0,
+                if count == 0 {
+                    "[DRY RUN] No broken symlinks found".to_string()
+                } else {
+                    format!(
+                        "[DRY RUN] Would remove {} broken symlinks:\n{}",
+                        count,
+                        broken
+                            .iter()
+                            .map(|p| format!("  {}", p.display()))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    )
+                },
+            );
+        }
+
+        let mut removed = 0;
+        for path in &broken {
+            if fs::remove_file(path).is_ok() {
+                removed += 1;
+            }
+        }
+
+        CleanupResult::success(
+            CleanupCategory::BrokenSymlinks,
+            removed,
+            0,
+            format!("Removed {} broken symlinks", removed),
+        )
+    }
 }
 
 impl CleanupService for DefaultCleanupService {
@@ -987,6 +1078,7 @@ impl CleanupService for DefaultCleanupService {
                 CleanupCategory::AppLogs => self.preview_app_logs(),
                 CleanupCategory::BrowserCache => self.preview_browser_cache(),
                 CleanupCategory::DevCache => self.preview_dev_cache(),
+                CleanupCategory::BrokenSymlinks => self.preview_broken_symlinks(),
             })
             .collect()
     }
@@ -1004,8 +1096,26 @@ impl CleanupService for DefaultCleanupService {
                 CleanupCategory::AppLogs => self.execute_app_logs(dry_run),
                 CleanupCategory::BrowserCache => self.execute_browser_cache(dry_run),
                 CleanupCategory::DevCache => self.execute_dev_cache(dry_run),
+                CleanupCategory::BrokenSymlinks => self.execute_broken_symlinks(dry_run),
             };
             summary.add(result);
+        }
+
+        // F-003: Record cleanup operation in audit log
+        if !dry_run
+            && let Some(ref sm) = self.state_manager
+        {
+            let cat_names: Vec<&str> = categories.iter().map(|c| c.name()).collect();
+            let details = format!(
+                "categories: [{}], reclaimed: {}",
+                cat_names.join(", "),
+                summary.space_formatted()
+            );
+            let _ = sm.record_operation(
+                "cleanup",
+                crate::OperationStatus::Success,
+                Some(details),
+            );
         }
 
         summary
@@ -1031,6 +1141,30 @@ pub fn format_bytes(bytes: u64) -> String {
     } else {
         format!("{} B", bytes)
     }
+}
+
+/// F-006: Recursively find broken symlinks in a directory
+fn find_broken_symlinks(dir: &Path) -> Vec<PathBuf> {
+    let mut broken = Vec::new();
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return broken,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        // Check if it's a symlink (use symlink_metadata to avoid following the link)
+        if let Ok(meta) = fs::symlink_metadata(&path) {
+            if meta.file_type().is_symlink() {
+                // Broken if the target doesn't exist
+                if !path.exists() {
+                    broken.push(path);
+                }
+            } else if meta.is_dir() {
+                broken.extend(find_broken_symlinks(&path));
+            }
+        }
+    }
+    broken
 }
 
 /// Count files and total size in a directory
@@ -1266,13 +1400,13 @@ mod tests {
     #[test]
     fn test_cleanup_category_all() {
         let all = CleanupCategory::all();
-        assert_eq!(all.len(), 8);
+        assert_eq!(all.len(), 9);
     }
 
     #[test]
     fn test_cleanup_category_safe() {
         let safe = CleanupCategory::safe();
-        assert_eq!(safe.len(), 6);
+        assert_eq!(safe.len(), 7);
         for cat in safe {
             assert!(!cat.is_aggressive());
         }
@@ -1489,5 +1623,237 @@ mod tests {
         );
         assert_eq!(result.category, CleanupCategory::UserCache);
         assert!(result.success);
+    }
+
+    // -----------------------------------------------------------------------
+    // E-011: Mock filesystem tests for CleanupService
+    // -----------------------------------------------------------------------
+
+    fn service_with_temp(home: &Path) -> DefaultCleanupService {
+        DefaultCleanupService {
+            home_dir: home.to_path_buf(),
+            cache_max_age_days: 30,
+            journal_max_size_mb: 100,
+            package_cache_keep: 3,
+            state_manager: None,
+        }
+    }
+
+    #[test]
+    fn test_preview_thumbnails_with_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let thumb_dir = tmp.path().join(".cache/thumbnails/normal");
+        fs::create_dir_all(&thumb_dir).unwrap();
+        fs::write(thumb_dir.join("abc.png"), "data1234").unwrap();
+        fs::write(thumb_dir.join("def.png"), "moredata").unwrap();
+
+        let svc = service_with_temp(tmp.path());
+        let preview = svc.preview_thumbnails();
+        assert_eq!(preview.category, CleanupCategory::Thumbnails);
+        assert_eq!(preview.items_count, 2);
+        assert!(preview.space_reclaimable > 0);
+    }
+
+    #[test]
+    fn test_preview_thumbnails_missing_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let svc = service_with_temp(tmp.path());
+        let preview = svc.preview_thumbnails();
+        assert_eq!(preview.items_count, 0);
+        assert_eq!(preview.space_reclaimable, 0);
+    }
+
+    #[test]
+    fn test_execute_thumbnails_removes_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let thumb_dir = tmp.path().join(".cache/thumbnails");
+        fs::create_dir_all(&thumb_dir).unwrap();
+        fs::write(thumb_dir.join("a.png"), "x").unwrap();
+        fs::write(thumb_dir.join("b.png"), "y").unwrap();
+
+        let svc = service_with_temp(tmp.path());
+        let result = svc.execute_thumbnails(false);
+        assert!(result.success);
+        assert_eq!(result.items_cleaned, 2);
+    }
+
+    #[test]
+    fn test_execute_thumbnails_dry_run_keeps_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let thumb_dir = tmp.path().join(".cache/thumbnails");
+        fs::create_dir_all(&thumb_dir).unwrap();
+        fs::write(thumb_dir.join("a.png"), "x").unwrap();
+
+        let svc = service_with_temp(tmp.path());
+        let result = svc.execute_thumbnails(true);
+        assert!(result.success);
+        assert!(result.output.contains("[DRY RUN]"));
+        // File should still exist
+        assert!(thumb_dir.join("a.png").exists());
+    }
+
+    #[test]
+    fn test_preview_app_logs_old_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let log_dir = tmp.path().join(".local/share/myapp");
+        fs::create_dir_all(&log_dir).unwrap();
+        // Create a log file — it will be recent, so may not be picked up by age filter
+        fs::write(log_dir.join("app.log"), "log content").unwrap();
+
+        let svc = service_with_temp(tmp.path());
+        let preview = svc.preview_app_logs();
+        assert_eq!(preview.category, CleanupCategory::AppLogs);
+        // Recent files won't match the 30-day age filter, so count may be 0
+    }
+
+    #[test]
+    fn test_preview_user_cache_with_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cache_dir = tmp.path().join(".cache/some-app");
+        fs::create_dir_all(&cache_dir).unwrap();
+        fs::write(cache_dir.join("data.bin"), "cached").unwrap();
+
+        let svc = service_with_temp(tmp.path());
+        let preview = svc.preview_user_cache();
+        assert_eq!(preview.category, CleanupCategory::UserCache);
+        // Recent files won't match age filter
+    }
+
+    #[test]
+    fn test_preview_broken_symlinks_finds_dangling() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config_dir = tmp.path().join(".config/myapp");
+        fs::create_dir_all(&config_dir).unwrap();
+        // Create a broken symlink
+        std::os::unix::fs::symlink("/nonexistent/path/xyz", config_dir.join("broken.conf"))
+            .unwrap();
+        // Create a valid file (not a broken symlink)
+        fs::write(config_dir.join("valid.conf"), "ok").unwrap();
+
+        let svc = service_with_temp(tmp.path());
+        let preview = svc.preview_broken_symlinks();
+        assert_eq!(preview.category, CleanupCategory::BrokenSymlinks);
+        assert_eq!(preview.items_count, 1);
+        assert!(preview.details.contains("1 broken symlink"));
+    }
+
+    #[test]
+    fn test_execute_broken_symlinks_removes_dangling() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config_dir = tmp.path().join(".config/testapp");
+        fs::create_dir_all(&config_dir).unwrap();
+        let broken_path = config_dir.join("broken.link");
+        std::os::unix::fs::symlink("/no/such/target", &broken_path).unwrap();
+
+        let svc = service_with_temp(tmp.path());
+        let result = svc.execute_broken_symlinks(false);
+        assert!(result.success);
+        assert_eq!(result.items_cleaned, 1);
+        // Symlink should be gone
+        assert!(!broken_path.exists());
+        // Also symlink_metadata should fail
+        assert!(fs::symlink_metadata(&broken_path).is_err());
+    }
+
+    #[test]
+    fn test_execute_broken_symlinks_dry_run_preserves() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config_dir = tmp.path().join(".config");
+        fs::create_dir_all(&config_dir).unwrap();
+        let broken = config_dir.join("dangling");
+        std::os::unix::fs::symlink("/does/not/exist", &broken).unwrap();
+
+        let svc = service_with_temp(tmp.path());
+        let result = svc.execute_broken_symlinks(true);
+        assert!(result.success);
+        assert!(result.output.contains("[DRY RUN]"));
+        // Symlink should still exist
+        assert!(fs::symlink_metadata(&broken).is_ok());
+    }
+
+    #[test]
+    fn test_execute_broken_symlinks_no_config_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let svc = service_with_temp(tmp.path());
+        let result = svc.execute_broken_symlinks(false);
+        assert!(result.success);
+        assert_eq!(result.items_cleaned, 0);
+    }
+
+    #[test]
+    fn test_find_broken_symlinks_nested() {
+        let tmp = tempfile::tempdir().unwrap();
+        let nested = tmp.path().join("a/b/c");
+        fs::create_dir_all(&nested).unwrap();
+        std::os::unix::fs::symlink("/nowhere", nested.join("deep.link")).unwrap();
+
+        let broken = find_broken_symlinks(tmp.path());
+        assert_eq!(broken.len(), 1);
+    }
+
+    #[test]
+    fn test_find_broken_symlinks_valid_symlink_not_reported() {
+        let tmp = tempfile::tempdir().unwrap();
+        let target = tmp.path().join("real_file");
+        fs::write(&target, "content").unwrap();
+        std::os::unix::fs::symlink(&target, tmp.path().join("valid.link")).unwrap();
+
+        let broken = find_broken_symlinks(tmp.path());
+        assert!(broken.is_empty());
+    }
+
+    #[test]
+    fn test_broken_symlinks_not_aggressive() {
+        assert!(!CleanupCategory::BrokenSymlinks.is_aggressive());
+    }
+
+    #[test]
+    fn test_broken_symlinks_metadata() {
+        let cat = CleanupCategory::BrokenSymlinks;
+        assert_eq!(cat.name(), "Broken Symlinks");
+        assert_eq!(cat.id(), "broken_symlinks");
+        assert!(!cat.description().is_empty());
+    }
+
+    #[test]
+    fn test_service_preview_dispatches_home_categories() {
+        // Use temp home to avoid scanning real filesystem (which can be huge)
+        let tmp = tempfile::tempdir().unwrap();
+        let svc = service_with_temp(tmp.path());
+        // Only test categories that respect home_dir (skip system-path categories)
+        let home_cats = vec![
+            CleanupCategory::Thumbnails,
+            CleanupCategory::UserCache,
+            CleanupCategory::AppLogs,
+            CleanupCategory::BrokenSymlinks,
+            CleanupCategory::DevCache,
+            CleanupCategory::BrowserCache,
+        ];
+        let previews = svc.preview(&home_cats);
+        assert_eq!(previews.len(), home_cats.len());
+        for (preview, cat) in previews.iter().zip(home_cats.iter()) {
+            assert_eq!(preview.category, *cat);
+            // All empty in temp dir
+            assert_eq!(preview.items_count, 0);
+        }
+    }
+
+    #[test]
+    fn test_service_execute_dry_run_home_categories() {
+        // Use temp home to avoid running system commands like pacman/journalctl
+        let tmp = tempfile::tempdir().unwrap();
+        let svc = service_with_temp(tmp.path());
+        let home_cats = vec![
+            CleanupCategory::Thumbnails,
+            CleanupCategory::UserCache,
+            CleanupCategory::AppLogs,
+            CleanupCategory::BrokenSymlinks,
+            CleanupCategory::DevCache,
+            CleanupCategory::BrowserCache,
+        ];
+        let summary = svc.execute(&home_cats, true);
+        for result in &summary.results {
+            assert!(result.success, "Dry run failed for {:?}", result.category);
+        }
     }
 }

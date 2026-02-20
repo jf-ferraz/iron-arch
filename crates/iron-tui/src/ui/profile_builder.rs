@@ -188,19 +188,34 @@ fn render_step_modules(frame: &mut Frame, area: Rect, app: &App) {
     let block = theme::themed_block("Select Modules", theme::MAUVE);
 
     if app.modules.is_empty() {
+        // F-011: Show clear guidance when no modules exist
         let para = Paragraph::new(vec![
             Line::from(""),
             Line::from(Span::styled(
-                "No modules available.",
+                "  No modules found.",
+                Style::default().fg(theme::PEACH).bold(),
+            )),
+            Line::from(""),
+            Line::from(Span::styled(
+                "  Create modules first using [n] from the Modules view,",
                 Style::default().fg(theme::SUBTEXT),
             )),
             Line::from(Span::styled(
-                "You can add modules later by editing the profile.",
+                "  or use `iron module create <name>` from the CLI.",
+                Style::default().fg(theme::SUBTEXT),
+            )),
+            Line::from(""),
+            Line::from(Span::styled(
+                "  Press [Enter] to create the profile without modules,",
+                Style::default().fg(theme::OVERLAY),
+            )),
+            Line::from(Span::styled(
+                "  or [Esc] to go back.",
                 Style::default().fg(theme::OVERLAY),
             )),
         ])
         .block(block)
-        .alignment(Alignment::Center);
+        .wrap(Wrap { trim: false });
         frame.render_widget(para, area);
         return;
     }

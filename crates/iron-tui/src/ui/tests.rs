@@ -84,6 +84,7 @@ fn create_test_update(name: &str, is_aur: bool) -> PackageUpdate {
         } else {
             "extra".to_string()
         },
+        ..Default::default()
     }
 }
 

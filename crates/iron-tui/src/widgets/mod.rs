@@ -555,6 +555,8 @@ pub fn render_confirm_dialog(frame: &mut Frame, area: Rect, app: &App) {
         Some(ConfirmAction::DisableModule(id)) => format!("Disable module '{}'?", id),
         Some(ConfirmAction::RunUpdate) => "Run system update?".to_string(),
         Some(ConfirmAction::RunCleanup) => "Run system cleanup? (dry-run mode)".to_string(),
+        Some(ConfirmAction::SyncPush) => "Push local changes to remote?".to_string(),
+        Some(ConfirmAction::SyncPull) => "Pull remote changes to local?".to_string(),
         Some(ConfirmAction::Quit) => "Quit Iron?".to_string(),
         None => "Confirm action?".to_string(),
     };
@@ -970,6 +972,8 @@ mod tests {
                 ConfirmAction::DisableModule(id) => format!("Disable module '{}'?", id),
                 ConfirmAction::RunUpdate => "Run system update?".to_string(),
                 ConfirmAction::RunCleanup => "Run system cleanup? (dry-run mode)".to_string(),
+                ConfirmAction::SyncPush => "Push local changes to remote?".to_string(),
+                ConfirmAction::SyncPull => "Pull remote changes to local?".to_string(),
                 ConfirmAction::Quit => "Quit Iron?".to_string(),
             };
             assert_eq!(message, expected_substr);

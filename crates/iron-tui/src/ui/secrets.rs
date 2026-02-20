@@ -155,3 +155,109 @@ fn render_encrypted_files(frame: &mut Frame, area: Rect, app: &App) {
     let para = Paragraph::new(lines).block(block).wrap(Wrap { trim: true });
     frame.render_widget(para, area);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    fn create_test_terminal() -> Terminal<TestBackend> {
+        let backend = TestBackend::new(80, 24);
+        Terminal::new(backend).unwrap()
+    }
+
+    #[test]
+    fn test_render_secrets_no_panic() {
+        let mut terminal = create_test_terminal();
+        let app = App::default();
+
+        terminal
+            .draw(|f| {
+                render_secrets(f, f.area(), &app);
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn test_render_secrets_unlocked_status() {
+        let mut terminal = create_test_terminal();
+        let mut app = App::default();
+        app.secrets_status = Some("Unlocked".to_string());
+
+        terminal
+            .draw(|f| {
+                render_secrets(f, f.area(), &app);
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn test_render_secrets_locked_status() {
+        let mut terminal = create_test_terminal();
+        let mut app = App::default();
+        app.secrets_status = Some("Locked".to_string());
+
+        terminal
+            .draw(|f| {
+                render_secrets(f, f.area(), &app);
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn test_render_secrets_not_initialized() {
+        let mut terminal = create_test_terminal();
+        let mut app = App::default();
+        app.secrets_status = Some("NotInitialized".to_string());
+
+        terminal
+            .draw(|f| {
+                render_secrets(f, f.area(), &app);
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn test_render_secrets_not_available() {
+        let mut terminal = create_test_terminal();
+        let mut app = App::default();
+        app.secrets_status = Some("NotAvailable".to_string());
+
+        terminal
+            .draw(|f| {
+                render_secrets(f, f.area(), &app);
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn test_render_secrets_with_encrypted_files() {
+        let mut terminal = create_test_terminal();
+        let mut app = App::default();
+        app.secrets_status = Some("Unlocked".to_string());
+        app.encrypted_files = vec![
+            std::path::PathBuf::from("secrets/api-key.txt"),
+            std::path::PathBuf::from("secrets/ssh/config"),
+        ];
+
+        terminal
+            .draw(|f| {
+                render_secrets(f, f.area(), &app);
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn test_render_secrets_unknown_status() {
+        let mut terminal = create_test_terminal();
+        let mut app = App::default();
+        app.secrets_status = None;
+
+        terminal
+            .draw(|f| {
+                render_secrets(f, f.area(), &app);
+            })
+            .unwrap();
+    }
+}

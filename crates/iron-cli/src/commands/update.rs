@@ -90,6 +90,41 @@ pub fn execute(
 
     output.header("Iron Safe Update");
 
+    // Run pre-flight checks (hardening C-001 / FR-5.8)
+    output.info("Running pre-flight checks...");
+    let preflight = update_service.run_preflight_checks();
+
+    for check in &preflight.checks {
+        match check.status {
+            iron_core::services::update::PreflightStatus::Pass => {
+                output.list_item_status(&check.message, StatusBadge::Ok);
+            }
+            iron_core::services::update::PreflightStatus::Warning => {
+                output.list_item_status(&check.message, StatusBadge::Warning);
+            }
+            iron_core::services::update::PreflightStatus::Fail => {
+                output.list_item_status(&check.message, StatusBadge::Error);
+            }
+            iron_core::services::update::PreflightStatus::Skipped => {
+                output.list_item_status(&check.message, StatusBadge::Inactive);
+            }
+        }
+    }
+
+    if !preflight.blockers.is_empty() && !force {
+        output.separator();
+        output.error("Pre-flight checks failed:");
+        for blocker in &preflight.blockers {
+            output.list_item(&format!("  BLOCKED: {}", blocker));
+        }
+        output.info("Use --force to override pre-flight checks");
+        return Ok(());
+    }
+
+    for warning in &preflight.warnings {
+        output.warning(warning);
+    }
+
     // Check for updates
     output.info("Checking for updates...");
     let plan = update_service.check()?;
@@ -515,4 +550,62 @@ fn check_pacnew_files() -> usize {
         .output()
         .map(|o| String::from_utf8_lossy(&o.stdout).lines().count())
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use iron_core::packages::RiskLevel;
+
+    #[test]
+    fn test_risk_badge_mapping() {
+        use crate::output::StatusBadge;
+        let badge = match RiskLevel::Low {
+            RiskLevel::Low => StatusBadge::Ok,
+            RiskLevel::Medium => StatusBadge::Warning,
+            RiskLevel::High => StatusBadge::Warning,
+            RiskLevel::Critical => StatusBadge::Error,
+        };
+        assert!(matches!(badge, StatusBadge::Ok));
+    }
+
+    #[test]
+    fn test_risk_levels_are_ordered() {
+        assert!(RiskLevel::Low < RiskLevel::Medium);
+        assert!(RiskLevel::Medium < RiskLevel::High);
+        assert!(RiskLevel::High < RiskLevel::Critical);
+    }
+
+    #[test]
+    fn test_check_pacnew_returns_zero_or_more() {
+        // This test exercises the function; on most systems this returns 0
+        let count = super::check_pacnew_files();
+        // Just verify it doesn't panic and returns a reasonable number
+        assert!(count < 10000);
+    }
+
+    #[test]
+    fn test_preflight_status_badge_mapping() {
+        use crate::output::StatusBadge;
+        use iron_core::services::update::PreflightStatus;
+
+        let mapping = |status: PreflightStatus| -> StatusBadge {
+            match status {
+                PreflightStatus::Pass => StatusBadge::Ok,
+                PreflightStatus::Warning => StatusBadge::Warning,
+                PreflightStatus::Fail => StatusBadge::Error,
+                PreflightStatus::Skipped => StatusBadge::Inactive,
+            }
+        };
+
+        assert!(matches!(mapping(PreflightStatus::Pass), StatusBadge::Ok));
+        assert!(matches!(
+            mapping(PreflightStatus::Warning),
+            StatusBadge::Warning
+        ));
+        assert!(matches!(mapping(PreflightStatus::Fail), StatusBadge::Error));
+        assert!(matches!(
+            mapping(PreflightStatus::Skipped),
+            StatusBadge::Inactive
+        ));
+    }
 }

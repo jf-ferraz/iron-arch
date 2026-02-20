@@ -128,6 +128,53 @@ pub fn render_bundle_detail(frame: &mut Frame, area: Rect, app: &App) {
     ];
 
     let mut lines = text;
+
+    // D-007: Packages section
+    lines.push(Line::from(Span::styled(
+        "Packages:",
+        Style::default().fg(theme::YELLOW).bold(),
+    )));
+    if bundle.packages.is_empty() && bundle.aur_packages.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  No packages declared",
+            Style::default().fg(theme::OVERLAY).italic(),
+        )));
+    } else {
+        for pkg in &bundle.packages {
+            lines.push(Line::from(format!("  - {}", pkg)));
+        }
+        for pkg in &bundle.aur_packages {
+            lines.push(Line::from(vec![
+                Span::raw("  - "),
+                Span::styled(pkg.as_str(), Style::default().fg(theme::TEXT)),
+                Span::styled(" (AUR)", Style::default().fg(theme::PEACH)),
+            ]));
+        }
+    }
+    lines.push(Line::from(""));
+
+    // D-007: Services section
+    lines.push(Line::from(Span::styled(
+        "Services:",
+        Style::default().fg(theme::YELLOW).bold(),
+    )));
+    if bundle.services.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  No services declared",
+            Style::default().fg(theme::OVERLAY).italic(),
+        )));
+    } else {
+        for svc in &bundle.services {
+            lines.push(Line::from(format!("  - {}", svc)));
+        }
+    }
+    lines.push(Line::from(""));
+
+    // Profiles section
+    lines.push(Line::from(Span::styled(
+        "Profiles:",
+        Style::default().fg(theme::YELLOW).bold(),
+    )));
     if bundle.profiles.is_empty() {
         lines.push(Line::from(Span::styled(
             "  No profiles configured",
@@ -139,8 +186,24 @@ pub fn render_bundle_detail(frame: &mut Frame, area: Rect, app: &App) {
         }
     }
     lines.push(Line::from(""));
+
+    // D-007: Conflicts section
+    if !bundle.conflicts.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "Conflicts:",
+            Style::default().fg(theme::RED).bold(),
+        )));
+        for conflict in &bundle.conflicts {
+            lines.push(Line::from(vec![
+                Span::styled("  ⚠ ", Style::default().fg(theme::RED)),
+                Span::raw(conflict.as_str()),
+            ]));
+        }
+        lines.push(Line::from(""));
+    }
+
     lines.push(Line::from(Span::styled(
-        "[Esc] Back  [Enter] Activate",
+        "[Esc] Back  [Enter] Activate  [d] Deactivate",
         Style::default().fg(theme::SUBTEXT),
     )));
 

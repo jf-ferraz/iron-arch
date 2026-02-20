@@ -65,6 +65,12 @@ pub struct PackageUpdate {
     pub is_flagged: bool,
     /// Package repository
     pub repository: String,
+    /// Risk level for this update (populated by UpdateService)
+    #[serde(default)]
+    pub risk: RiskLevel,
+    /// Reason for risk level
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub risk_reason: Option<String>,
 }
 
 /// Installed package information
@@ -340,6 +346,7 @@ mod tests {
             } else {
                 "extra".to_string()
             },
+            ..Default::default()
         }
     }
 
@@ -666,6 +673,7 @@ mod proptest_tests {
                 } else {
                     "extra".to_string()
                 },
+                ..Default::default()
             })
     }
 
@@ -772,6 +780,7 @@ mod proptest_tests {
                     is_aur: false,
                     is_flagged: false,
                     repository: "core".to_string(),
+                    ..Default::default()
                 }];
 
                 let (risk, reasons) = assess_risk(&updates, &[]);
@@ -791,6 +800,7 @@ mod proptest_tests {
                     is_aur: false,
                     is_flagged: false,
                     repository: "extra".to_string(),
+                    ..Default::default()
                 })
                 .collect();
 
@@ -809,6 +819,7 @@ mod proptest_tests {
                 is_aur: true,
                 is_flagged: true,
                 repository: "aur".to_string(),
+                ..Default::default()
             }];
 
             let (risk, reasons) = assess_risk(&updates, &[]);

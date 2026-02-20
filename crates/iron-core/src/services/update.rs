@@ -159,33 +159,14 @@ pub struct InterruptedUpdate {
     pub elapsed: Duration,
 }
 
-/// Update risk level
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub enum UpdateRisk {
-    /// No special concerns
-    Low,
-    /// Some packages need attention
-    Medium,
-    /// Critical packages being updated (kernel, nvidia, systemd)
-    High,
-    /// Manual intervention may be required
-    Critical,
-}
+/// Update risk level — unified alias for `crate::RiskLevel`.
+///
+/// Previously a separate enum with identical variants. Now re-exports
+/// `RiskLevel` from `packages.rs` to avoid duplication (hardening A-003).
+pub type UpdateRisk = crate::packages::RiskLevel;
 
-/// Package update information
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PackageUpdate {
-    /// Package name
-    pub name: String,
-    /// Current version
-    pub current_version: String,
-    /// New version
-    pub new_version: String,
-    /// Risk level for this package
-    pub risk: UpdateRisk,
-    /// Reason for risk level
-    pub risk_reason: Option<String>,
-}
+/// Re-export `PackageUpdate` from packages.rs to avoid duplication (hardening A-007).
+pub type PackageUpdate = crate::packages::PackageUpdate;
 
 /// Update plan with risk assessment
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -508,12 +489,34 @@ pub trait UpdateService {
     fn find_failed_services(&self) -> Vec<FailedService>;
 }
 
+/// Detect available AUR helper on the system.
+///
+/// Checks for `paru`, `yay`, `pikaur`, and `trizen` in order of preference.
+/// Returns the command name if found, or `None` to fall back to plain pacman.
+pub fn detect_aur_helper() -> Option<String> {
+    for helper in &["paru", "yay", "pikaur", "trizen"] {
+        if Command::new("which")
+            .arg(helper)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+        {
+            return Some(helper.to_string());
+        }
+    }
+    None
+}
+
 /// Default update service implementation
 pub struct DefaultUpdateService<S: SnapshotManager> {
     /// State manager
     state_manager: StateManager,
     /// Snapshot manager
     snapshot_manager: S,
+    /// Detected AUR helper command (e.g. "paru", "yay"), or None for plain pacman
+    aur_helper: Option<String>,
 }
 
 impl<S: SnapshotManager> DefaultUpdateService<S> {
@@ -522,6 +525,31 @@ impl<S: SnapshotManager> DefaultUpdateService<S> {
         Self {
             state_manager,
             snapshot_manager,
+            aur_helper: detect_aur_helper(),
+        }
+    }
+
+    /// Create a new update service with a specific AUR helper override
+    pub fn with_aur_helper(
+        state_manager: StateManager,
+        snapshot_manager: S,
+        aur_helper: Option<String>,
+    ) -> Self {
+        Self {
+            state_manager,
+            snapshot_manager,
+            aur_helper,
+        }
+    }
+
+    /// Get the update command and whether it needs sudo.
+    ///
+    /// AUR helpers (paru, yay, etc.) run as the current user and escalate
+    /// internally, so we do NOT wrap them in `sudo`. Plain pacman needs `sudo`.
+    fn update_command(&self) -> (&str, bool) {
+        match &self.aur_helper {
+            Some(helper) => (helper.as_str(), false),
+            None => ("pacman", true),
         }
     }
 
@@ -542,6 +570,7 @@ impl<S: SnapshotManager> DefaultUpdateService<S> {
                         new_version: new,
                         risk,
                         risk_reason: reason,
+                        ..Default::default()
                     })
                 } else {
                     None
@@ -883,6 +912,123 @@ impl<S: SnapshotManager> DefaultUpdateService<S> {
         }
     }
 
+    /// F-007: Check snapshot status as pre-flight check
+    ///
+    /// Warns if no recent snapshot exists (>7 days) or snapshot backend unavailable.
+    fn check_snapshot_status(&self) -> PreflightCheck {
+        if !self.snapshot_manager.is_available() {
+            return PreflightCheck {
+                name: "Snapshot".to_string(),
+                status: PreflightStatus::Warning,
+                message: "No snapshot backend available".to_string(),
+                details: Some("Install timeshift or snapper for rollback capability".to_string()),
+            };
+        }
+
+        match self.snapshot_manager.list() {
+            Ok(snapshots) if !snapshots.is_empty() => {
+                let newest = snapshots.iter().map(|s| s.created).max().unwrap();
+                let age = Utc::now() - newest;
+                if age.num_days() > 7 {
+                    PreflightCheck {
+                        name: "Snapshot".to_string(),
+                        status: PreflightStatus::Warning,
+                        message: format!("Last snapshot is {} days old", age.num_days()),
+                        details: Some(
+                            "Consider creating a fresh snapshot before updating".to_string(),
+                        ),
+                    }
+                } else {
+                    PreflightCheck {
+                        name: "Snapshot".to_string(),
+                        status: PreflightStatus::Pass,
+                        message: format!(
+                            "Recent snapshot available ({})",
+                            newest.format("%Y-%m-%d")
+                        ),
+                        details: None,
+                    }
+                }
+            }
+            _ => PreflightCheck {
+                name: "Snapshot".to_string(),
+                status: PreflightStatus::Warning,
+                message: "No snapshots found".to_string(),
+                details: Some(
+                    "A pre-update snapshot will be created automatically".to_string(),
+                ),
+            },
+        }
+    }
+
+    /// F-008: Check pacman.log for signs of partial updates
+    ///
+    /// On Arch Linux, running `pacman -Sy <pkg>` without a full `-Syu` can leave
+    /// the system in a partially-updated state. We scan recent log entries for
+    /// `pacman -Sy ` (sync-only without upgrade) as a heuristic.
+    fn check_partial_updates(&self) -> PreflightCheck {
+        let log_path = Path::new("/var/log/pacman.log");
+        if !log_path.exists() {
+            return PreflightCheck {
+                name: "Partial Updates".to_string(),
+                status: PreflightStatus::Pass,
+                message: "No pacman log found (skipped)".to_string(),
+                details: None,
+            };
+        }
+
+        // Read the last ~200 lines of pacman.log
+        let content = match std::fs::read_to_string(log_path) {
+            Ok(c) => c,
+            Err(_) => {
+                return PreflightCheck {
+                    name: "Partial Updates".to_string(),
+                    status: PreflightStatus::Pass,
+                    message: "Could not read pacman log".to_string(),
+                    details: None,
+                };
+            }
+        };
+
+        let lines: Vec<&str> = content.lines().collect();
+        let recent = if lines.len() > 200 {
+            &lines[lines.len() - 200..]
+        } else {
+            &lines[..]
+        };
+
+        // Look for partial sync operations: lines containing "pacman -Sy " but not "-Syu"
+        let partial_count = recent
+            .iter()
+            .filter(|line| {
+                (line.contains("pacman -Sy ") || line.contains("pacman -Sy]"))
+                    && !line.contains("-Syu")
+            })
+            .count();
+
+        if partial_count > 0 {
+            PreflightCheck {
+                name: "Partial Updates".to_string(),
+                status: PreflightStatus::Warning,
+                message: format!(
+                    "Detected {} recent partial sync operation(s)",
+                    partial_count
+                ),
+                details: Some(
+                    "Partial updates (pacman -Sy without -u) can break the system. Run a full upgrade."
+                        .to_string(),
+                ),
+            }
+        } else {
+            PreflightCheck {
+                name: "Partial Updates".to_string(),
+                status: PreflightStatus::Pass,
+                message: "No partial updates detected".to_string(),
+                details: None,
+            }
+        }
+    }
+
     /// Check Arch news for unacknowledged items (Phase 2.2)
     ///
     /// Returns the check result, list of unacknowledged news, and whether update is blocked
@@ -1003,15 +1149,25 @@ impl<S: SnapshotManager> DefaultUpdateService<S> {
         progress: &mut UpdateProgress,
         on_progress: Option<&dyn Fn(&UpdateProgress)>,
     ) -> IronResult<()> {
-        let mut child = Command::new("sudo")
-            .arg("pacman")
-            .args(args)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| PackageError::PacmanFailed {
-                message: format!("Failed to spawn pacman: {}", e),
-            })?;
+        // Use AUR helper if available for progress-tracked updates too
+        let (cmd, needs_sudo) = self.update_command();
+        let mut child = if needs_sudo {
+            Command::new("sudo")
+                .arg(cmd)
+                .args(args)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+        } else {
+            Command::new(cmd)
+                .args(args)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+        }
+        .map_err(|e| PackageError::PacmanFailed {
+            message: format!("Failed to spawn {}: {}", cmd, e),
+        })?;
 
         let stdout = child
             .stdout
@@ -1182,6 +1338,14 @@ impl<S: SnapshotManager> UpdateService for DefaultUpdateService<S> {
         result.time_synced = time_check.status == PreflightStatus::Pass;
         result.add_check(time_check);
 
+        // F-007: Check snapshot age
+        let snapshot_check = self.check_snapshot_status();
+        result.add_check(snapshot_check);
+
+        // F-008: Check for partial updates
+        let partial_check = self.check_partial_updates();
+        result.add_check(partial_check);
+
         result
     }
 
@@ -1207,10 +1371,17 @@ impl<S: SnapshotManager> UpdateService for DefaultUpdateService<S> {
             self.snapshot_manager.create("pre-update")?;
         }
 
-        // Run system update
-        let result = Command::new("sudo")
-            .args(["pacman", "-Syu", "--noconfirm"])
-            .status();
+        // Use AUR helper if available, otherwise fall back to pacman
+        let (cmd, needs_sudo) = self.update_command();
+        let result = if needs_sudo {
+            Command::new("sudo")
+                .args([cmd, "-Syu", "--noconfirm"])
+                .status()
+        } else {
+            Command::new(cmd)
+                .args(["-Syu", "--noconfirm"])
+                .status()
+        };
 
         match result {
             Ok(status) if status.success() => {
@@ -1234,7 +1405,7 @@ impl<S: SnapshotManager> UpdateService for DefaultUpdateService<S> {
                 .into())
             }
             Err(e) => Err(PackageError::PacmanFailed {
-                message: format!("Failed to run pacman: {}", e),
+                message: format!("Failed to run {}: {}", cmd, e),
             }
             .into()),
         }
@@ -1250,12 +1421,17 @@ impl<S: SnapshotManager> UpdateService for DefaultUpdateService<S> {
             self.snapshot_manager.create("pre-update")?;
         }
 
-        // Build pacman command
+        // Build update command — use AUR helper if available
+        let (cmd, needs_sudo) = self.update_command();
         let mut args = vec!["-S", "--noconfirm"];
         let pkg_refs: Vec<&str> = packages.iter().map(|s| s.as_str()).collect();
         args.extend(pkg_refs);
 
-        let result = Command::new("sudo").arg("pacman").args(&args).status();
+        let result = if needs_sudo {
+            Command::new("sudo").arg(cmd).args(&args).status()
+        } else {
+            Command::new(cmd).args(&args).status()
+        };
 
         match result {
             Ok(status) if status.success() => {
@@ -1271,7 +1447,7 @@ impl<S: SnapshotManager> UpdateService for DefaultUpdateService<S> {
             }
             .into()),
             Err(e) => Err(PackageError::PacmanFailed {
-                message: format!("Failed to run pacman: {}", e),
+                message: format!("Failed to run {}: {}", cmd, e),
             }
             .into()),
         }
@@ -1646,6 +1822,7 @@ mod tests {
                 new_version: "121.0".to_string(),
                 risk: UpdateRisk::Low,
                 risk_reason: None,
+            ..Default::default()
             },
             PackageUpdate {
                 name: "linux".to_string(),
@@ -1653,6 +1830,7 @@ mod tests {
                 new_version: "6.6.2".to_string(),
                 risk: UpdateRisk::Critical,
                 risk_reason: Some("Kernel".to_string()),
+            ..Default::default()
             },
         ];
 
@@ -1709,6 +1887,7 @@ mod tests {
             new_version: "121.0".to_string(),
             risk: UpdateRisk::Low,
             risk_reason: None,
+        ..Default::default()
         };
 
         assert_eq!(update.name, "firefox");
@@ -1726,6 +1905,7 @@ mod tests {
             new_version: "6.6.2".to_string(),
             risk: UpdateRisk::Critical,
             risk_reason: Some("Kernel update requires reboot".to_string()),
+        ..Default::default()
         };
 
         assert!(update.risk_reason.is_some());
@@ -1740,6 +1920,7 @@ mod tests {
             new_version: "2.0".to_string(),
             risk: UpdateRisk::Medium,
             risk_reason: Some("Test".to_string()),
+        ..Default::default()
         };
 
         let cloned = update.clone();
@@ -1773,6 +1954,7 @@ mod tests {
             new_version: "121.0".to_string(),
             risk: UpdateRisk::Low,
             risk_reason: None,
+        ..Default::default()
         }];
 
         let plan = UpdatePlan {
@@ -1983,6 +2165,7 @@ mod tests {
             new_version: "121.0".to_string(),
             risk: UpdateRisk::Low,
             risk_reason: None,
+        ..Default::default()
         }];
 
         let overall = service.calculate_overall_risk(&packages);
@@ -2000,6 +2183,7 @@ mod tests {
                 new_version: "121.0".to_string(),
                 risk: UpdateRisk::Low,
                 risk_reason: None,
+            ..Default::default()
             },
             PackageUpdate {
                 name: "mesa".to_string(),
@@ -2007,6 +2191,7 @@ mod tests {
                 new_version: "23.3".to_string(),
                 risk: UpdateRisk::Medium,
                 risk_reason: Some("Graphics".to_string()),
+            ..Default::default()
             },
         ];
 
@@ -2025,6 +2210,7 @@ mod tests {
                 new_version: "121.0".to_string(),
                 risk: UpdateRisk::Low,
                 risk_reason: None,
+            ..Default::default()
             },
             PackageUpdate {
                 name: "nvidia".to_string(),
@@ -2032,6 +2218,7 @@ mod tests {
                 new_version: "545.30".to_string(),
                 risk: UpdateRisk::High,
                 risk_reason: Some("NVIDIA".to_string()),
+            ..Default::default()
             },
         ];
 
@@ -2666,6 +2853,7 @@ mod tests {
                     new_version: "121.0".to_string(),
                     risk: UpdateRisk::Low,
                     risk_reason: None,
+                ..Default::default()
                 },
                 PackageUpdate {
                     name: "linux".to_string(),
@@ -2673,6 +2861,7 @@ mod tests {
                     new_version: "6.6.2".to_string(),
                     risk: UpdateRisk::Critical,
                     risk_reason: Some("Kernel".to_string()),
+                ..Default::default()
                 },
             ],
             overall_risk: UpdateRisk::Critical,
@@ -2930,8 +3119,8 @@ mod tests {
 
         let result = service.run_preflight_checks();
 
-        // Should have all 5 checks
-        assert_eq!(result.checks.len(), 5);
+        // Should have all 7 checks (5 standard + snapshot + partial updates)
+        assert_eq!(result.checks.len(), 7);
 
         // Check names should be present
         let check_names: Vec<&str> = result.checks.iter().map(|c| c.name.as_str()).collect();
@@ -2940,6 +3129,8 @@ mod tests {
         assert!(check_names.contains(&"Power"));
         assert!(check_names.contains(&"Pacman Lock"));
         assert!(check_names.contains(&"Time Sync"));
+        assert!(check_names.contains(&"Snapshot"));
+        assert!(check_names.contains(&"Partial Updates"));
     }
 
     // ==========================================================================
@@ -3080,8 +3271,8 @@ mod tests {
 
         let result = service.run_preflight_checks_with_news(&news);
 
-        // Should have 6 checks (5 standard + 1 news)
-        assert_eq!(result.checks.len(), 6);
+        // Should have 8 checks (7 standard + 1 news)
+        assert_eq!(result.checks.len(), 8);
 
         let check_names: Vec<&str> = result.checks.iter().map(|c| c.name.as_str()).collect();
         assert!(check_names.contains(&"Arch News"));

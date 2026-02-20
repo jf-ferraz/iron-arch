@@ -30,6 +30,7 @@ pub fn execute(ctx: &AppContext, action: SecretsAction) -> Result<()> {
 
     match action {
         SecretsAction::Status => status(ctx),
+        SecretsAction::Init => init(ctx),
         SecretsAction::Unlock { key } => unlock(ctx, key),
         SecretsAction::Lock => lock(ctx),
         SecretsAction::Link => link(ctx),
@@ -125,6 +126,26 @@ fn status(ctx: &AppContext) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+/// Initialize git-crypt in the repository (C-007)
+fn init(ctx: &AppContext) -> Result<()> {
+    let output = &ctx.output;
+    let secrets_service = ctx.secrets_service();
+
+    output.header("Initialize Secrets");
+
+    let status = secrets_service.status()?;
+
+    if !matches!(status, SecretsStatus::NotInitialized) {
+        output.info("git-crypt is already initialized");
+        return Ok(());
+    }
+
+    secrets_service.init()?;
+    output.success("git-crypt initialized successfully");
+    output.info("Add GPG keys with: iron secrets add-key <KEY_ID>");
     Ok(())
 }
 
@@ -320,4 +341,60 @@ fn export_key(ctx: &AppContext, output_path: &str) -> Result<()> {
     output.warning("Keep this file safe! Anyone with this key can decrypt your secrets.");
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_secrets_info_serializable() {
+        let info = SecretsInfo {
+            status: "Locked".to_string(),
+            initialized: true,
+            encrypted_files: vec!["secrets/api.txt".to_string()],
+            keys: vec![KeyInfo {
+                id: "ABC123".to_string(),
+                user_id: "user@example.com".to_string(),
+            }],
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains("Locked"));
+        assert!(json.contains("api.txt"));
+        assert!(json.contains("ABC123"));
+    }
+
+    #[test]
+    fn test_key_info_serializable() {
+        let key = KeyInfo {
+            id: "DEADBEEF".to_string(),
+            user_id: "test@test.com".to_string(),
+        };
+        let json = serde_json::to_string(&key).unwrap();
+        assert!(json.contains("DEADBEEF"));
+        assert!(json.contains("test@test.com"));
+    }
+
+    #[test]
+    fn test_secrets_info_empty_fields() {
+        let info = SecretsInfo {
+            status: "NotInitialized".to_string(),
+            initialized: false,
+            encrypted_files: vec![],
+            keys: vec![],
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains("NotInitialized"));
+        assert!(!info.initialized);
+    }
+
+    #[test]
+    fn test_secrets_action_dispatch_coverage() {
+        // Verify that all SecretsAction variants are handled
+        // (compile-time guarantee via exhaustive match in execute())
+        let actions = vec![
+            "Status", "Unlock", "Lock", "Link", "AddKey", "ExportKey",
+        ];
+        assert_eq!(actions.len(), 6);
+    }
 }

@@ -53,6 +53,21 @@ pub struct InstallScriptOptions {
     pub interactive: bool,
 }
 
+/// C-010: Result of post-install/post-restore verification
+#[derive(Debug, Clone, Default)]
+pub struct VerificationResult {
+    /// Packages that should be installed but aren't
+    pub missing_packages: Vec<String>,
+    /// Symlinks that are broken or missing
+    pub broken_symlinks: Vec<PathBuf>,
+    /// Services that should be enabled but aren't
+    pub missing_services: Vec<String>,
+    /// Overall pass/fail
+    pub passed: bool,
+    /// Summary message
+    pub summary: String,
+}
+
 /// Recovery service trait
 pub trait RecoveryService {
     /// Export current state to recovery format
@@ -75,6 +90,9 @@ pub trait RecoveryService {
 
     /// Restore from backup
     fn restore_backup(&self, backup_path: &Path) -> IronResult<()>;
+
+    /// C-010: Verify installation after restore/import
+    fn verify_installation(&self, export: &RecoveryExport) -> VerificationResult;
 }
 
 /// Default recovery service implementation
@@ -455,6 +473,77 @@ impl<S: SnapshotManager> RecoveryService for DefaultRecoveryService<S> {
             .record_operation("restore_backup", OperationStatus::Success, None)?;
 
         Ok(())
+    }
+
+    /// C-010: Verify that the system matches the expected state from an export
+    fn verify_installation(&self, export: &RecoveryExport) -> VerificationResult {
+        let mut result = VerificationResult::default();
+
+        // Check packages: which expected packages are missing?
+        let installed = self.get_installed_packages();
+        let installed_aur = self.get_aur_packages();
+        let all_installed: std::collections::HashSet<&str> = installed
+            .iter()
+            .chain(installed_aur.iter())
+            .map(|s| s.as_str())
+            .collect();
+
+        for pkg in &export.packages {
+            if !all_installed.contains(pkg.as_str()) {
+                result.missing_packages.push(pkg.clone());
+            }
+        }
+        for pkg in &export.aur_packages {
+            if !all_installed.contains(pkg.as_str()) {
+                result.missing_packages.push(pkg.clone());
+            }
+        }
+
+        // Check services: which expected services are not enabled?
+        let active_services = self.get_enabled_services();
+        let enabled_set: std::collections::HashSet<&str> =
+            active_services.iter().map(|s| s.as_str()).collect();
+        for svc in &export.services {
+            if !enabled_set.contains(svc.as_str()) {
+                result.missing_services.push(svc.clone());
+            }
+        }
+
+        // Check symlinks in config directories
+        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/home"));
+        let config_dir = home.join(".config");
+        if config_dir.exists()
+            && let Ok(entries) = fs::read_dir(&config_dir)
+        {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Ok(meta) = fs::symlink_metadata(&path)
+                    && meta.file_type().is_symlink()
+                    && !path.exists()
+                {
+                    result.broken_symlinks.push(path);
+                }
+            }
+        }
+
+        // Build summary
+        let issues = result.missing_packages.len()
+            + result.missing_services.len()
+            + result.broken_symlinks.len();
+        result.passed = issues == 0;
+        result.summary = if result.passed {
+            "All checks passed: packages, services, and symlinks verified".to_string()
+        } else {
+            format!(
+                "{} issue(s): {} missing packages, {} missing services, {} broken symlinks",
+                issues,
+                result.missing_packages.len(),
+                result.missing_services.len(),
+                result.broken_symlinks.len()
+            )
+        };
+
+        result
     }
 }
 

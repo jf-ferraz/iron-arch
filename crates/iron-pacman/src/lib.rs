@@ -612,6 +612,7 @@ pub fn parse_updates_output(output: &str, is_aur: bool) -> Vec<PackageUpdate> {
                     } else {
                         String::new()
                     },
+                    ..Default::default()
                 })
             } else {
                 None
@@ -860,6 +861,7 @@ mod tests {
             is_aur: false,
             is_flagged: false,
             repository: "core".to_string(),
+            ..Default::default()
         }];
 
         let (risk, reasons) = assess_risk(&updates, &[]);
@@ -876,6 +878,7 @@ mod tests {
             is_aur: false,
             is_flagged: false,
             repository: "core".to_string(),
+            ..Default::default()
         }];
 
         let (risk, reasons) = assess_risk(&updates, &[]);
@@ -908,6 +911,7 @@ mod tests {
             is_aur: true,
             is_flagged: true,
             repository: "aur".to_string(),
+            ..Default::default()
         }];
 
         let (risk, reasons) = assess_risk(&updates, &[]);
@@ -924,6 +928,7 @@ mod tests {
             is_aur: false,
             is_flagged: false,
             repository: "extra".to_string(),
+            ..Default::default()
         }];
 
         let (risk, _) = assess_risk(&updates, &[]);

@@ -28,7 +28,7 @@ pub use doctor::{
 pub use host::{DefaultHostService, HostService};
 pub use module::{DefaultModuleService, ModuleService};
 pub use profile::{DefaultProfileService, ProfileService};
-pub use recovery::{DefaultRecoveryService, RecoveryService};
+pub use recovery::{DefaultRecoveryService, RecoveryService, VerificationResult};
 pub use scan::{
     ConflictSeverity, DefaultScanService, DiscoveredConfig, ScanConflict, ScanReport, ScanService,
     ScanSummary,

@@ -51,6 +51,12 @@ impl App {
                     }
                     self.current_host = Some(host_id);
                 }
+                // B-002: No host configured and no hosts on disk → launch wizard
+                if self.current_host.is_none() && self.discovered_hosts.is_empty() {
+                    self.view = View::SetupWizard;
+                    self.init_wizard();
+                    return Ok(());
+                }
             }
             Err(_) => {
                 // No existing state - show setup wizard
@@ -168,6 +174,12 @@ impl App {
             }
             ConfirmAction::RunCleanup => {
                 self.execute_cleanup();
+            }
+            ConfirmAction::SyncPush => {
+                self.sync_push();
+            }
+            ConfirmAction::SyncPull => {
+                self.sync_pull();
             }
             ConfirmAction::Quit => {
                 self.should_quit = true;
@@ -918,11 +930,26 @@ impl App {
     // Secrets Actions
     // ==========================================================================
 
+    /// Build a DefaultSecretsService with backend + state manager wired (A-004/A-005).
+    fn build_secrets_service(&self) -> iron_core::services::secrets::DefaultSecretsService {
+        let mut svc = iron_core::services::secrets::DefaultSecretsService::new(&self.config_dir);
+        // Wire resilient backend from iron-git when .git dir exists
+        if self.config_dir.join(".git").exists() {
+            let mgr = iron_git::DefaultSecretsManager::new(self.config_dir.clone());
+            svc = svc.with_backend(Box::new(mgr));
+        }
+        // Wire state manager for audit logging (A-005)
+        if let Some(ref sm) = self.state_manager {
+            svc = svc.with_state_manager(sm.clone());
+        }
+        svc
+    }
+
     /// Refresh secrets status and encrypted file list
     pub fn refresh_secrets(&mut self) {
-        use iron_core::services::secrets::{DefaultSecretsService, SecretsService};
+        use iron_core::services::secrets::SecretsService;
 
-        let service = DefaultSecretsService::new(&self.config_dir);
+        let service = self.build_secrets_service();
 
         // Update status
         match service.status() {
@@ -947,9 +974,9 @@ impl App {
 
     /// Initialize git-crypt in the repository
     pub fn secrets_init(&mut self) {
-        use iron_core::services::secrets::{DefaultSecretsService, SecretsService};
+        use iron_core::services::secrets::SecretsService;
 
-        let service = DefaultSecretsService::new(&self.config_dir);
+        let service = self.build_secrets_service();
         match service.init() {
             Ok(()) => {
                 self.set_status("git-crypt initialized successfully");
@@ -963,9 +990,9 @@ impl App {
 
     /// Unlock secrets (decrypt)
     pub fn secrets_unlock(&mut self) {
-        use iron_core::services::secrets::{DefaultSecretsService, SecretsService};
+        use iron_core::services::secrets::SecretsService;
 
-        let service = DefaultSecretsService::new(&self.config_dir);
+        let service = self.build_secrets_service();
         match service.unlock(None) {
             Ok(()) => {
                 self.set_status("Secrets unlocked successfully");
@@ -979,9 +1006,9 @@ impl App {
 
     /// Lock secrets (re-encrypt)
     pub fn secrets_lock(&mut self) {
-        use iron_core::services::secrets::{DefaultSecretsService, SecretsService};
+        use iron_core::services::secrets::SecretsService;
 
-        let service = DefaultSecretsService::new(&self.config_dir);
+        let service = self.build_secrets_service();
         match service.lock() {
             Ok(()) => {
                 self.set_status("Secrets locked successfully");
@@ -993,9 +1020,59 @@ impl App {
         }
     }
 
+    /// Add a GPG key for secrets encryption (D-004)
+    pub fn secrets_add_gpg_key(&mut self, key_id: &str) {
+        use iron_core::services::secrets::SecretsService;
+
+        let service = self.build_secrets_service();
+        match service.add_gpg_user(key_id) {
+            Ok(()) => {
+                self.set_status(format!("GPG key {} added successfully", key_id));
+                self.refresh_secrets();
+            }
+            Err(e) => {
+                self.set_error(format!("Failed to add GPG key: {}", e));
+            }
+        }
+    }
+
     // ==========================================================================
     // Recovery Actions
     // ==========================================================================
+
+    /// Import recovery state from file (D-003)
+    pub fn recovery_import(&mut self, path: &str) {
+        use iron_core::services::recovery::{DefaultRecoveryService, RecoveryService};
+
+        if let Some(ref sm) = self.state_manager {
+            let snapshot_mgr = iron_core::snapshot::create_manager();
+            let service = DefaultRecoveryService::new(&self.config_dir, sm.clone(), snapshot_mgr);
+
+            let file_path = std::path::Path::new(path);
+            if !file_path.exists() {
+                self.set_error(format!("File not found: {}", path));
+                return;
+            }
+
+            match service.load_export(file_path) {
+                Ok(export) => match service.import(&export) {
+                    Ok(()) => {
+                        self.set_status(format!("Imported from: {}", path));
+                        // Reinitialize to pick up imported state
+                        let _ = self.init();
+                    }
+                    Err(e) => {
+                        self.set_error(format!("Import failed: {}", e));
+                    }
+                },
+                Err(e) => {
+                    self.set_error(format!("Failed to load export file: {}", e));
+                }
+            }
+        } else {
+            self.set_error("No state manager available");
+        }
+    }
 
     /// Export current state to recovery format and save to file
     pub fn recovery_export(&mut self) {
@@ -1189,6 +1266,11 @@ impl App {
         }
 
         let profile_dir = self.config_dir.join("profiles").join(&name);
+        // D-013: Check for duplicate profile name before creation
+        if profile_dir.exists() {
+            self.set_error(format!("Profile '{}' already exists", name));
+            return;
+        }
         if let Err(e) = std::fs::create_dir_all(&profile_dir) {
             self.set_error(format!("Failed to create profile directory: {}", e));
             return;
@@ -1231,6 +1313,7 @@ impl App {
         self.module_creator_description = String::new();
         self.module_creator_packages = String::new();
         self.module_creator_active_field = 0;
+        self.module_creator_kind_index = 0;
         self.navigate(crate::app::View::ModuleCreator);
     }
 
@@ -1243,6 +1326,11 @@ impl App {
         }
 
         let module_dir = self.config_dir.join("modules").join(&id);
+        // D-013: Check for duplicate module ID before creation
+        if module_dir.exists() {
+            self.set_error(format!("Module '{}' already exists", id));
+            return;
+        }
         if let Err(e) = std::fs::create_dir_all(&module_dir) {
             self.set_error(format!("Failed to create module directory: {}", e));
             return;
@@ -1267,6 +1355,21 @@ impl App {
         let pkgs: Vec<&str> = pkgs_raw.iter().map(|s| s.as_str()).collect();
 
         let toml_content = iron_core::templates::module_toml(&id, desc_opt, &pkgs);
+
+        // F-010: Replace default kind with user-selected kind
+        let kind_str = match self.module_creator_kind_index {
+            0 => "AppConfig",
+            1 => "Shell",
+            2 => "DesktopComponent",
+            3 => "Theme",
+            4 => "SystemUtil",
+            5 => "DevTools",
+            _ => "AppConfig",
+        };
+        let toml_content = toml_content.replace(
+            "kind = \"utility\"",
+            &format!("kind = \"{}\"", kind_str),
+        );
 
         let module_path = module_dir.join("module.toml");
         if let Err(e) = std::fs::write(&module_path, toml_content) {

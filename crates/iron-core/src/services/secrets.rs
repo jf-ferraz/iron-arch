@@ -193,7 +193,8 @@ impl DefaultSecretsService {
 
 impl SecretsService for DefaultSecretsService {
     fn status(&self) -> IronResult<SecretsStatus> {
-        if !self.git_crypt_available() {
+        // When using a mock/custom backend, skip binary check
+        if self.backend.is_none() && !self.git_crypt_available() {
             return Ok(SecretsStatus::NotAvailable);
         }
 
@@ -1320,5 +1321,192 @@ mod tests {
             .with_backend(Box::new(backend));
         service.lock().unwrap();
         assert!(lock_flag.load(Ordering::SeqCst));
+    }
+
+    // -----------------------------------------------------------------------
+    // E-013: Cross-layer secrets consistency tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_cross_layer_backend_and_service_status_agree_unlocked() {
+        let temp_dir = TempDir::new().unwrap();
+        std::fs::create_dir_all(temp_dir.path().join(".git-crypt")).unwrap();
+        let backend = MockBackend::new(true); // backend says unlocked
+        let service = DefaultSecretsService::new(temp_dir.path())
+            .with_backend(Box::new(backend));
+
+        // Both layers should report Unlocked
+        assert!(service.is_unlocked());
+        let status = service.status().unwrap();
+        assert_eq!(status, SecretsStatus::Unlocked);
+    }
+
+    #[test]
+    fn test_cross_layer_backend_and_service_status_agree_locked() {
+        let temp_dir = TempDir::new().unwrap();
+        std::fs::create_dir_all(temp_dir.path().join(".git-crypt")).unwrap();
+        let backend = MockBackend::new(false); // backend says locked
+        let service = DefaultSecretsService::new(temp_dir.path())
+            .with_backend(Box::new(backend));
+
+        assert!(!service.is_unlocked());
+        let status = service.status().unwrap();
+        assert_eq!(status, SecretsStatus::Locked);
+    }
+
+    #[test]
+    fn test_cross_layer_list_encrypted_delegates_to_backend() {
+        let temp_dir = TempDir::new().unwrap();
+        std::fs::create_dir_all(temp_dir.path().join(".git-crypt")).unwrap();
+        let backend = MockBackend::new(true);
+        let service = DefaultSecretsService::new(temp_dir.path())
+            .with_backend(Box::new(backend));
+
+        let files = service.list_encrypted().unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0], PathBuf::from("secrets/mock.enc"));
+    }
+
+    #[test]
+    fn test_cross_layer_unlock_delegates_and_records() {
+        let temp_dir = TempDir::new().unwrap();
+        std::fs::create_dir_all(temp_dir.path().join(".git-crypt")).unwrap();
+        let unlock_flag = Arc::new(AtomicBool::new(false));
+        let backend = MockBackend {
+            unlock_called: Arc::clone(&unlock_flag),
+            lock_called: Arc::new(AtomicBool::new(false)),
+            is_unlocked_value: false,
+        };
+        let service = DefaultSecretsService::new(temp_dir.path())
+            .with_backend(Box::new(backend));
+        service.unlock(None).unwrap();
+        assert!(unlock_flag.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn test_cross_layer_lock_delegates_and_records() {
+        let temp_dir = TempDir::new().unwrap();
+        std::fs::create_dir_all(temp_dir.path().join(".git-crypt")).unwrap();
+        let lock_flag = Arc::new(AtomicBool::new(false));
+        let backend = MockBackend {
+            unlock_called: Arc::new(AtomicBool::new(false)),
+            lock_called: Arc::clone(&lock_flag),
+            is_unlocked_value: true,
+        };
+        let service = DefaultSecretsService::new(temp_dir.path())
+            .with_backend(Box::new(backend));
+        service.lock().unwrap();
+        assert!(lock_flag.load(Ordering::SeqCst));
+    }
+
+    // -----------------------------------------------------------------------
+    // E-012: git-crypt integration tests (requires git-crypt installed)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    #[ignore] // Requires: git, git-crypt installed
+    fn test_git_crypt_init_creates_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        // Initialize a git repo first
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("git must be installed");
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+
+        let service = DefaultSecretsService::new(temp_dir.path());
+        let result = service.init();
+        assert!(result.is_ok(), "init failed: {:?}", result.err());
+        assert!(temp_dir.path().join(".git-crypt").exists());
+    }
+
+    #[test]
+    #[ignore] // Requires: git, git-crypt installed
+    fn test_git_crypt_status_after_init() {
+        let temp_dir = TempDir::new().unwrap();
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("git must be installed");
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+
+        let service = DefaultSecretsService::new(temp_dir.path());
+        service.init().unwrap();
+
+        let status = service.status().unwrap();
+        // After init without any encrypted files, status should be Unlocked
+        // (git-crypt considers an initialized repo with no encrypted files as unlocked)
+        assert!(
+            status == SecretsStatus::Unlocked || status == SecretsStatus::Locked,
+            "Unexpected status after init: {:?}",
+            status
+        );
+    }
+
+    #[test]
+    #[ignore] // Requires: git, git-crypt installed
+    fn test_git_crypt_status_not_initialized() {
+        let temp_dir = TempDir::new().unwrap();
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("git must be installed");
+
+        let service = DefaultSecretsService::new(temp_dir.path());
+        let status = service.status().unwrap();
+        assert_eq!(status, SecretsStatus::NotInitialized);
+    }
+
+    #[test]
+    #[ignore] // Requires: git, git-crypt installed
+    fn test_git_crypt_export_key() {
+        let temp_dir = TempDir::new().unwrap();
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("git must be installed");
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+
+        let service = DefaultSecretsService::new(temp_dir.path());
+        service.init().unwrap();
+
+        let key_path = temp_dir.path().join("exported.key");
+        let result = service.export_key(&key_path);
+        assert!(result.is_ok(), "export_key failed: {:?}", result.err());
+        assert!(key_path.exists());
+        // Key file should not be empty
+        let meta = std::fs::metadata(&key_path).unwrap();
+        assert!(meta.len() > 0);
     }
 }

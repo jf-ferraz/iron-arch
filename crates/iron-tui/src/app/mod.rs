@@ -80,6 +80,10 @@ pub struct App {
     pub wizard: WizardState,
     /// Host name input
     pub host_input: TextInput,
+    /// GPG key ID input (D-004)
+    pub gpg_key_input: TextInput,
+    /// Import file path input (D-003)
+    pub import_path_input: TextInput,
     /// Package manager (injected)
     pub package_manager: Arc<dyn PackageManager>,
     /// Service manager for systemd operations (injected)
@@ -181,7 +185,9 @@ pub struct App {
     /// Packages being entered (comma-separated raw input)
     pub module_creator_packages: String,
     /// Whether name field is active (vs description/packages)
-    pub module_creator_active_field: usize, // 0=name, 1=desc, 2=packages
+    pub module_creator_active_field: usize, // 0=name, 1=desc, 2=packages, 3=kind
+    /// F-010: Selected ModuleKind index
+    pub module_creator_kind_index: usize,
     // -------------------------------------------------------------------------
     // System Scan State (Sprint 3 / S1-P1.5-003)
     // -------------------------------------------------------------------------
@@ -270,6 +276,10 @@ pub enum ConfirmAction {
     RunUpdate,
     /// Run system cleanup (Phase 3)
     RunCleanup,
+    /// Push to remote (D-006)
+    SyncPush,
+    /// Pull from remote (D-006)
+    SyncPull,
     /// Quit application
     Quit,
 }
@@ -335,6 +345,8 @@ impl App {
             confirm_typed_input: String::new(),
             wizard: WizardState::new(),
             host_input: TextInput::new(""),
+            gpg_key_input: TextInput::new(""),
+            import_path_input: TextInput::new(""),
             package_manager,
             service_manager,
             installed_count: 0,
@@ -375,6 +387,7 @@ impl App {
             module_creator_description: String::new(),
             module_creator_packages: String::new(),
             module_creator_active_field: 0,
+            module_creator_kind_index: 0,
             scan_report: None,
             scan_scroll: 0,
             diverged_modules: Vec::new(),
@@ -410,6 +423,14 @@ impl App {
                     .map(|op| op.timestamp)
                     .next();
             }
+        // Auto-refresh sync status when entering Sync view (hardening D-005)
+        if matches!(view, View::Sync) {
+            self.refresh_sync_status();
+        }
+        // Auto-refresh doctor checks when entering Doctor view (hardening F-004)
+        if matches!(view, View::Doctor) {
+            self.refresh_current_view();
+        }
     }
 
     /// Go back to previous view
@@ -432,6 +453,18 @@ impl App {
                 RiskLevel::High => ConfirmStyle::EnhancedWarning,
                 _ => ConfirmStyle::Simple,
             },
+            // F-002: Enhanced confirm for aggressive cleanup categories
+            ConfirmAction::RunCleanup => {
+                let has_aggressive = self
+                    .cleanup_categories
+                    .iter()
+                    .any(|c| c.is_aggressive());
+                if has_aggressive {
+                    ConfirmStyle::EnhancedWarning
+                } else {
+                    ConfirmStyle::Simple
+                }
+            }
             _ => ConfirmStyle::Simple,
         };
         self.confirm_typed_input.clear();

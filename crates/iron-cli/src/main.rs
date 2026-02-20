@@ -62,8 +62,10 @@ fn main() -> Result<()> {
             orphans,
             cache,
             symlinks,
+            journal,
+            logs,
             all,
-        }) => commands::clean::execute(&ctx, orphans, cache, symlinks, all),
+        }) => commands::clean::execute(&ctx, orphans, cache, symlinks, journal, logs, all),
         Some(Commands::Recover {
             export,
             import,

@@ -510,6 +510,7 @@ mod tests {
                 is_aur: false,
                 is_flagged: false,
                 repository: "extra".to_string(),
+                ..Default::default()
             })
             .collect();
 
@@ -546,6 +547,7 @@ mod tests {
             is_aur: false,
             is_flagged: false,
             repository: "core".to_string(),
+            ..Default::default()
         }];
 
         let updates = app.pending_updates_list();

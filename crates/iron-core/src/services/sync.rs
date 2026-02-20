@@ -96,8 +96,17 @@ impl DefaultSyncService {
             .args(args)
             .current_dir(&self.repo_root)
             .output()
-            .map_err(|_| GitError::NotARepository {
-                path: self.repo_root.clone(),
+            .map_err(|e| {
+                let message = format!("{}", e);
+                match e.kind() {
+                    std::io::ErrorKind::NotFound => GitError::IoError {
+                        message: "git command not found — is git installed?".to_string(),
+                    },
+                    std::io::ErrorKind::PermissionDenied => GitError::IoError {
+                        message: format!("permission denied running git in {}", self.repo_root.display()),
+                    },
+                    _ => GitError::IoError { message },
+                }
             })?;
 
         if output.status.success() {
@@ -159,6 +168,60 @@ impl DefaultSyncService {
         self.git(&["fetch", "--quiet"])?;
         Ok(())
     }
+
+    /// D-008: Re-link config files that changed between two commits.
+    ///
+    /// After a pull, if any files under `bundles/`, `modules/`, or `profiles/`
+    /// changed, we re-create their symlinks so the live system reflects the
+    /// remote state. Errors are logged but do not fail the pull.
+    fn post_pull_relink(&self, old_head: &str, new_head: &str) {
+        // Get list of changed files between the two commits
+        let changed = match self.git(&["diff", "--name-only", old_head, new_head]) {
+            Ok(output) => output,
+            Err(_) => return,
+        };
+
+        let config_dirs = ["bundles/", "modules/", "profiles/", "hosts/"];
+        let changed_configs: Vec<&str> = changed
+            .lines()
+            .filter(|line| config_dirs.iter().any(|d| line.starts_with(d)))
+            .collect();
+
+        if changed_configs.is_empty() {
+            return;
+        }
+
+        // Re-link each changed config file to its target location
+        for rel_path in &changed_configs {
+            let source = self.repo_root.join(rel_path);
+            if !source.exists() {
+                continue; // File was deleted in pull, skip
+            }
+
+            // For files under bundles/<id>/config/, link to ~/.<rest>
+            // For files under modules/<id>/config/, link to ~/.<rest>
+            let target = if let Some(rest) = rel_path
+                .split_once("/config/")
+                .map(|(_, rest)| rest)
+            {
+                dirs::home_dir().map(|h| h.join(format!(".{}", rest)))
+            } else {
+                None
+            };
+
+            if let Some(target) = target {
+                // Create parent directory if needed
+                if let Some(parent) = target.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                // Only re-link if target is already a symlink (don't create new links)
+                if target.is_symlink() {
+                    let _ = std::fs::remove_file(&target);
+                    let _ = std::os::unix::fs::symlink(&source, &target);
+                }
+            }
+        }
+    }
 }
 
 impl SyncService for DefaultSyncService {
@@ -214,7 +277,16 @@ impl SyncService for DefaultSyncService {
             .into());
         }
 
+        // Capture HEAD before pull so we can detect what changed
+        let head_before = self.git(&["rev-parse", "HEAD"]).unwrap_or_default();
+
         self.git(&["pull", "--rebase"])?;
+
+        // D-008: Re-link config files that changed during pull
+        let head_after = self.git(&["rev-parse", "HEAD"]).unwrap_or_default();
+        if head_before != head_after {
+            self.post_pull_relink(&head_before, &head_after);
+        }
 
         self.state_manager
             .record_operation("git_pull", OperationStatus::Success, None)?;
@@ -272,8 +344,20 @@ impl SyncService for DefaultSyncService {
             .into());
         }
 
-        // Stage all changes
-        self.git(&["add", "-A"])?;
+        // Stage only tracked/known config paths to avoid leaking unrelated files
+        self.git(&["add", "-u"])?;
+
+        // Also stage new files in iron-managed directories
+        for dir in &["bundles", "modules", "profiles", "hosts", "secrets", "scripts"] {
+            let path = self.repo_root.join(dir);
+            if path.exists() {
+                self.git(&["add", dir]).ok();
+            }
+        }
+        // Always stage state.json
+        if self.repo_root.join("state.json").exists() {
+            self.git(&["add", "state.json"]).ok();
+        }
 
         // Commit
         self.git(&["commit", "-m", message])?;
@@ -712,5 +796,86 @@ mod tests {
 
         let info = service.status().unwrap();
         assert!(info.branch.is_some());
+    }
+
+    // -----------------------------------------------------------------------
+    // E-014: SyncService error-path tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_push_fails_not_a_repo() {
+        let temp_dir = TempDir::new().unwrap();
+        let state_manager = StateManager::new(temp_dir.path().to_path_buf()).unwrap();
+        let service = DefaultSyncService::new(temp_dir.path(), state_manager);
+        // No git init → push should fail
+        let result = service.push();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_pull_fails_not_a_repo() {
+        let temp_dir = TempDir::new().unwrap();
+        let state_manager = StateManager::new(temp_dir.path().to_path_buf()).unwrap();
+        let service = DefaultSyncService::new(temp_dir.path(), state_manager);
+        let result = service.pull();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_push_fails_no_remote() {
+        let (service, temp_dir) = create_test_service();
+        init_git_repo(temp_dir.path());
+        // Create a commit so the repo is valid
+        std::fs::write(temp_dir.path().join("f.txt"), "data").unwrap();
+        Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "init"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+        // No remote configured → push should fail
+        let result = service.push();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_pull_fails_no_remote() {
+        let (service, temp_dir) = create_test_service();
+        init_git_repo(temp_dir.path());
+        std::fs::write(temp_dir.path().join("f.txt"), "data").unwrap();
+        Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "init"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+        let result = service.pull();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_status_not_a_repo_returns_not_a_repo() {
+        let temp_dir = TempDir::new().unwrap();
+        let state_manager = StateManager::new(temp_dir.path().to_path_buf()).unwrap();
+        let service = DefaultSyncService::new(temp_dir.path(), state_manager);
+        let info = service.status().unwrap();
+        assert_eq!(info.status, SyncStatus::NotARepo);
+    }
+
+    #[test]
+    fn test_stash_fails_not_a_repo() {
+        let temp_dir = TempDir::new().unwrap();
+        let state_manager = StateManager::new(temp_dir.path().to_path_buf()).unwrap();
+        let service = DefaultSyncService::new(temp_dir.path(), state_manager);
+        let result = service.stash();
+        assert!(result.is_err());
     }
 }

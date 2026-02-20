@@ -139,6 +139,48 @@ impl App {
             return;
         }
 
+        // D-004: GPG key input mode
+        if self.gpg_key_input.is_editing() {
+            match key.code {
+                KeyCode::Esc => {
+                    self.gpg_key_input.exit_edit_mode();
+                    self.set_status("GPG key input cancelled");
+                }
+                KeyCode::Enter => {
+                    let key_id = self.gpg_key_input.value.clone();
+                    self.gpg_key_input.exit_edit_mode();
+                    if !key_id.is_empty() {
+                        self.secrets_add_gpg_key(&key_id);
+                    }
+                }
+                KeyCode::Backspace => self.gpg_key_input.delete(),
+                KeyCode::Char(c) => self.gpg_key_input.insert(c),
+                _ => {}
+            }
+            return;
+        }
+
+        // D-003: Import path input mode
+        if self.import_path_input.is_editing() {
+            match key.code {
+                KeyCode::Esc => {
+                    self.import_path_input.exit_edit_mode();
+                    self.set_status("Import cancelled");
+                }
+                KeyCode::Enter => {
+                    let path = self.import_path_input.value.clone();
+                    self.import_path_input.exit_edit_mode();
+                    if !path.is_empty() {
+                        self.recovery_import(&path);
+                    }
+                }
+                KeyCode::Backspace => self.import_path_input.delete(),
+                KeyCode::Char(c) => self.import_path_input.insert(c),
+                _ => {}
+            }
+            return;
+        }
+
         // View-specific key handling (actions only, falls through for navigation)
         let handled = match self.view {
             View::UpdatePreview => match key.code {
@@ -395,11 +437,13 @@ impl App {
             // Sync view handlers
             View::Sync => match key.code {
                 KeyCode::Char('p') => {
-                    self.sync_push();
+                    // D-006: Confirm before push
+                    self.request_confirm(ConfirmAction::SyncPush);
                     true
                 }
                 KeyCode::Char('f') => {
-                    self.sync_pull();
+                    // D-006: Confirm before pull
+                    self.request_confirm(ConfirmAction::SyncPull);
                     true
                 }
                 KeyCode::Char('s') => {
@@ -435,6 +479,13 @@ impl App {
                     self.set_status("Secrets status refreshed");
                     true
                 }
+                KeyCode::Char('a') => {
+                    // D-004: Add GPG key — prompt via input mode
+                    self.gpg_key_input = crate::wizard::TextInput::new("");
+                    self.gpg_key_input.enter_edit_mode();
+                    self.set_info("Enter GPG key ID, then press Enter:");
+                    true
+                }
                 _ => false,
             },
             // Recovery view handlers
@@ -449,6 +500,13 @@ impl App {
                 }
                 KeyCode::Char('s') => {
                     self.recovery_create_snapshot();
+                    true
+                }
+                KeyCode::Char('i') => {
+                    // D-003: Import recovery — prompt for file path
+                    self.import_path_input = crate::wizard::TextInput::new("");
+                    self.import_path_input.enter_edit_mode();
+                    self.set_info("Enter import file path, then press Enter:");
                     true
                 }
                 _ => false,
@@ -526,8 +584,18 @@ impl App {
             KeyCode::Tab => self.cycle_view_forward(),
             KeyCode::BackTab => self.cycle_view_backward(),
 
-            // Navigation
-            KeyCode::Char('d') => self.navigate(View::Dashboard),
+            // Navigation ('d' is context-sensitive: deactivate in BundleDetail, else Dashboard)
+            KeyCode::Char('d') => {
+                if matches!(self.view, View::BundleDetail) {
+                    // B-006: Deactivate bundle without switching
+                    if let Some(bundle) = self.selected_bundle() {
+                        let id = bundle.id.clone();
+                        self.request_confirm(ConfirmAction::RemoveBundle(id));
+                    }
+                } else {
+                    self.navigate(View::Dashboard);
+                }
+            }
             KeyCode::Char('b') => self.navigate(View::Bundles),
             KeyCode::Char('p') => self.navigate(View::Profiles),
             KeyCode::Char('m') => self.navigate(View::Modules),
@@ -712,9 +780,12 @@ impl App {
                     if self.profile_builder_editing_desc {
                         self.profile_builder_description.push(c);
                     } else {
-                        // Only allow valid identifier chars in name
-                        if c.is_alphanumeric() || c == '-' || c == '_' {
-                            self.profile_builder_name.push(c);
+                        // D-010: Enforce [a-z0-9][a-z0-9-]* pattern
+                        let c_lower = c.to_ascii_lowercase();
+                        if c_lower.is_ascii_lowercase() || c_lower.is_ascii_digit()
+                            || (c == '-' && !self.profile_builder_name.is_empty())
+                        {
+                            self.profile_builder_name.push(c_lower);
                         }
                     }
                 }
@@ -745,7 +816,57 @@ impl App {
                         {
                             self.profile_builder_selected_modules.remove(pos);
                         } else {
-                            self.profile_builder_selected_modules.push(id);
+                            // F-009: Check for conflicts with already-selected modules
+                            let mut conflict_warnings: Vec<String> = Vec::new();
+                            for selected_id in &self.profile_builder_selected_modules {
+                                // Check if the new module conflicts with selected
+                                if module.conflicts_with(selected_id) {
+                                    conflict_warnings.push(format!(
+                                        "'{}' conflicts with '{}'",
+                                        id, selected_id
+                                    ));
+                                }
+                                // Check if selected module conflicts with the new one
+                                if let Some(sel_mod) =
+                                    self.modules.iter().find(|m| m.id == *selected_id)
+                                    && sel_mod.conflicts_with(&id)
+                                {
+                                    conflict_warnings.push(format!(
+                                        "'{}' conflicts with '{}'",
+                                        selected_id, id
+                                    ));
+                                }
+                            }
+                            // Still add (user may choose to override), but show warning
+                            self.profile_builder_selected_modules.push(id.clone());
+                            if !conflict_warnings.is_empty() {
+                                // Deduplicate warnings
+                                conflict_warnings.sort();
+                                conflict_warnings.dedup();
+                                self.set_error(format!(
+                                    "Warning: {}",
+                                    conflict_warnings.join("; ")
+                                ));
+                            } else {
+                                // D-011: Auto-suggest missing dependencies
+                                let missing_deps: Vec<String> = module
+                                    .depends
+                                    .iter()
+                                    .filter(|dep| {
+                                        !self
+                                            .profile_builder_selected_modules
+                                            .contains(dep)
+                                    })
+                                    .cloned()
+                                    .collect();
+                                if !missing_deps.is_empty() {
+                                    self.set_status(format!(
+                                        "Tip: '{}' depends on: {}",
+                                        id,
+                                        missing_deps.join(", ")
+                                    ));
+                                }
+                            }
                         }
                     }
                 }
@@ -776,7 +897,7 @@ impl App {
                     self.navigate(View::Modules);
                 }
                 KeyCode::Tab => {
-                    self.module_creator_active_field = (self.module_creator_active_field + 1) % 3;
+                    self.module_creator_active_field = (self.module_creator_active_field + 1) % 4;
                 }
                 KeyCode::Enter => {
                     if self.module_creator_name.trim().is_empty() {
@@ -798,17 +919,49 @@ impl App {
                 },
                 KeyCode::Char(c) => match self.module_creator_active_field {
                     0 => {
-                        if c.is_alphanumeric() || c == '-' || c == '_' {
-                            self.module_creator_name.push(c);
+                        // D-010: Enforce [a-z0-9][a-z0-9-]* pattern
+                        let c_lower = c.to_ascii_lowercase();
+                        if c_lower.is_ascii_lowercase() || c_lower.is_ascii_digit()
+                            || (c == '-' && !self.module_creator_name.is_empty())
+                        {
+                            self.module_creator_name.push(c_lower);
                         }
                     }
                     1 => {
                         self.module_creator_description.push(c);
                     }
-                    _ => {
+                    2 => {
                         self.module_creator_packages.push(c);
                     }
+                    _ => {
+                        // F-010: Kind field — use left/right or j/k to cycle
+                        // ModuleKind has 6 variants
+                        match c {
+                            'l' | 'j' => {
+                                self.module_creator_kind_index =
+                                    (self.module_creator_kind_index + 1) % 6;
+                            }
+                            'h' | 'k' => {
+                                self.module_creator_kind_index =
+                                    (self.module_creator_kind_index + 5) % 6;
+                            }
+                            _ => {}
+                        }
+                    }
                 },
+                // F-010: Left/Right to cycle kind when kind field is active
+                KeyCode::Left => {
+                    if self.module_creator_active_field == 3 {
+                        self.module_creator_kind_index =
+                            (self.module_creator_kind_index + 5) % 6;
+                    }
+                }
+                KeyCode::Right => {
+                    if self.module_creator_active_field == 3 {
+                        self.module_creator_kind_index =
+                            (self.module_creator_kind_index + 1) % 6;
+                    }
+                }
                 _ => {}
             },
             _ => match key.code {
@@ -1896,7 +2049,24 @@ mod tests {
 
     #[test]
     fn test_doctor_r_refreshes_checks() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Write a minimal state.json so StateManager::new succeeds with a host
+        std::fs::write(
+            tmp.path().join("state.json"),
+            r#"{"current_host":"test-host","active_bundles":{},"active_profiles":{},"active_modules":[],"last_operations":[],"maintenance":{"last_update":null,"last_clean":null,"last_doctor":null,"last_snapshot":null,"last_sync":null}}"#,
+        )
+        .unwrap();
+        // Create a hosts dir with a host file so load_hosts finds it
+        let hosts_dir = tmp.path().join("hosts");
+        std::fs::create_dir_all(&hosts_dir).unwrap();
+        std::fs::write(
+            hosts_dir.join("test-host.toml"),
+            "[host]\nid = \"test-host\"\nname = \"Test\"\n",
+        )
+        .unwrap();
+
         let mut app = App::default();
+        app.config_dir = tmp.path().to_path_buf();
         app.view = View::Doctor;
 
         app.handle_key(create_key_event(KeyCode::Char('r')));
@@ -2103,5 +2273,173 @@ mod tests {
 
         assert!(!app.show_divergence_popup);
         assert!(has_feedback(&app));
+    }
+
+    // ======================================================================
+    // E-010: Wizard handler integration tests
+    // ======================================================================
+
+    #[test]
+    fn test_wizard_welcome_enter_advances() {
+        let mut app = App::default();
+        app.view = View::SetupWizard;
+        app.wizard.step = WizardStep::Welcome;
+
+        app.handle_key(create_key_event(KeyCode::Enter));
+
+        assert_eq!(app.wizard.step, WizardStep::HostSetup);
+    }
+
+    #[test]
+    fn test_wizard_welcome_q_quits() {
+        let mut app = App::default();
+        app.view = View::SetupWizard;
+        app.wizard.step = WizardStep::Welcome;
+
+        app.handle_key(create_key_event(KeyCode::Char('q')));
+
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn test_wizard_welcome_esc_quits() {
+        let mut app = App::default();
+        app.view = View::SetupWizard;
+        app.wizard.step = WizardStep::Welcome;
+
+        app.handle_key(create_key_event(KeyCode::Esc));
+
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn test_wizard_host_setup_e_enters_edit_mode() {
+        let mut app = App::default();
+        app.view = View::SetupWizard;
+        app.wizard.step = WizardStep::HostSetup;
+
+        app.handle_key(create_key_event(KeyCode::Char('e')));
+
+        assert!(app.host_input.is_editing());
+    }
+
+    #[test]
+    fn test_wizard_host_input_typing() {
+        let mut app = App::default();
+        app.view = View::SetupWizard;
+        app.wizard.step = WizardStep::HostSetup;
+        app.host_input.enter_edit_mode();
+
+        // Type "desktop"
+        for c in "desktop".chars() {
+            app.handle_key(create_key_event(KeyCode::Char(c)));
+        }
+
+        assert_eq!(app.host_input.value, "desktop");
+    }
+
+    #[test]
+    fn test_wizard_host_input_enter_confirms() {
+        let mut app = App::default();
+        app.view = View::SetupWizard;
+        app.wizard.step = WizardStep::HostSetup;
+        app.host_input.enter_edit_mode();
+        app.host_input.value = "my-host".to_string();
+
+        app.handle_key(create_key_event(KeyCode::Enter));
+
+        assert_eq!(app.wizard.host_id, "my-host");
+        assert!(!app.host_input.is_editing());
+    }
+
+    #[test]
+    fn test_wizard_host_input_esc_cancels_edit() {
+        let mut app = App::default();
+        app.view = View::SetupWizard;
+        app.wizard.step = WizardStep::HostSetup;
+        app.host_input.enter_edit_mode();
+        app.host_input.value = "typing".to_string();
+
+        app.handle_key(create_key_event(KeyCode::Esc));
+
+        assert!(!app.host_input.is_editing());
+    }
+
+    #[test]
+    fn test_wizard_host_input_backspace_deletes() {
+        let mut app = App::default();
+        app.view = View::SetupWizard;
+        app.wizard.step = WizardStep::HostSetup;
+        app.host_input.enter_edit_mode();
+        app.host_input.value = "abc".to_string();
+        app.host_input.cursor = 3;
+
+        app.handle_key(create_key_event(KeyCode::Backspace));
+
+        assert_eq!(app.host_input.value, "ab");
+    }
+
+    #[test]
+    fn test_wizard_host_setup_backspace_goes_back() {
+        let mut app = App::default();
+        app.view = View::SetupWizard;
+        app.wizard.step = WizardStep::HostSetup;
+
+        app.handle_key(create_key_event(KeyCode::Backspace));
+
+        assert_eq!(app.wizard.step, WizardStep::Welcome);
+    }
+
+    #[test]
+    fn test_wizard_bundle_selection_navigation() {
+        let mut app = App::default();
+        app.view = View::SetupWizard;
+        app.wizard.step = WizardStep::BundleSelection;
+        app.wizard.available_bundles = vec!["hyprland".to_string(), "niri".to_string()];
+        app.wizard.selected_bundle_index = 0;
+
+        app.handle_key(create_key_event(KeyCode::Down));
+        assert_eq!(app.wizard.selected_bundle_index, 1);
+
+        app.handle_key(create_key_event(KeyCode::Up));
+        assert_eq!(app.wizard.selected_bundle_index, 0);
+    }
+
+    #[test]
+    fn test_wizard_bundle_selection_j_k_navigation() {
+        let mut app = App::default();
+        app.view = View::SetupWizard;
+        app.wizard.step = WizardStep::BundleSelection;
+        app.wizard.available_bundles = vec!["a".to_string(), "b".to_string()];
+        app.wizard.selected_bundle_index = 0;
+
+        app.handle_key(create_key_event(KeyCode::Char('j')));
+        assert_eq!(app.wizard.selected_bundle_index, 1);
+
+        app.handle_key(create_key_event(KeyCode::Char('k')));
+        assert_eq!(app.wizard.selected_bundle_index, 0);
+    }
+
+    #[test]
+    fn test_wizard_profile_selection_navigation() {
+        let mut app = App::default();
+        app.view = View::SetupWizard;
+        app.wizard.step = WizardStep::ProfileSelection;
+        app.wizard.available_profiles = vec!["developer".to_string(), "minimal".to_string()];
+        app.wizard.selected_profile_index = 0;
+
+        app.handle_key(create_key_event(KeyCode::Down));
+        assert_eq!(app.wizard.selected_profile_index, 1);
+    }
+
+    #[test]
+    fn test_wizard_confirmation_backspace_goes_back() {
+        let mut app = App::default();
+        app.view = View::SetupWizard;
+        app.wizard.step = WizardStep::Confirmation;
+
+        app.handle_key(create_key_event(KeyCode::Backspace));
+
+        assert_eq!(app.wizard.step, WizardStep::ProfileSelection);
     }
 }

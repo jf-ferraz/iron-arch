@@ -349,6 +349,24 @@ impl WizardState {
             return Err(self.error.clone().unwrap());
         }
 
+        // B-003: Create host TOML file with detected hardware
+        {
+            use iron_core::services::host::{DefaultHostService, HostService};
+            let host_service = DefaultHostService::new(config_dir);
+            // Only create if the host file doesn't already exist
+            if host_service.load_host(&self.host_id).is_err() {
+                if let Err(e) =
+                    host_service.create_from_current(&self.host_id, &self.host_id)
+                {
+                    // Non-fatal: log but continue (host TOML is advisory, not blocking)
+                    self.error = Some(format!(
+                        "Warning: Could not create host config: {:?}",
+                        e
+                    ));
+                }
+            }
+        }
+
         // Activate bundle if selected
         if let Some(bundle_id) = self.selected_bundle() {
             let bundle_service = DefaultBundleService::new(config_dir, state_manager.clone())

@@ -52,9 +52,19 @@ impl DefaultHostService {
         }
     }
 
-    /// Get host file path
+    /// Get host file path (F-001: checks flat file first, then directory convention)
     fn host_path(&self, id: &str) -> PathBuf {
-        self.hosts_dir.join(format!("{}.toml", id))
+        let flat = self.hosts_dir.join(format!("{}.toml", id));
+        if flat.exists() {
+            return flat;
+        }
+        // Fallback: directory convention hosts/<id>/host.toml
+        let dir = self.hosts_dir.join(id).join("host.toml");
+        if dir.exists() {
+            return dir;
+        }
+        // Default to flat convention (for creation)
+        flat
     }
 
     /// Read a file from /sys or /proc
@@ -271,6 +281,7 @@ impl HostService for DefaultHostService {
 
     fn list_hosts(&self) -> IronResult<Vec<Host>> {
         let mut hosts = Vec::new();
+        let mut seen_ids = std::collections::HashSet::new();
 
         if self.hosts_dir.exists() {
             for entry in fs::read_dir(&self.hosts_dir)
@@ -278,12 +289,23 @@ impl HostService for DefaultHostService {
                 .flatten()
                 .flatten()
             {
-                if entry
-                    .path()
+                let path = entry.path();
+                // F-001: Flat file convention (hosts/<id>.toml) — preferred
+                if path
                     .extension()
                     .map(|e| e == "toml")
                     .unwrap_or(false)
-                    && let Some(id) = entry.path().file_stem().and_then(|s| s.to_str())
+                    && let Some(id) = path.file_stem().and_then(|s| s.to_str())
+                    && seen_ids.insert(id.to_string())
+                    && let Ok(host) = self.load_host(id)
+                {
+                    hosts.push(host);
+                }
+                // F-001: Directory convention (hosts/<id>/host.toml) — fallback
+                if path.is_dir()
+                    && path.join("host.toml").exists()
+                    && let Some(id) = path.file_name().and_then(|s| s.to_str())
+                    && seen_ids.insert(id.to_string())
                     && let Ok(host) = self.load_host(id)
                 {
                     hosts.push(host);

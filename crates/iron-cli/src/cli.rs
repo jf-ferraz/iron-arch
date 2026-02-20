@@ -134,7 +134,11 @@ pub enum Commands {
         action: SyncAction,
     },
 
-    /// Secrets management (git-crypt)
+    /// Secrets management (git-crypt).
+    ///
+    /// Manages encrypted secrets using git-crypt. Secrets are stored in the
+    /// secrets/ directory and encrypted at rest. Use 'init' to set up, 'unlock'
+    /// to decrypt, 'link' to symlink to ~/.config, and 'lock' before pushing.
     Secrets {
         #[command(subcommand)]
         action: SecretsAction,
@@ -159,6 +163,14 @@ pub enum Commands {
         /// Remove broken symlinks
         #[arg(long)]
         symlinks: bool,
+
+        /// Vacuum systemd journal logs
+        #[arg(long)]
+        journal: bool,
+
+        /// Remove old application logs
+        #[arg(long)]
+        logs: bool,
 
         /// All cleanup operations
         #[arg(short, long)]
@@ -336,6 +348,20 @@ pub enum ModuleAction {
         #[arg(short, long)]
         yes: bool,
     },
+
+    /// Create a new module scaffold
+    Create {
+        /// Module ID (lowercase, alphanumeric + hyphens)
+        id: String,
+
+        /// Module description
+        #[arg(short = 'D', long)]
+        description: Option<String>,
+
+        /// Module kind (AppConfig, SystemConfig, DevTools, Shell)
+        #[arg(short, long, default_value = "AppConfig")]
+        kind: String,
+    },
 }
 
 /// Host subcommands
@@ -395,6 +421,9 @@ pub enum SecretsAction {
     /// Show secrets status
     Status,
 
+    /// Initialize git-crypt in the repository
+    Init,
+
     /// Unlock encrypted secrets
     Unlock {
         /// GPG key file
@@ -405,7 +434,11 @@ pub enum SecretsAction {
     /// Lock secrets before push
     Lock,
 
-    /// Link secrets to proper locations
+    /// Link secrets to proper locations.
+    ///
+    /// Creates symlinks from the secrets/ directory to their expected system
+    /// locations. Convention: secrets/<module>/<file> → ~/.config/<module>/<file>.
+    /// Files must be unlocked first (iron secrets unlock).
     Link,
 
     /// Add a GPG user key for encryption
@@ -791,6 +824,8 @@ mod tests {
             orphans,
             cache,
             symlinks,
+            journal: _,
+            logs: _,
             all,
         }) = cli.command
         {
