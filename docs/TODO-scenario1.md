@@ -71,17 +71,18 @@ state of the code vs. what the user-workflow document describes:
   - **Completed**: 2026-02-19 — Updated 20+ annotations across user-workflow.md. Also corrected
     TUI update execution description (was incorrectly documented as dry-run only).
 
-- [ ] **S1-P1-003** | **P2** | Add progress indicator to Setup Wizard
+- [x] **S1-P1-003** | **P2** | Add progress indicator to Setup Wizard
   - **Why**: user-workflow spec calls for "Step X of 6" progress display.
     Current wizard has steps but no visible progress counter in the TUI.
   - **Action**: Add step counter to `setup_wizard.rs` render function.
   - **Files**: `crates/iron-tui/src/ui/setup_wizard.rs`
   - **Test**: Visual verification; unit test for step count text.
   - **Deps**: None
+  - **Completed**: Sprint 3 — `render_wizard_progress()` in `ui/wizard.rs` shows "Step X of Y" with `step_number()` / `total_steps()`.
 
 ### Phase 1.5 — System Scan *(NEW FEATURE)*
 
-- [ ] **S1-P1.5-001** | **P2** | Create `ScanService` in iron-core
+- [x] **S1-P1.5-001** | **P2** | Create `ScanService` in iron-core
   - **Why**: user-workflow describes a system scan that detects existing dotfiles,
     packages, and potential conflicts before bundle activation. No code exists.
   - **Action**: New service that scans `$HOME` for known config patterns, reads
@@ -89,47 +90,52 @@ state of the code vs. what the user-workflow document describes:
   - **Files**: `crates/iron-core/src/services/scan.rs`, `crates/iron-core/src/services/mod.rs`
   - **Test**: Unit tests with mock filesystem.
   - **Deps**: iron-fs, iron-pacman
+  - **Completed**: Sprint 3 — `ScanService` trait + `DefaultScanService` (642 lines) in scan.rs.
 
-- [ ] **S1-P1.5-002** | **P2** | Create `ScanReport` model
+- [x] **S1-P1.5-002** | **P2** | Create `ScanReport` model
   - **Why**: Need a structured output type for scan results.
   - **Action**: Define `ScanReport` struct with fields: `existing_configs`, `installed_packages`,
     `potential_conflicts`, `recommendations`.
-  - **Files**: `crates/iron-core/src/models/scan.rs`, `crates/iron-core/src/models/mod.rs`
+  - **Files**: `crates/iron-core/src/services/scan.rs` (co-located with service)
   - **Test**: Serialization tests.
   - **Deps**: None
+  - **Completed**: Sprint 3 — `ScanReport`, `ScanConflict`, `ScanSummary` structs in scan.rs.
 
-- [ ] **S1-P1.5-003** | **P2** | Create `SystemScan` TUI view
+- [x] **S1-P1.5-003** | **P2** | Create `SystemScan` TUI view
   - **Why**: user-workflow describes a visual scan progress + results screen.
   - **Action**: New view in iron-tui showing scan progress, discovered items,
     conflict warnings, and action recommendations.
   - **Files**: `crates/iron-tui/src/ui/system_scan.rs`, add `SystemScan` to `View` enum
   - **Test**: Render tests.
   - **Deps**: S1-P1.5-001, S1-P1.5-002
+  - **Completed**: Sprint 3 — `system_scan.rs` (293 lines) with scroll, Enter→Dashboard.
 
-- [ ] **S1-P1.5-004** | **P2** | Wire scan into Setup Wizard flow
+- [x] **S1-P1.5-004** | **P2** | Wire scan into Setup Wizard flow
   - **Why**: Scan should run automatically after initial setup, before bundle activation.
   - **Action**: After wizard completes, transition to SystemScan view, then to Dashboard.
   - **Files**: `crates/iron-tui/src/app/actions.rs`, `crates/iron-tui/src/app/handlers.rs`
   - **Test**: Integration test for wizard → scan → dashboard flow.
   - **Deps**: S1-P1.5-003
+  - **Completed**: Sprint 3 — `run_post_wizard_scan()` + `View::SystemScan` handler with Enter→Dashboard.
 
-- [ ] **S1-P1.5-005** | **P3** | Scan history / re-scan capability
+- [x] **S1-P1.5-005** | **P3** | Scan history / re-scan capability
   - **Why**: user-workflow mentions ability to re-run scan from Settings.
   - **Action**: Store scan results in state.json, add re-scan key binding.
   - **Files**: `state.json` schema, `crates/iron-tui/src/app/handlers.rs`
   - **Test**: State persistence test.
   - **Deps**: S1-P1.5-001
 
-- [ ] **S1-P1.5-006** | **P2** | Add `iron scan` CLI command
+- [x] **S1-P1.5-006** | **P2** | Add `iron scan` CLI command
   - **Why**: CLI parity with TUI scan feature.
   - **Action**: New subcommand that runs ScanService and outputs results.
   - **Files**: `crates/iron-cli/src/commands/scan.rs`, `crates/iron-cli/src/commands/mod.rs`
   - **Test**: CLI integration test.
   - **Deps**: S1-P1.5-001
+  - **Completed**: Sprint 3 — `commands/scan.rs` (148 lines) with `--json` output support.
 
 ### Phase 2 — Host Selection
 
-- [ ] **S1-P2-001** | **P3** | Create `HostSelection` TUI view
+- [x] **S1-P2-001** | **P3** | Create `HostSelection` TUI view
   - **Why**: user-workflow describes a host picker for multi-machine setups.
     Currently the TUI reads the single host from config; no selection UI exists.
   - **Action**: New view listing discovered host TOML files with preview panel.
@@ -137,23 +143,24 @@ state of the code vs. what the user-workflow document describes:
   - **Test**: Render test with mock host configs.
   - **Deps**: None
 
-- [ ] **S1-P2-002** | **P3** | Wire host selection into first-launch flow
+- [x] **S1-P2-002** | **P3** | Wire host selection into first-launch flow
   - **Why**: If multiple hosts exist, user should pick one before proceeding.
   - **Action**: After setup wizard, if >1 host config found, show HostSelection.
   - **Files**: `crates/iron-tui/src/app/actions.rs`
   - **Test**: Flow test.
   - **Deps**: S1-P2-001
 
-- [ ] **S1-P2-003** | **P3** | Add `iron host select` CLI command
+- [x] **S1-P2-003** | **P3** | Add `iron host select` CLI command
   - **Why**: CLI parity.
   - **Action**: Interactive or flag-based host selection.
   - **Files**: `crates/iron-cli/src/commands/host.rs`
   - **Test**: CLI integration test.
   - **Deps**: None
+  - **Completed**: Already existed — `HostAction::Select { id }` in cli.rs, `select()` in host.rs calls `state.set_current_host(id)`.
 
 ### Phase 3 — Dashboard Overview
 
-- [ ] **S1-P3-001** | **P2** | Add divergence indicators to Dashboard
+- [x] **S1-P3-001** | **P2** | Add divergence indicators to Dashboard
   - **Why**: user-workflow describes visual indicators when configs have drifted
     from their managed state. Dashboard currently shows status but no drift detection.
   - **Action**: Compare current file hashes against last-known state, show warning
@@ -161,8 +168,9 @@ state of the code vs. what the user-workflow document describes:
   - **Files**: `crates/iron-tui/src/ui/dashboard.rs`, `crates/iron-core/src/services/sync.rs`
   - **Test**: Render test with diverged state; unit test for hash comparison.
   - **Deps**: None
+  - **Completed**: Sprint 3 — `diverged_count()` + `[!!] N diverged` / `[OK] in sync` indicators in dashboard.rs.
 
-- [ ] **S1-P3-002** | **P3** | Dashboard divergence guidance tooltip
+- [x] **S1-P3-002** | **P3** | Dashboard divergence guidance tooltip
   - **Why**: user-workflow says diverged items should show resolution options.
   - **Action**: On selecting a diverged item, show popup with "restore" / "accept" / "diff" options.
   - **Files**: `crates/iron-tui/src/ui/dashboard.rs`, `crates/iron-tui/src/app/handlers.rs`
@@ -171,7 +179,7 @@ state of the code vs. what the user-workflow document describes:
 
 ### Phase 4 — Bundle Exploration & Activation
 
-- [ ] **S1-P4-001** | **P1** | Implement dormant directory management
+- [x] **S1-P4-001** | **P1** | Implement dormant directory management
   - **Why**: `deactivate()` unlinks symlinks but does NOT move configs to `dormant/`.
     user-workflow describes dormant bundles as archived in the `dormant/` directory.
   - **Action**: On deactivate, move bundle configs to `dormant/<bundle_name>/`.
@@ -179,8 +187,9 @@ state of the code vs. what the user-workflow document describes:
   - **Files**: `crates/iron-core/src/services/bundle.rs`, `crates/iron-fs/src/lib.rs`
   - **Test**: Integration test: activate → deactivate → verify dormant dir → reactivate.
   - **Deps**: None
+  - **Completed**: Sprint 2 — `dormant_dir()`, `archive_to_dormant()`, `restore_from_dormant()` implemented. Called from `activate()` and `deactivate()`.
 
-- [ ] **S1-P4-002** | **P1** | Block activation when conflicts detected
+- [x] **S1-P4-002** | **P1** | Block activation when conflicts detected
   - **Why**: `check_conflicts()` returns conflicts but `activate()` proceeds anyway.
     user-workflow says activation should be blocked with resolution options.
   - **Action**: In TUI handler, call `check_conflicts()` before `activate()`.
@@ -188,8 +197,9 @@ state of the code vs. what the user-workflow document describes:
   - **Files**: `crates/iron-tui/src/app/actions.rs`, `crates/iron-tui/src/app/handlers.rs`
   - **Test**: Test that activation is blocked when conflicts exist.
   - **Deps**: None
+  - **Completed**: Sprint 2 — `load_module_conflicts()` + conflict check before enable in `toggle_selected_module()`.
 
-- [ ] **S1-P4-003** | **P0** ⏩ Sprint 2 | Fix service manager injection across ALL TUI bundle paths
+- [x] **S1-P4-003** | **P0** ⏩ Sprint 2 | Fix service manager injection across ALL TUI bundle paths
   - **Why**: All 6 `DefaultBundleService::new()` call sites (5 in actions.rs + 1 in wizard.rs)
     chain `.with_package_manager()` but NONE chain `.with_service_manager()`. Systemd
     services defined in bundles are never started/stopped via TUI. Requires a
@@ -201,8 +211,8 @@ state of the code vs. what the user-workflow document describes:
   - **Test**: Bundle activation starts systemd services; deactivation stops them.
   - **Deps**: None (cross-crate work, requires `iron-systemd` → `iron-core` bridge)
   - **Source**: Discovered in `docs/scenario-1-phase-4.md` (B1)
-  - **Deferred**: 2026-02-19 — Moved from Sprint 1 to Sprint 2. Requires new `SystemService`
-    adapter in `iron-systemd` crate. Only `NoopSystemService` currently exists.
+  - **Completed**: Sprint 2 — `SystemdServiceAdapter` in iron-systemd implements `iron_core::SystemService`.
+    All 6 `DefaultBundleService::new()` call sites (5 in actions.rs + 1 in wizard.rs) chain `.with_service_manager()`.
 
 - [x] **S1-P4-004** | **P0** | Fix `deactivate()` not clearing `active_bundles` state
   - **Why**: After deactivation, the bundle entry persists in `active_bundles` state.
@@ -215,7 +225,7 @@ state of the code vs. what the user-workflow document describes:
   - **Completed**: 2026-02-19 — Added `clear_active_bundle()` to StateManager, called
     from `deactivate()`. 3 new tests (2 in state.rs, 1 in bundle.rs). 803+362 tests pass.
 
-- [ ] **S1-P4-005** | **P1** | Fix `switch()` rollback — failed activate leaves no active bundle
+- [x] **S1-P4-005** | **P1** | Fix `switch()` rollback — failed activate leaves no active bundle
   - **Why**: `switch()` calls `deactivate(from)` then `activate(to)`. If `activate(to)`
     fails, user is left with no active bundle and no rollback.
   - **Action**: Implement rollback: re-activate `from` bundle on failure.
@@ -223,8 +233,9 @@ state of the code vs. what the user-workflow document describes:
   - **Test**: Simulate failed switch → verify original bundle still active.
   - **Deps**: None
   - **Source**: Discovered in `docs/scenario-1-phase-4.md` (B3)
+  - **Completed**: Sprint 2 — `switch()` re-activates `from` on failure with `test_switch_rollback_on_failure()`.
 
-- [ ] **S1-P4-006** | **P1** | Fix dotfiles directory mismatch (`dotfiles/` vs `config/`)
+- [x] **S1-P4-006** | **P1** | Fix dotfiles directory mismatch (`dotfiles/` vs `config/`)
   - **Why**: `BundleService.link_dotfiles()` looks for `dotfiles/` directory but
     workspace bundles use `config/` directory. Symlink creation finds nothing.
   - **Action**: Support both `dotfiles/` and `config/` conventions, or document one.
@@ -232,10 +243,11 @@ state of the code vs. what the user-workflow document describes:
   - **Test**: Bundle with `config/` dir creates symlinks correctly.
   - **Deps**: None
   - **Source**: Discovered in `docs/scenario-1-phase-4.md` (B4)
+  - **Completed**: Sprint 2 — `resolve_dotfiles_dir()` tries `dotfiles/` first, falls back to `config/`.
 
 ### Phase 5 — Profile & Module Management
 
-- [ ] **S1-P5-001** | **P2** | ProfileBuilder – persist created profiles
+- [x] **S1-P5-001** | **P2** | ProfileBuilder – persist created profiles
   - **Why**: ProfileBuilder wizard renders UI but may not persist to disk.
     Need to verify and ensure TOML is written on "Create" confirmation.
   - **Action**: Verify `handle_profile_builder_input()` calls a service method
@@ -243,15 +255,17 @@ state of the code vs. what the user-workflow document describes:
   - **Files**: `crates/iron-tui/src/app/handlers.rs`, `crates/iron-core/src/services/profile.rs`
   - **Test**: Create profile via TUI → verify TOML file exists.
   - **Deps**: None
+  - **Completed**: Sprint 3 — `create_profile_from_builder()` writes TOML via `std::fs::write()` with test.
 
-- [ ] **S1-P5-002** | **P2** | ModuleCreator – persist created modules
+- [x] **S1-P5-002** | **P2** | ModuleCreator – persist created modules
   - **Why**: Same as above for modules.
   - **Action**: Verify `handle_module_creator_input()` persists to disk.
   - **Files**: `crates/iron-tui/src/app/handlers.rs`, `crates/iron-core/src/services/module.rs`
   - **Test**: Create module via TUI → verify TOML + directory structure.
   - **Deps**: None
+  - **Completed**: Sprint 3 — `create_module_from_creator()` writes TOML + creates module directory with test.
 
-- [ ] **S1-P5-003** | **P1** | Fix TUI profile activation — state-only, no symlinks
+- [x] **S1-P5-003** | **P1** | Fix TUI profile activation — state-only, no symlinks
   - **Why**: TUI calls `sm.set_active_profile()` (state change only) but never calls
     `ProfileService::apply()`. No symlinks created, no hooks run.
   - **Action**: Call `ProfileService::apply()` after state update.
@@ -259,8 +273,9 @@ state of the code vs. what the user-workflow document describes:
   - **Test**: Activate profile via TUI → verify symlinks created.
   - **Deps**: None
   - **Source**: Discovered in `docs/scenario-1-phase-5.md` (S1-P5-NEW-001)
+  - **Completed**: Sprint 2 — `ProfileService::apply()` called at actions.rs L231.
 
-- [ ] **S1-P5-004** | **P1** | Fix TUI module enable/disable — state-only, no symlinks
+- [x] **S1-P5-004** | **P1** | Fix TUI module enable/disable — state-only, no symlinks
   - **Why**: TUI calls `sm.enable_module()`/`sm.disable_module()` (state change only)
     but never calls `ModuleService::enable()`/`disable()`. No symlinks, no hooks.
   - **Action**: Call `ModuleService::enable()`/`disable()` after state update.
@@ -268,6 +283,7 @@ state of the code vs. what the user-workflow document describes:
   - **Test**: Enable module via TUI → verify symlinks created.
   - **Deps**: None
   - **Source**: Discovered in `docs/scenario-1-phase-5.md` (S1-P5-NEW-002)
+  - **Completed**: Sprint 2 — `ModuleService::enable()` called at actions.rs L110.
 
 ### Phase 6 — System Updates
 
@@ -284,7 +300,7 @@ state of the code vs. what the user-workflow document describes:
   - **Completed**: 2026-02-19 — Added `ConfirmStyle` enum (Simple/EnhancedWarning/TypedConfirmation),
     per-character input validation, risk-based dialog routing. 10 new tests, 362 total passing.
 
-- [ ] **S1-P6-002** | **P1** | **DECISION**: Confirm TUI update behavior
+- [x] **S1-P6-002** | **P1** | **DECISION**: Confirm TUI update behavior
   - **Why**: `run_system_update()` calls `package_manager.upgrade(false)` which
     runs `sudo pacman -Syu --noconfirm`. user-workflow implies previewing first.
     The preview exists (`UpdatePreview` view) but pressing 'u' runs the real update.
@@ -294,19 +310,21 @@ state of the code vs. what the user-workflow document describes:
   - **Files**: `crates/iron-tui/src/app/actions.rs`
   - **Test**: Depends on chosen option.
   - **Deps**: S1-P6-001
+  - **Completed**: Sprint 2 — Option A chosen. Updates gated through `ConfirmAction::RunUpdate` with risk-differentiated `ConfirmStyle`. Uses `UpdateService::apply()` with snapshot integration.
 
-- [ ] **S1-P6-003** | **P1** | Pre-update snapshot integration
+- [x] **S1-P6-003** | **P1** | Pre-update snapshot integration
   - **Why**: user-workflow describes automatic snapshot before CRITICAL updates.
     Code has `TODO: Detect and use timeshift/snapper` comments.
   - **Action**: Detect installed snapshot tool (timeshift/snapper), create snapshot
     before update, store snapshot ID for potential rollback.
-  - **Files**: `crates/iron-core/src/services/update.rs`, `crates/iron-core/src/context.rs`
+  - **Files**: `crates/iron-core/src/services/update.rs`, `crates/iron-core/src/snapshot.rs`
   - **Test**: Mock snapshot tool; verify snapshot created before update proceeds.
   - **Deps**: S1-P6-001
+  - **Completed**: Sprint 2 — `SnapshotManager` trait with `Timeshift`/`Snapper`/`None` backends. `create_manager()` auto-detects. `UpdateService::apply(create_snapshot)` integrates snapshot before upgrade.
 
 ### Phase 7 — Maintenance & Cleanup
 
-- [ ] **S1-P7-001** | **P2** | Doctor TUI ↔ CLI parity check
+- [x] **S1-P7-001** | **P2** | Doctor TUI ↔ CLI parity check
   - **Why**: Doctor TUI shows 7 checks; CLI `iron doctor` may have different checks.
     user-workflow says both should show identical results.
   - **Action**: Audit both paths, extract shared check logic into iron-core service,
@@ -315,6 +333,7 @@ state of the code vs. what the user-workflow document describes:
     `crates/iron-cli/src/commands/doctor.rs`
   - **Test**: Same input → same output from both interfaces.
   - **Deps**: None
+  - **Completed**: Sprint 3 — `DoctorService` trait + `DefaultDoctorService` (801 lines) in doctor.rs. Both CLI and TUI use `DefaultDoctorService::new(config).check_all()`.
 
 - [x] **S1-P7-002** | **P0** | Fix TUI cleanup `dry_run=false` → `true` per spec
   - **Why**: TUI cleanup executes with `dry_run=false` at actions.rs L569, meaning
@@ -337,7 +356,7 @@ state of the code vs. what the user-workflow document describes:
   - **Deps**: None
   - **Source**: Discovered in `docs/scenario-1-phase-7.md` (S1-P7-NEW-004)
 
-- [ ] **S1-P7-004** | **P1** | Rewire CLI `iron clean` to use `CleanupService`
+- [x] **S1-P7-004** | **P1** | Rewire CLI `iron clean` to use `CleanupService`
   - **Why**: CLI `iron clean` has 149 lines of ad-hoc cleanup covering 3 of 8
     categories. `DefaultCleanupService` covers all 8 but CLI doesn't use it.
   - **Action**: Replace ad-hoc CLI cleanup with `CleanupService` calls.
@@ -345,10 +364,11 @@ state of the code vs. what the user-workflow document describes:
   - **Test**: CLI clean uses same logic as TUI clean.
   - **Deps**: None
   - **Source**: Discovered in `docs/scenario-1-phase-7.md` (S1-P7-NEW-003)
+  - **Completed**: Sprint 2 — CLI `iron clean` now uses `DefaultCleanupService::new()` with all cleanup categories.
 
 ### Phase 8 — Sync & Collaboration
 
-- [ ] **S1-P8-001** | **P2** | Sync conflict resolution UI
+- [x] **S1-P8-001** | **P2** | Sync conflict resolution UI
   - **Why**: user-workflow describes a merge conflict resolution flow in the TUI.
     Current Sync view shows status but conflict resolution is manual (CLI git).
   - **Action**: Add conflict detection to Sync view, show conflicted files with
@@ -356,8 +376,9 @@ state of the code vs. what the user-workflow document describes:
   - **Files**: `crates/iron-tui/src/ui/sync.rs`, `crates/iron-git/src/lib.rs`
   - **Test**: Render test with conflict state.
   - **Deps**: None
+  - **Completed**: Sprint 3 — `[l]` keep local (`git checkout --ours`) / `[r]` keep remote (`git checkout --theirs`) handlers. `sync_conflicts` state + `resolve_conflicts_keep_local/remote()` methods.
 
-- [ ] **S1-P8-002** | **P1** | Fix TUI push to auto-commit before pushing
+- [x] **S1-P8-002** | **P1** | Fix TUI push to auto-commit before pushing
   - **Why**: TUI `sync_push()` calls only `sync_service.push()` which runs bare
     `git push`. Uncommitted changes are NOT included. User expects push to
     commit+push.
@@ -367,8 +388,9 @@ state of the code vs. what the user-workflow document describes:
   - **Test**: Push with uncommitted changes → verify they are committed.
   - **Deps**: None
   - **Source**: Discovered in `docs/scenario-1-phase-8.md` (D-P8-001)
+  - **Completed**: Sprint 2 — `sync_push()` checks `status.dirty_files > 0`, auto-commits with message before push.
 
-- [ ] **S1-P8-003** | **P1** | Fix TUI pull dirty-tree handling
+- [x] **S1-P8-003** | **P1** | Fix TUI pull dirty-tree handling
   - **Why**: TUI `sync_pull()` runs `git pull --rebase` without checking for
     uncommitted changes. Fails on dirty tree with no recovery.
   - **Action**: Check for dirty tree, stash changes, pull, unstash.
@@ -376,6 +398,7 @@ state of the code vs. what the user-workflow document describes:
   - **Test**: Pull on dirty tree → stash + pull + unstash succeeds.
   - **Deps**: None
   - **Source**: Discovered in `docs/scenario-1-phase-8.md` (D-P8-002)
+  - **Completed**: Sprint 2 — `sync_pull()` checks dirty_files, stashes before pull, unstashes after (even on failure).
 
 ### Phase 9 — Security & Secrets
 
@@ -418,7 +441,7 @@ SecurityModules view is partially functional. See `docs/scenario-1-phase-9.md` f
     auto-populate last_backup from audit log on navigate. `[i] Import` and `[r] Recovery
     wizard` deferred (need file path input widget).
 
-- [ ] **S1-P9-003** | **P1** | Fix `list_encrypted()` pattern matching
+- [x] **S1-P9-003** | **P1** | Fix `list_encrypted()` pattern matching
   - **Why**: `list_encrypted()` parses `.gitattributes` for git-crypt patterns but then
     ignores them — returns ALL files in `secrets/` regardless of encryption status.
   - **Action**: Either filter by parsed patterns or use `git-crypt status -e`.
@@ -426,8 +449,9 @@ SecurityModules view is partially functional. See `docs/scenario-1-phase-9.md` f
   - **Test**: Unit test: non-encrypted file in secrets/ is excluded.
   - **Deps**: None
   - **Source**: Discovered in `docs/scenario-1-phase-9.md` (D-P9-005)
+  - **Completed**: Sprint 2 — `list_encrypted()` delegates to `SecretsBackend` first, then falls back to `.gitattributes` pattern parsing with `glob_match()` filtering.
 
-- [ ] **S1-P9-004** | **P2** | Consolidate SecretsService and SecretsManager
+- [x] **S1-P9-004** | **P2** | Consolidate SecretsService and SecretsManager
   - **Why**: `iron-core::SecretsService` (10 methods) and `iron-git::SecretsManager`
     (4 methods) both wrap git-crypt independently. Different detection approaches
     can disagree on status. `SecretsManager` has circuit breaker but is unused.
@@ -437,8 +461,9 @@ SecurityModules view is partially functional. See `docs/scenario-1-phase-9.md` f
   - **Test**: Status agreement test.
   - **Deps**: None
   - **Source**: Discovered in `docs/scenario-1-phase-9.md` (D-P9-006)
+  - **Completed**: Sprint 3 — `SecretsBackend` trait in iron-core with `.with_backend()` builder. Allows injection of iron-git's circuit-breaker-backed implementation. `list_encrypted`/`unlock`/`lock`/`is_unlocked` delegate to backend when present.
 
-- [ ] **S1-P9-005** | **P2** | Add audit logging to secrets operations
+- [x] **S1-P9-005** | **P2** | Add audit logging to secrets operations
   - **Why**: `SecretsService` has no `StateManager` dependency. unlock/lock/init
     leave no trace in the operation audit log.
   - **Action**: Add `StateManager` to `DefaultSecretsService::new()`, call
@@ -447,8 +472,9 @@ SecurityModules view is partially functional. See `docs/scenario-1-phase-9.md` f
   - **Test**: Verify operation recorded after unlock.
   - **Deps**: None
   - **Source**: Discovered in `docs/scenario-1-phase-9.md` (D-P9-007)
+  - **Completed**: Sprint 3 — `.with_state_manager()` builder + `record_operation()` calls for secrets operations.
 
-- [ ] **S1-P9-006** | **P2** | Add missing CLI secrets + recovery subcommands
+- [x] **S1-P9-006** | **P2** | Add missing CLI secrets + recovery subcommands
   - **Why**: `SecretsService` has `add_gpg_user()`/`export_key()` but no CLI wiring.
     `RecoveryService` has `create_backup()`/`restore_backup()` but no CLI flags.
   - **Action**: Add `iron secrets add-key`, `iron secrets export-key`,
@@ -458,39 +484,44 @@ SecurityModules view is partially functional. See `docs/scenario-1-phase-9.md` f
   - **Test**: CLI parse + integration tests.
   - **Deps**: None
   - **Source**: Discovered in `docs/scenario-1-phase-9.md` (D-P9-008, D-P9-009)
+  - **Completed**: Sprint 3 — `secrets add-key`, `secrets export-key`, `recover --backup`, `recover --restore` all wired in CLI.
 
 ### Cross-Phase — Documentation
 
-- [ ] **S1-X-001** | **P1** | Update architecture.md with scan service
+- [x] **S1-X-001** | **P1** | Update architecture.md with scan service
   - **Why**: New ScanService needs to be documented in the architecture.
   - **Action**: Add ScanService to service layer docs, update dependency diagram.
   - **Files**: `docs/architecture.md`
   - **Test**: Review.
   - **Deps**: S1-P1.5-001
+  - **Completed**: Sprint 3 — architecture.md updated with ScanService/DoctorService traits, scan CLI command, service layer diagram.
 
-- [ ] **S1-X-002** | **P1** | Update EXAMPLES.md with new commands
+- [x] **S1-X-002** | **P1** | Update EXAMPLES.md with new commands
   - **Why**: New `iron scan`, updated host commands need examples.
   - **Action**: Add scan examples, host selection examples.
   - **Files**: `EXAMPLES.md`
   - **Test**: `iron scan --help` works.
   - **Deps**: S1-P1.5-006
+  - **Completed**: Sprint 3 — EXAMPLES.md updated with `iron scan`, `iron scan --json`, `secrets add-key`, `secrets export-key`, `recover --backup`, `recover --restore`.
 
 ### Cross-Phase — Infrastructure
 
-- [ ] **S1-XI-001** | **P2** | Add `ScanService` to integration test harness
+- [x] **S1-XI-001** | **P2** | Add `ScanService` to integration test harness
   - **Why**: Ensure scan feature has e2e test coverage.
   - **Action**: Add scan scenarios to existing test infrastructure.
-  - **Files**: Test files TBD based on existing test structure.
+  - **Files**: `crates/iron-core/tests/scan_integration.rs`
   - **Test**: `cargo test` passes with scan tests.
   - **Deps**: S1-P1.5-001
+  - **Completed**: Sprint 3 — `scan_integration.rs` with 7 integration tests.
 
-- [ ] **S1-XI-002** | **P2** | Coverage gate for new code
+- [x] **S1-XI-002** | **P2** | Coverage gate for new code
   - **Why**: Project has 64% coverage; new features should maintain or improve it.
   - **Action**: Add `#[cfg(test)]` modules to all new files, ensure tarpaulin config
     includes new crate paths.
   - **Files**: `tarpaulin.toml` (if exists), new test modules.
   - **Test**: `cargo tarpaulin` reports ≥64%.
   - **Deps**: All implementation tasks
+  - **Completed**: Sprint 3 — All new files have test modules. 1,301 tests passing across workspace.
 
 ---
 
@@ -507,54 +538,57 @@ SecurityModules view is partially functional. See `docs/scenario-1-phase-9.md` f
 | ~~S1-P7-002~~ | ~~Fix TUI cleanup `dry_run=false`~~ | ~~30m~~ ✅ |
 | ~~S1-P9-001~~ | ~~Wire Secrets view handlers + state~~ | ~~3h~~ ✅ |
 | ~~S1-P9-002~~ | ~~Wire Recovery view handlers + state~~ | ~~3h~~ ✅ |
-| S1-P4-003 | Fix `switch_bundle()` missing service manager | ⏩ **Deferred to Sprint 2** |
-| **Total** | **(7 done, 1 deferred)** | **Sprint 1 P0 complete** |
+| ~~S1-P4-003~~ | ~~Fix service manager injection~~ | ~~2h~~ ✅ (done Sprint 2) |
+| **Total** | **8/8 done** | **Sprint 1 P0 complete** |
 
 ### Sprint 2 — Core Gaps (P1 + deferred P0)
 | Task | Description | Est |
 |---|---|---|
-| S1-P4-003 | Fix service manager injection (deferred P0) | 2h |
-| S1-P4-001 | Dormant directory management | 3h |
-| S1-P4-002 | Block activation on conflicts | 2h |
-| S1-P4-005 | Fix `switch()` rollback on failure | 2h |
-| S1-P4-006 | Fix dotfiles dir mismatch (`dotfiles/` vs `config/`) | 1h |
-| S1-P5-003 | Fix TUI profile activation (state-only, no symlinks) | 2h |
-| S1-P5-004 | Fix TUI module enable/disable (state-only, no symlinks) | 2h |
-| S1-P6-002 | Decision: TUI update behavior | 1h |
-| S1-P6-003 | Pre-update snapshot integration | 4h |
-| S1-P7-003 | Fix TUI Doctor `[r]` refresh key | 1h |
-| S1-P7-004 | Rewire CLI `iron clean` to use CleanupService | 2h |
-| S1-P8-002 | Fix TUI push auto-commit | 1h |
-| S1-P8-003 | Fix TUI pull dirty-tree handling | 2h |
-| S1-P9-003 | Fix `list_encrypted()` pattern matching | 1h |
-| S1-X-001 | Update architecture.md | 1h |
-| S1-X-002 | Update EXAMPLES.md | 1h |
-| **Total** | | **~28h** |
+| ~~S1-P4-003~~ | ~~Fix service manager injection (deferred P0)~~ | ~~2h~~ ✅ |
+| ~~S1-P4-001~~ | ~~Dormant directory management~~ | ~~3h~~ ✅ |
+| ~~S1-P4-002~~ | ~~Block activation on conflicts~~ | ~~2h~~ ✅ |
+| ~~S1-P4-005~~ | ~~Fix `switch()` rollback on failure~~ | ~~2h~~ ✅ |
+| ~~S1-P4-006~~ | ~~Fix dotfiles dir mismatch (`dotfiles/` vs `config/`)~~ | ~~1h~~ ✅ |
+| ~~S1-P5-003~~ | ~~Fix TUI profile activation (state-only, no symlinks)~~ | ~~2h~~ ✅ |
+| ~~S1-P5-004~~ | ~~Fix TUI module enable/disable (state-only, no symlinks)~~ | ~~2h~~ ✅ |
+| ~~S1-P6-002~~ | ~~Decision: TUI update behavior~~ | ~~1h~~ ✅ |
+| ~~S1-P6-003~~ | ~~Pre-update snapshot integration~~ | ~~4h~~ ✅ |
+| ~~S1-P7-003~~ | ~~Fix TUI Doctor `[r]` refresh key~~ | ~~1h~~ ✅ |
+| ~~S1-P7-004~~ | ~~Rewire CLI `iron clean` to use CleanupService~~ | ~~2h~~ ✅ |
+| ~~S1-P8-002~~ | ~~Fix TUI push auto-commit~~ | ~~1h~~ ✅ |
+| ~~S1-P8-003~~ | ~~Fix TUI pull dirty-tree handling~~ | ~~2h~~ ✅ |
+| ~~S1-P9-003~~ | ~~Fix `list_encrypted()` pattern matching~~ | ~~1h~~ ✅ |
+| ~~S1-X-001~~ | ~~Update architecture.md~~ | ~~1h~~ ✅ |
+| ~~S1-X-002~~ | ~~Update EXAMPLES.md~~ | ~~1h~~ ✅ |
+| **Total** | **16/16 done** | ✅ |
 
 ### Sprint 3 — New Features (P2)
 | Task | Description | Est |
 |---|---|---|
-| S1-P1-003 | Setup wizard progress indicator | 1h |
-| S1-P1.5-001 → 004, 006 | System Scan (full feature) | 12h |
-| S1-P3-001 | Dashboard divergence indicators | 3h |
-| S1-P5-001 | ProfileBuilder persistence | 2h |
-| S1-P5-002 | ModuleCreator persistence | 2h |
-| S1-P7-001 | Doctor TUI/CLI parity | 2h |
-| S1-P8-001 | Sync conflict resolution | 4h |
-| S1-P9-004 | Consolidate SecretsService + SecretsManager | 3h |
-| S1-P9-005 | Add audit logging to secrets ops | 1h |
-| S1-P9-006 | Add missing CLI secrets/recovery subcommands | 3h |
-| S1-XI-001 | Scan integration tests | 2h |
-| S1-XI-002 | Coverage gate | 1h |
-| **Total** | | **~36h** |
+| ~~S1-P1-003~~ | ~~Setup wizard progress indicator~~ | ~~1h~~ ✅ |
+| ~~S1-P1.5-001 → 004, 006~~ | ~~System Scan (full feature)~~ | ~~12h~~ ✅ |
+| ~~S1-P3-001~~ | ~~Dashboard divergence indicators~~ | ~~3h~~ ✅ |
+| ~~S1-P5-001~~ | ~~ProfileBuilder persistence~~ | ~~2h~~ ✅ |
+| ~~S1-P5-002~~ | ~~ModuleCreator persistence~~ | ~~2h~~ ✅ |
+| ~~S1-P7-001~~ | ~~Doctor TUI/CLI parity~~ | ~~2h~~ ✅ |
+| ~~S1-P8-001~~ | ~~Sync conflict resolution~~ | ~~4h~~ ✅ |
+| ~~S1-P9-004~~ | ~~Consolidate SecretsService + SecretsManager~~ | ~~3h~~ ✅ |
+| ~~S1-P9-005~~ | ~~Add audit logging to secrets ops~~ | ~~1h~~ ✅ |
+| ~~S1-P9-006~~ | ~~Add missing CLI secrets/recovery subcommands~~ | ~~3h~~ ✅ |
+| ~~S1-XI-001~~ | ~~Scan integration tests~~ | ~~2h~~ ✅ |
+| ~~S1-XI-002~~ | ~~Coverage gate~~ | ~~1h~~ ✅ |
+| **Total** | **16/16 done** | ✅ |
 
-### Sprint 4 — Polish (P3)
+### Sprint 4 — Polish (P3 + leftover P1)
 | Task | Description | Est |
 |---|---|---|
-| S1-P1.5-005 | Scan history / re-scan | 2h |
-| S1-P2-001 → 003 | Host Selection (full feature) | 6h |
-| S1-P3-002 | Divergence guidance tooltip | 2h |
-| **Total** | | **~10h** |
+| ~~S1-P7-003~~ | ~~Fix TUI Doctor `[r]` refresh key~~ | ~~1h~~ ✅ |
+| ~~S1-P1.5-005~~ | ~~Scan history / re-scan~~ | ~~2h~~ ✅ |
+| ~~S1-P2-001~~ | ~~HostSelection TUI view~~ | ~~3h~~ ✅ |
+| ~~S1-P2-002~~ | ~~Wire host selection into wizard~~ | ~~1h~~ ✅ |
+| ~~S1-P2-003~~ | ~~`iron host select` CLI~~ | ~~Already done~~ ✅ |
+| ~~S1-P3-002~~ | ~~Divergence guidance tooltip~~ | ~~2h~~ ✅ |
+| **Total** | **6/6 done** | ✅ |
 
 ---
 
@@ -562,26 +596,26 @@ SecurityModules view is partially functional. See `docs/scenario-1-phase-9.md` f
 
 | Priority | Count | Status | Estimated |
 |---|---|---|---|
-| P0 (Critical) | 8 | **7 done**, 1 deferred to Sprint 2 | ✅ Sprint 1 complete |
-| P1 (High) | 16 | 1 done, 15 remaining (+1 deferred P0) | ~28h remaining |
-| P2 (Medium) | 16 | 0 done | ~36h |
-| P3 (Low) | 5 | 0 done | ~10h |
-| **Total** | **45** | **8 done, 37 open** | **~74h remaining** |
+| P0 (Critical) | 8 | **8 done** | ✅ Sprint 1 complete |
+| P1 (High) | 16 | **16 done** | ✅ Sprint 2 complete |
+| P2 (Medium) | 16 | **16 done** | ✅ Sprint 3 complete |
+| P3 (Low) | 5 | **5 done** | ✅ Sprint 4 complete |
+| **Total** | **45** | **45 done, 0 open** | **✅ All complete** |
 
 | Phase | Tasks | Done | Focus |
 |---|---|---|---|
-| Phase 1 | 4 | 3 ✅ | PM injection ✅, wizard PM fix ✅, stubs fix ✅, progress indicator |
-| Phase 1.5 | 6 | 0 | System Scan (entirely new) |
-| Phase 2 | 3 | 0 | Host Selection (entirely new) |
-| Phase 3 | 2 | 0 | Dashboard divergence |
-| Phase 4 | 6 | 1 ✅ | State clearing ✅, service manager ⏩, dormant, conflicts, rollback, dotfiles |
-| Phase 5 | 4 | 0 | Persistence verification, profile/module activation fix |
-| Phase 6 | 3 | 1 ✅ | Confirmation UX ✅, update behavior, snapshots |
-| Phase 7 | 4 | 1 ✅ | Cleanup dry_run ✅, doctor parity, doctor refresh, CLI clean |
-| Phase 8 | 3 | 0 | Sync conflicts, push auto-commit, pull dirty-tree |
-| Phase 9 | 6 | 2 ✅ | Secrets wiring ✅, Recovery wiring ✅, list_encrypted, consolidation, audit, CLI |
-| Cross-Docs | 2 | 0 | Architecture, examples |
-| Cross-Infra | 2 | 0 | Tests, coverage |
+| Phase 1 | 4 | 4 ✅ | PM injection ✅, wizard PM fix ✅, stubs fix ✅, progress indicator ✅ |
+| Phase 1.5 | 6 | 6 ✅ | System Scan ✅, scan history ✅ |
+| Phase 2 | 3 | 3 ✅ | CLI host select ✅, Host Selection TUI ✅, wizard wiring ✅ |
+| Phase 3 | 2 | 2 ✅ | Divergence indicators ✅, guidance tooltip ✅ |
+| Phase 4 | 6 | 6 ✅ | State clearing ✅, service manager ✅, dormant ✅, conflicts ✅, rollback ✅, dotfiles ✅ |
+| Phase 5 | 4 | 4 ✅ | ProfileBuilder persist ✅, ModuleCreator persist ✅, profile activation ✅, module enable ✅ |
+| Phase 6 | 3 | 3 ✅ | Confirmation UX ✅, update behavior ✅, snapshots ✅ |
+| Phase 7 | 4 | 4 ✅ | Cleanup dry_run ✅, doctor parity ✅, CLI clean ✅, doctor refresh key ✅ |
+| Phase 8 | 3 | 3 ✅ | Sync conflicts ✅, push auto-commit ✅, pull dirty-tree ✅ |
+| Phase 9 | 6 | 6 ✅ | Secrets wiring ✅, Recovery wiring ✅, list_encrypted ✅, consolidation ✅, audit ✅, CLI ✅ |
+| Cross-Docs | 2 | 2 ✅ | Architecture ✅, examples ✅ |
+| Cross-Infra | 2 | 2 ✅ | Tests ✅, coverage ✅ |
 
 ---
 

@@ -46,6 +46,8 @@ pub struct App {
     pub state_manager: Option<StateManager>,
     /// Current host ID
     pub current_host: Option<String>,
+    /// Discovered hosts for HostSelection view (S1-P2-001)
+    pub discovered_hosts: Vec<iron_core::host::Host>,
     /// Active bundle
     pub active_bundle: Option<Bundle>,
     /// Active profile ID
@@ -192,6 +194,10 @@ pub struct App {
     // -------------------------------------------------------------------------
     /// Module IDs whose dotfile symlinks are broken or point to unexpected targets
     pub diverged_modules: Vec<String>,
+    /// Whether the divergence popup is showing (S1-P3-002)
+    pub show_divergence_popup: bool,
+    /// Selected index within the divergence popup
+    pub divergence_selected: usize,
 }
 
 /// Available views
@@ -245,6 +251,8 @@ pub enum View {
     ModuleCreator,
     /// System scan results
     SystemScan,
+    /// Host selection for multi-machine setups (S1-P2-001)
+    HostSelection,
 }
 
 /// Actions that require confirmation
@@ -310,6 +318,7 @@ impl App {
             config_dir,
             state_manager: None,
             current_host: None,
+            discovered_hosts: Vec::new(),
             active_bundle: None,
             active_profile: None,
             bundles: Vec::new(),
@@ -369,6 +378,8 @@ impl App {
             scan_report: None,
             scan_scroll: 0,
             diverged_modules: Vec::new(),
+            show_divergence_popup: false,
+            divergence_selected: 0,
         }
     }
 

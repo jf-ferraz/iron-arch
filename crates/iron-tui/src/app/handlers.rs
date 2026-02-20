@@ -20,6 +20,53 @@ impl App {
             }
         }
 
+        // Divergence popup (S1-P3-002)
+        if self.show_divergence_popup {
+            match key.code {
+                KeyCode::Esc => {
+                    self.show_divergence_popup = false;
+                }
+                KeyCode::Char('j') | KeyCode::Down => {
+                    let max = self.diverged_modules.len().saturating_sub(1);
+                    if self.divergence_selected < max {
+                        self.divergence_selected += 1;
+                    }
+                }
+                KeyCode::Char('k') | KeyCode::Up => {
+                    self.divergence_selected = self.divergence_selected.saturating_sub(1);
+                }
+                KeyCode::Char('r') => {
+                    if let Some(module_id) = self.diverged_modules.get(self.divergence_selected) {
+                        self.set_status(format!(
+                            "Restore '{}': run `iron sync pull` to reset managed files",
+                            module_id
+                        ));
+                    }
+                    self.show_divergence_popup = false;
+                }
+                KeyCode::Char('a') => {
+                    if let Some(module_id) = self.diverged_modules.get(self.divergence_selected) {
+                        self.set_status(format!(
+                            "Accept '{}': run `iron sync push` to commit current changes",
+                            module_id
+                        ));
+                    }
+                    self.show_divergence_popup = false;
+                }
+                KeyCode::Char('d') => {
+                    if let Some(module_id) = self.diverged_modules.get(self.divergence_selected) {
+                        self.set_status(format!(
+                            "Diff '{}': run `git diff` in config dir to view changes",
+                            module_id
+                        ));
+                    }
+                    self.show_divergence_popup = false;
+                }
+                _ => {}
+            }
+            return;
+        }
+
         // Help overlay
         if self.show_help {
             self.show_help = false;
@@ -339,6 +386,10 @@ impl App {
                     self.navigate(View::SetupWizard);
                     true
                 }
+                KeyCode::Char('s') => {
+                    self.navigate(View::SystemScan);
+                    true
+                }
                 _ => false,
             },
             // Sync view handlers
@@ -408,12 +459,54 @@ impl App {
                     self.navigate(View::Dashboard);
                     true
                 }
+                KeyCode::Char('r') => {
+                    self.rescan_system();
+                    true
+                }
                 KeyCode::Up | KeyCode::Char('k') => {
                     self.scan_scroll = self.scan_scroll.saturating_sub(1);
                     true
                 }
                 KeyCode::Down | KeyCode::Char('j') => {
                     self.scan_scroll = self.scan_scroll.saturating_add(1);
+                    true
+                }
+                _ => false,
+            },
+            // Doctor view handlers (S1-P7-003)
+            View::Doctor => match key.code {
+                KeyCode::Char('r') => {
+                    self.refresh_current_view();
+                    true
+                }
+                _ => false,
+            },
+            // HostSelection view handlers (S1-P2-001)
+            View::HostSelection => match key.code {
+                KeyCode::Enter => {
+                    if let Some(host) = self.discovered_hosts.get(self.selected_index) {
+                        let host_id = host.id.clone();
+                        if let Some(ref sm) = self.state_manager {
+                            let _ = sm.set_current_host(&host_id);
+                            let _ = self.init();
+                            self.set_status(format!("Switched to host '{}'", host_id));
+                        }
+                        self.navigate(View::Dashboard);
+                    }
+                    true
+                }
+                KeyCode::Char('c') => {
+                    self.navigate(View::SetupWizard);
+                    self.init_wizard();
+                    true
+                }
+                _ => false,
+            },
+            // Dashboard divergence tooltip (S1-P3-002)
+            View::Dashboard => match key.code {
+                KeyCode::Char('i') if self.diverged_count() > 0 => {
+                    self.show_divergence_popup = true;
+                    self.divergence_selected = 0;
                     true
                 }
                 _ => false,
@@ -446,6 +539,10 @@ impl App {
             KeyCode::Char('y') => self.navigate(View::Sync),        // Git sync
             KeyCode::Char('S') => self.navigate(View::Secrets),     // Shift+S = Secrets
             KeyCode::Char('R') => self.navigate(View::Recovery),    // Shift+R = Recovery
+            KeyCode::Char('H') => {
+                self.load_hosts();
+                self.navigate(View::HostSelection);
+            }
 
             // List navigation
             KeyCode::Up | KeyCode::Char('k') => self.select_previous(),
@@ -748,6 +845,8 @@ impl App {
             View::SetupWizard => View::Dashboard,
             // New Phase-4 views cycle back to Dashboard
             View::Doctor | View::Secrets | View::Recovery | View::SystemScan => View::Dashboard,
+            // HostSelection cycles back to Dashboard
+            View::HostSelection => View::Dashboard,
             // Wizard sub-views go back to their parent list
             View::ProfileBuilder => View::Profiles,
             View::ModuleCreator => View::Modules,
@@ -777,6 +876,8 @@ impl App {
             View::SetupWizard => View::Dashboard,
             // New Phase-4 views cycle back to Dashboard
             View::Doctor | View::Secrets | View::Recovery | View::SystemScan => View::Dashboard,
+            // HostSelection cycles back to Dashboard
+            View::HostSelection => View::Dashboard,
             // Wizard sub-views go back to their parent list
             View::ProfileBuilder => View::Profiles,
             View::ModuleCreator => View::Modules,
@@ -845,6 +946,7 @@ impl App {
             View::Sync => 0, // No list items in sync view
             View::SetupWizard => self.wizard.available_bundles.len(),
             View::Settings => 8, // Number of setting items
+            View::HostSelection => self.discovered_hosts.len(),
             _ => 0,
         }
     }
@@ -1788,5 +1890,218 @@ mod tests {
         app.handle_key(create_key_event(KeyCode::Char('z')));
 
         assert_eq!(app.view, View::Recovery);
+    }
+
+    // Doctor view handler tests (S1-P7-003)
+
+    #[test]
+    fn test_doctor_r_refreshes_checks() {
+        let mut app = App::default();
+        app.view = View::Doctor;
+
+        app.handle_key(create_key_event(KeyCode::Char('r')));
+
+        // Should stay on Doctor view with status feedback
+        assert_eq!(app.view, View::Doctor);
+        assert!(has_feedback(&app));
+    }
+
+    #[test]
+    fn test_doctor_unhandled_key_stays_on_view() {
+        let mut app = App::default();
+        app.view = View::Doctor;
+
+        // 'z' is not bound in doctor view or globally
+        app.handle_key(create_key_event(KeyCode::Char('z')));
+
+        assert_eq!(app.view, View::Doctor);
+    }
+
+    // SystemScan re-scan handler tests (S1-P1.5-005)
+
+    #[test]
+    fn test_system_scan_r_rescans() {
+        let mut app = App::default();
+        app.view = View::SystemScan;
+
+        app.handle_key(create_key_event(KeyCode::Char('r')));
+
+        // Should stay on SystemScan view with status feedback
+        assert_eq!(app.view, View::SystemScan);
+        assert!(has_feedback(&app));
+    }
+
+    #[test]
+    fn test_settings_s_navigates_to_system_scan() {
+        let mut app = App::default();
+        app.view = View::Settings;
+
+        app.handle_key(create_key_event(KeyCode::Char('s')));
+
+        assert_eq!(app.view, View::SystemScan);
+    }
+
+    // HostSelection view handler tests (S1-P2-001)
+
+    #[test]
+    fn test_host_selection_enter_selects_host() {
+        use iron_core::host::{HardwareSpec, Host};
+
+        let mut app = App::default();
+        app.view = View::HostSelection;
+        app.discovered_hosts = vec![
+            Host {
+                id: "desktop".to_string(),
+                name: "Desktop Workstation".to_string(),
+                description: None,
+                hardware: HardwareSpec::default(),
+                install_params: None,
+                installed_bundles: vec![],
+                active_bundle: None,
+            },
+            Host {
+                id: "laptop".to_string(),
+                name: "Laptop".to_string(),
+                description: None,
+                hardware: HardwareSpec::default(),
+                install_params: None,
+                installed_bundles: vec![],
+                active_bundle: None,
+            },
+        ];
+        app.selected_index = 0;
+
+        app.handle_key(create_key_event(KeyCode::Enter));
+
+        // Should navigate to Dashboard after selection
+        assert_eq!(app.view, View::Dashboard);
+    }
+
+    #[test]
+    fn test_host_selection_c_opens_wizard() {
+        let mut app = App::default();
+        app.view = View::HostSelection;
+
+        app.handle_key(create_key_event(KeyCode::Char('c')));
+
+        assert_eq!(app.view, View::SetupWizard);
+    }
+
+    #[test]
+    fn test_shift_h_navigates_to_host_selection() {
+        let mut app = App::default();
+        app.view = View::Dashboard;
+
+        app.handle_key(create_key_event(KeyCode::Char('H')));
+
+        assert_eq!(app.view, View::HostSelection);
+    }
+
+    #[test]
+    fn test_host_selection_list_len() {
+        use iron_core::host::{HardwareSpec, Host};
+
+        let mut app = App::default();
+        app.view = View::HostSelection;
+        app.discovered_hosts = vec![Host {
+            id: "test".to_string(),
+            name: "Test".to_string(),
+            description: None,
+            hardware: HardwareSpec::default(),
+            install_params: None,
+            installed_bundles: vec![],
+            active_bundle: None,
+        }];
+
+        assert_eq!(app.current_list_len(), 1);
+    }
+
+    // Divergence popup tests (S1-P3-002)
+
+    #[test]
+    fn test_dashboard_i_opens_divergence_popup() {
+        let mut app = App::default();
+        app.view = View::Dashboard;
+        app.diverged_modules = vec!["nvim-ide".to_string()];
+
+        app.handle_key(create_key_event(KeyCode::Char('i')));
+
+        assert!(app.show_divergence_popup);
+        assert_eq!(app.divergence_selected, 0);
+    }
+
+    #[test]
+    fn test_dashboard_i_noop_when_no_divergence() {
+        let mut app = App::default();
+        app.view = View::Dashboard;
+        // No diverged modules
+
+        app.handle_key(create_key_event(KeyCode::Char('i')));
+
+        assert!(!app.show_divergence_popup);
+    }
+
+    #[test]
+    fn test_divergence_popup_esc_closes() {
+        let mut app = App::default();
+        app.show_divergence_popup = true;
+        app.diverged_modules = vec!["test".to_string()];
+
+        app.handle_key(create_key_event(KeyCode::Esc));
+
+        assert!(!app.show_divergence_popup);
+    }
+
+    #[test]
+    fn test_divergence_popup_j_k_navigation() {
+        let mut app = App::default();
+        app.show_divergence_popup = true;
+        app.diverged_modules = vec!["mod-a".to_string(), "mod-b".to_string()];
+        app.divergence_selected = 0;
+
+        app.handle_key(create_key_event(KeyCode::Char('j')));
+        assert_eq!(app.divergence_selected, 1);
+
+        app.handle_key(create_key_event(KeyCode::Char('k')));
+        assert_eq!(app.divergence_selected, 0);
+    }
+
+    #[test]
+    fn test_divergence_popup_r_restore_guidance() {
+        let mut app = App::default();
+        app.show_divergence_popup = true;
+        app.diverged_modules = vec!["nvim-ide".to_string()];
+        app.divergence_selected = 0;
+
+        app.handle_key(create_key_event(KeyCode::Char('r')));
+
+        assert!(!app.show_divergence_popup);
+        assert!(has_feedback(&app));
+    }
+
+    #[test]
+    fn test_divergence_popup_a_accept_guidance() {
+        let mut app = App::default();
+        app.show_divergence_popup = true;
+        app.diverged_modules = vec!["kitty-dev".to_string()];
+        app.divergence_selected = 0;
+
+        app.handle_key(create_key_event(KeyCode::Char('a')));
+
+        assert!(!app.show_divergence_popup);
+        assert!(has_feedback(&app));
+    }
+
+    #[test]
+    fn test_divergence_popup_d_diff_guidance() {
+        let mut app = App::default();
+        app.show_divergence_popup = true;
+        app.diverged_modules = vec!["tmux-config".to_string()];
+        app.divergence_selected = 0;
+
+        app.handle_key(create_key_event(KeyCode::Char('d')));
+
+        assert!(!app.show_divergence_popup);
+        assert!(has_feedback(&app));
     }
 }

@@ -47,6 +47,7 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App) {
         View::ProfileBuilder => ("New Profile", "[n]"),
         View::ModuleCreator => ("New Module", "[n]"),
         View::SystemScan => ("System Scan", "[~]"),
+        View::HostSelection => ("Host Selection", "[H]"),
     };
 
     // Build header content
@@ -147,7 +148,13 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
 
     // Default keybindings footer
     let keybindings = match app.view {
-        View::Dashboard => vec![("[q]", "Quit"), ("[?]", "Help"), ("[Tab]", "Navigate")],
+        View::Dashboard => {
+            let mut keys = vec![("[q]", "Quit"), ("[?]", "Help"), ("[Tab]", "Navigate")];
+            if app.diverged_count() > 0 {
+                keys.push(("[i]", "Divergence"));
+            }
+            keys
+        }
         View::Bundles | View::Profiles | View::Modules => vec![
             ("[j/k]", "Select"),
             ("[Enter]", "Details"),
@@ -209,6 +216,7 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
             ("[j/k]", "Navigate"),
             ("[Enter]", "Edit"),
             ("[r]", "Refresh"),
+            ("[s]", "Scan"),
             ("[Esc]", "Back"),
         ],
         View::Doctor => vec![("[r]", "Re-run"), ("[Esc]", "Back")],
@@ -236,6 +244,12 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
             ("[Esc]", "Back"),
         ],
         View::SystemScan => vec![("[r]", "Re-scan"), ("[↑↓]", "Scroll"), ("[Esc]", "Back")],
+        View::HostSelection => vec![
+            ("[j/k]", "Navigate"),
+            ("[Enter]", "Select"),
+            ("[c]", "Create new"),
+            ("[Esc]", "Back"),
+        ],
     };
 
     let mut spans: Vec<Span> = vec![Span::raw("  ")];
@@ -359,6 +373,7 @@ fn get_view_keybindings(view: View) -> Vec<(&'static str, &'static str)> {
             ("o", "Operation log"),
             ("c", "Config conflicts"),
             ("w", "Re-run wizard"),
+            ("s", "System scan"),
         ],
         View::Sync => vec![
             ("p", "Push changes"),
@@ -398,6 +413,11 @@ fn get_view_keybindings(view: View) -> Vec<(&'static str, &'static str)> {
         View::SystemScan => vec![
             ("r", "Re-scan system"),
             ("↑/↓", "Scroll results"),
+        ],
+        View::HostSelection => vec![
+            ("j/k", "Move up/down"),
+            ("Enter", "Select host"),
+            ("c", "Create new host"),
         ],
     }
 }
@@ -914,6 +934,7 @@ mod tests {
                 View::ProfileBuilder => "New Profile",
                 View::ModuleCreator => "New Module",
                 View::SystemScan => "System Scan",
+                View::HostSelection => "Host Selection",
             };
             assert_eq!(name, expected_name);
         }

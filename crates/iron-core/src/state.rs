@@ -1,5 +1,6 @@
 //! State management - Track active configurations
 
+use crate::services::scan::ScanReport;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -173,6 +174,10 @@ pub struct IronState {
     /// News acknowledgment tracking (Phase 2.2)
     #[serde(default)]
     pub news_acknowledgment: NewsAcknowledgment,
+
+    /// Last scan report for scan history / re-scan (S1-P1.5-005)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_scan_report: Option<ScanReport>,
 }
 
 /// Record of an operation

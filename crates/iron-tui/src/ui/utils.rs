@@ -1,5 +1,5 @@
 //! Shared UI utility functions
-//!
+//! 
 //! Common helpers used across multiple views.
 
 use chrono::{DateTime, Utc};

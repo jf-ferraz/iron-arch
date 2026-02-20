@@ -1274,3 +1274,64 @@ fn test_render_dispatches_to_wizard() {
 
     assert!(buffer_contains(&terminal, "Welcome to Iron"));
 }
+
+#[test]
+fn test_render_host_selection_empty() {
+    let mut terminal = create_test_terminal(80, 24);
+    let mut app = App::default();
+    app.view = View::HostSelection;
+
+    terminal
+        .draw(|f| {
+            render(f, &app);
+        })
+        .unwrap();
+
+    assert!(buffer_contains(&terminal, "No hosts configured"));
+}
+
+#[test]
+fn test_render_host_selection_with_hosts() {
+    use iron_core::host::{HardwareSpec, Host};
+
+    let mut terminal = create_test_terminal(100, 30);
+    let mut app = App::default();
+    app.view = View::HostSelection;
+    app.discovered_hosts = vec![
+        Host {
+            id: "desktop".to_string(),
+            name: "Desktop Workstation".to_string(),
+            description: None,
+            hardware: HardwareSpec {
+                cpu: Some("AMD Ryzen 7 9800X3D".to_string()),
+                gpu: Some("RX 9060 XT".to_string()),
+                ram_mb: Some(30720),
+                monitors: vec![],
+                chassis: None,
+            },
+            install_params: None,
+            installed_bundles: vec![],
+            active_bundle: None,
+        },
+        Host {
+            id: "laptop".to_string(),
+            name: "Laptop".to_string(),
+            description: None,
+            hardware: HardwareSpec::default(),
+            install_params: None,
+            installed_bundles: vec![],
+            active_bundle: None,
+        },
+    ];
+    app.current_host = Some("desktop".to_string());
+
+    terminal
+        .draw(|f| {
+            render(f, &app);
+        })
+        .unwrap();
+
+    assert!(buffer_contains(&terminal, "Host Selection"));
+    assert!(buffer_contains(&terminal, "desktop"));
+    assert!(buffer_contains(&terminal, "laptop"));
+}

@@ -7,6 +7,7 @@ mod clean;
 mod config;
 mod dashboard;
 mod doctor;
+mod host_selection;
 mod maintenance;
 mod module_creator;
 mod modules;
@@ -36,6 +37,7 @@ pub use clean::{render_clean_system, render_cleanup_preview, render_cleanup_resu
 pub use config::render_config_manager;
 pub use dashboard::render_dashboard;
 pub use doctor::render_doctor;
+pub use host_selection::render_host_selection;
 pub use maintenance::render_system_maintenance;
 pub use module_creator::render_module_creator;
 pub use modules::{render_module_detail, render_modules};
@@ -95,12 +97,17 @@ pub fn render(frame: &mut Frame, app: &App) {
         View::ProfileBuilder => render_profile_builder(frame, layout[1], app),
         View::ModuleCreator => render_module_creator(frame, layout[1], app),
         View::SystemScan => render_system_scan(frame, layout[1], app),
+        View::HostSelection => render_host_selection(frame, layout[1], app),
     }
 
     // Render footer
     render_footer(frame, layout[2], app);
 
     // Render overlays
+    if app.show_divergence_popup {
+        dashboard::render_divergence_popup(frame, area, app);
+    }
+
     if app.show_help {
         render_help_overlay(frame, area, app);
     }

@@ -261,6 +261,36 @@ impl StateManager {
         self.state().active_modules.contains(&module_id.to_string())
     }
 
+    // ==========================================================================
+    // Scan History (S1-P1.5-005)
+    // ==========================================================================
+
+    /// Save a scan report to state for history / re-scan
+    pub fn save_scan_report(
+        &self,
+        report: &crate::services::scan::ScanReport,
+    ) -> IronResult<()> {
+        {
+            let mut state = self.state.lock().unwrap();
+            state.last_scan_report = Some(report.clone());
+        }
+        self.persist()?;
+        self.audit(
+            "save_scan_report",
+            OperationStatus::Success,
+            Some(format!(
+                "conflicts={} recommendations={}",
+                report.potential_conflicts.len(),
+                report.recommendations.len()
+            )),
+        )
+    }
+
+    /// Load last scan report from state
+    pub fn load_scan_report(&self) -> Option<crate::services::scan::ScanReport> {
+        self.state().last_scan_report.clone()
+    }
+
     /// Get maintenance state
     pub fn maintenance(&self) -> MaintenanceState {
         self.state().maintenance.clone()
@@ -1434,6 +1464,37 @@ mod tests {
                 i
             );
         }
+    }
+
+    #[test]
+    fn test_save_and_load_scan_report() {
+        use crate::services::scan::{ScanReport, ScanSummary};
+
+        let (manager, _temp) = create_test_manager();
+
+        // Initially no scan report
+        assert!(manager.load_scan_report().is_none());
+
+        // Save a scan report
+        let report = ScanReport {
+            existing_configs: vec![],
+            installed_packages: vec!["git".to_string(), "neovim".to_string()],
+            potential_conflicts: vec![],
+            recommendations: vec!["Backup existing configs".to_string()],
+            summary: ScanSummary::default(),
+        };
+        manager.save_scan_report(&report).unwrap();
+
+        // Load it back
+        let loaded = manager.load_scan_report().unwrap();
+        assert_eq!(loaded.installed_packages.len(), 2);
+        assert_eq!(loaded.recommendations.len(), 1);
+        assert_eq!(loaded.recommendations[0], "Backup existing configs");
+
+        // Verify persistence across new manager instances
+        let manager2 = StateManager::new(_temp.path().to_path_buf()).unwrap();
+        let loaded2 = manager2.load_scan_report().unwrap();
+        assert_eq!(loaded2.installed_packages.len(), 2);
     }
 }
 

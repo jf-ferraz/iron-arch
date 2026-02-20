@@ -416,3 +416,88 @@ fn render_alerts(frame: &mut Frame, area: Rect, app: &App) {
 
     frame.render_widget(Paragraph::new(content), inner);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Divergence Popup (S1-P3-002)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Render the divergence guidance popup overlay
+pub fn render_divergence_popup(frame: &mut Frame, area: Rect, app: &App) {
+    use ratatui::widgets::{Borders, Clear};
+
+    if app.diverged_modules.is_empty() {
+        return;
+    }
+
+    // Calculate popup size: 60 wide, height based on content
+    let popup_width = 60u16.min(area.width.saturating_sub(4));
+    let content_lines = 6 + app.diverged_modules.len() * 2;
+    let popup_height = (content_lines as u16 + 4).min(area.height.saturating_sub(4));
+
+    let popup_area = crate::widgets::centered_rect(popup_width, popup_height, area);
+    frame.render_widget(Clear, popup_area);
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Divergence Details ")
+        .title_alignment(Alignment::Center)
+        .border_style(Style::default().fg(theme::YELLOW));
+    let inner = block.inner(popup_area);
+    frame.render_widget(block, popup_area);
+
+    let mut lines = vec![
+        Line::from(""),
+        Line::from(Span::styled(
+            format!(
+                "  {} module{} diverged from managed state:",
+                app.diverged_modules.len(),
+                if app.diverged_modules.len() == 1 {
+                    " has"
+                } else {
+                    "s have"
+                }
+            ),
+            Style::default().fg(theme::TEXT),
+        )),
+        Line::from(""),
+    ];
+
+    for (i, module_id) in app.diverged_modules.iter().enumerate() {
+        let is_selected = i == app.divergence_selected;
+        let prefix = if is_selected { "  ▸ " } else { "    " };
+        let style = if is_selected {
+            Style::default().fg(theme::MAUVE).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(theme::TEXT)
+        };
+
+        lines.push(Line::from(vec![
+            Span::styled(prefix, style),
+            Span::styled(module_id.as_str(), style),
+            Span::styled(" [!]", Style::default().fg(theme::YELLOW)),
+        ]));
+    }
+
+    // Action hints
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "  ──────────────────────────────────────────",
+        Style::default().fg(theme::OVERLAY),
+    )));
+    lines.push(Line::from(vec![
+        Span::styled("  [r]", Style::default().fg(theme::MAUVE).add_modifier(Modifier::BOLD)),
+        Span::styled(" Restore  ", Style::default().fg(theme::SUBTEXT)),
+        Span::styled("[a]", Style::default().fg(theme::MAUVE).add_modifier(Modifier::BOLD)),
+        Span::styled(" Accept  ", Style::default().fg(theme::SUBTEXT)),
+        Span::styled("[d]", Style::default().fg(theme::MAUVE).add_modifier(Modifier::BOLD)),
+        Span::styled(" Diff", Style::default().fg(theme::SUBTEXT)),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("  [j/k]", Style::default().fg(theme::MAUVE).add_modifier(Modifier::BOLD)),
+        Span::styled(" Navigate  ", Style::default().fg(theme::SUBTEXT)),
+        Span::styled("[Esc]", Style::default().fg(theme::MAUVE).add_modifier(Modifier::BOLD)),
+        Span::styled(" Close", Style::default().fg(theme::SUBTEXT)),
+    ]));
+
+    frame.render_widget(Paragraph::new(lines), inner);
+}
