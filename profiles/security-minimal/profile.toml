@@ -1,0 +1,12 @@
+# Security Minimal Profile
+# Essential security modules only
+
+id = "security-minimal"
+name = "Security Minimal"
+description = "Critical security hardening - firewall and kernel protection"
+
+modules = [
+    "ufw",
+    "kernel-hardening",
+    "fail2ban",
+]

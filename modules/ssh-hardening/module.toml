@@ -1,0 +1,17 @@
+id = "ssh-hardening"
+name = "SSH Hardening"
+description = "Hardened SSH configuration with modern cryptography"
+kind = "SecurityHardening"
+
+packages = ["openssh"]
+aur_packages = []
+conflicts = []
+depends = []
+dotfiles = []
+priority = 3
+requires_root = true
+
+[hooks]
+post_install = "hooks/install.sh"
+pre_uninstall = "hooks/uninstall.sh"
+status_check = "hooks/status.sh"

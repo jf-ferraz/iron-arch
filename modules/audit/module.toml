@@ -1,0 +1,17 @@
+id = "audit"
+name = "Audit Framework"
+description = "Linux Audit system for security event monitoring"
+kind = "SecurityHardening"
+
+packages = ["audit"]
+aur_packages = []
+conflicts = []
+depends = []
+dotfiles = []
+priority = 4
+requires_root = true
+
+[hooks]
+post_install = "hooks/install.sh"
+pre_uninstall = "hooks/uninstall.sh"
+status_check = "hooks/status.sh"

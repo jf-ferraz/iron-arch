@@ -1,0 +1,16 @@
+# Fish Shell Module
+# Fish shell configuration with dev-friendly aliases
+
+id = "fish"
+name = "Fish Shell"
+description = "Fish shell setup with dev aliases, PATH config, and custom functions"
+kind = "Shell"
+
+packages = ["fish"]
+aur_packages = []
+conflicts = []
+depends = []
+dotfiles = []
+
+[hooks]
+post_install = "hooks/install.sh"

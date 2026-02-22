@@ -1,0 +1,16 @@
+# SSH Config Module
+# SSH key generation and client configuration
+
+id = "ssh-config"
+name = "SSH Configuration"
+description = "SSH key setup and client configuration"
+kind = "SystemUtil"
+
+packages = ["openssh"]
+aur_packages = []
+conflicts = []
+depends = []
+dotfiles = []
+
+[hooks]
+post_install = "hooks/install.sh"

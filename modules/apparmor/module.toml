@@ -1,0 +1,17 @@
+id = "apparmor"
+name = "AppArmor"
+description = "Mandatory Access Control - application sandboxing at kernel level"
+kind = "SecurityHardening"
+
+packages = ["apparmor"]
+aur_packages = []
+conflicts = []
+depends = []
+dotfiles = []
+priority = 5
+requires_root = true
+
+[hooks]
+post_install = "hooks/install.sh"
+pre_uninstall = "hooks/uninstall.sh"
+status_check = "hooks/status.sh"

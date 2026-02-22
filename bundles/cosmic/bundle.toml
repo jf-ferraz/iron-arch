@@ -1,0 +1,31 @@
+# COSMIC Desktop Bundle
+# System76's COSMIC desktop environment
+
+id = "cosmic"
+name = "COSMIC Desktop"
+description = "System76 COSMIC desktop environment with Wayland"
+bundle_type = "DesktopEnvironment"
+
+packages = [
+    "cosmic-session",
+    "cosmic-greeter",
+    "cosmic-settings",
+    "cosmic-files",
+    "cosmic-terminal",
+    "cosmic-editor",
+    "cosmic-store",
+    "cosmic-screenshot",
+    "xdg-desktop-portal-cosmic",
+    "wl-clipboard",
+]
+
+aur_packages = []
+
+profiles = ["minimal", "developer"]
+default_profile = "minimal"
+
+conflicts = ["kde", "gnome", "hyprland", "niri"]
+
+services = ["cosmic-greeter"]
+
+post_install = "scripts/setup-cosmic.sh"

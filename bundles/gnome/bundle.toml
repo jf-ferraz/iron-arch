@@ -1,0 +1,35 @@
+# GNOME Bundle
+# GNOME desktop environment
+
+id = "gnome"
+name = "GNOME Desktop"
+description = "GNOME desktop environment with Wayland"
+bundle_type = "DesktopEnvironment"
+
+packages = [
+    "gnome-shell",
+    "gdm",
+    "gnome-control-center",
+    "gnome-tweaks",
+    "gnome-terminal",
+    "nautilus",
+    "gnome-text-editor",
+    "gnome-calculator",
+    "gnome-system-monitor",
+    "gnome-disk-utility",
+    "evince",
+    "eog",
+    "xdg-desktop-portal-gnome",
+    "wl-clipboard",
+]
+
+aur_packages = []
+
+profiles = ["minimal", "developer"]
+default_profile = "minimal"
+
+conflicts = ["cosmic", "kde", "hyprland", "niri"]
+
+services = ["gdm"]
+
+post_install = "scripts/setup-gnome.sh"

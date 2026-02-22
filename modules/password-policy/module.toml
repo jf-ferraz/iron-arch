@@ -1,0 +1,17 @@
+id = "password-policy"
+name = "Password Policy"
+description = "Password quality enforcement and account lockout via PAM"
+kind = "SecurityHardening"
+
+packages = ["libpwquality"]
+aur_packages = []
+conflicts = []
+depends = []
+dotfiles = []
+priority = 7
+requires_root = true
+
+[hooks]
+post_install = "hooks/install.sh"
+pre_uninstall = "hooks/uninstall.sh"
+status_check = "hooks/status.sh"

@@ -1,0 +1,19 @@
+# Security Hardened Profile
+# Full security hardening with all available modules
+
+id = "security-hardened"
+name = "Security Hardened"
+description = "Complete security hardening - firewall, kernel, SSH, audit, intrusion detection"
+
+modules = [
+    "ufw",
+    "kernel-hardening",
+    "fail2ban",
+    "ssh-hardening",
+    "audit",
+    "intrusion-detection",
+    "apparmor",
+    "dns-security",
+    "password-policy",
+    "sandboxing",
+]

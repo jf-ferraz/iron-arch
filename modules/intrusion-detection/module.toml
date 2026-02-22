@@ -1,0 +1,17 @@
+id = "intrusion-detection"
+name = "Intrusion Detection"
+description = "AIDE file integrity checking and rkhunter rootkit detection"
+kind = "SecurityHardening"
+
+packages = ["aide", "rkhunter"]
+aur_packages = []
+conflicts = []
+depends = []
+dotfiles = []
+priority = 4
+requires_root = true
+
+[hooks]
+post_install = "hooks/install.sh"
+pre_uninstall = "hooks/uninstall.sh"
+status_check = "hooks/status.sh"

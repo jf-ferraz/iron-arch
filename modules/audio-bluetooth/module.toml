@@ -1,0 +1,24 @@
+# Audio & Bluetooth Module
+# PipeWire audio stack and Bluetooth support
+
+id = "audio-bluetooth"
+name = "Audio & Bluetooth"
+description = "PipeWire audio stack with low-latency config and Bluetooth support"
+kind = "SystemUtil"
+
+packages = [
+    "pipewire",
+    "pipewire-pulse",
+    "pipewire-alsa",
+    "pipewire-jack",
+    "wireplumber",
+    "bluez",
+    "bluez-utils",
+]
+aur_packages = []
+conflicts = []
+depends = []
+dotfiles = []
+
+[hooks]
+post_install = "hooks/install.sh"

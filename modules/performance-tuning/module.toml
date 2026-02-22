@@ -1,0 +1,18 @@
+# Performance Tuning Module
+# System performance optimizations
+
+id = "performance-tuning"
+name = "Performance Tuning"
+description = "I/O scheduler, zram swap, fstab optimizations, makepkg parallelism"
+kind = "SystemUtil"
+
+packages = ["zram-generator"]
+aur_packages = []
+conflicts = []
+depends = []
+dotfiles = []
+requires_root = true
+
+[hooks]
+post_install = "hooks/install.sh"
+pre_uninstall = "hooks/uninstall.sh"

@@ -1,0 +1,17 @@
+id = "sandboxing"
+name = "Application Sandboxing"
+description = "Firejail application sandboxing for untrusted applications"
+kind = "SecurityHardening"
+
+packages = ["firejail"]
+aur_packages = []
+conflicts = []
+depends = []
+dotfiles = []
+priority = 6
+requires_root = true
+
+[hooks]
+post_install = "hooks/install.sh"
+pre_uninstall = "hooks/uninstall.sh"
+status_check = "hooks/status.sh"

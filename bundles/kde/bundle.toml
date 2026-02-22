@@ -1,0 +1,32 @@
+# KDE Plasma Bundle
+# Full KDE Plasma desktop environment
+
+id = "kde"
+name = "KDE Plasma"
+description = "KDE Plasma desktop environment with Wayland support"
+bundle_type = "DesktopEnvironment"
+
+packages = [
+    "plasma-meta",
+    "sddm",
+    "kvantum",
+    "dolphin",
+    "konsole",
+    "kate",
+    "ark",
+    "spectacle",
+    "gwenview",
+    "okular",
+    "wl-clipboard",
+]
+
+aur_packages = []
+
+profiles = ["minimal", "developer"]
+default_profile = "minimal"
+
+conflicts = ["cosmic", "gnome", "hyprland", "niri"]
+
+services = ["sddm"]
+
+post_install = "scripts/setup-kde.sh"

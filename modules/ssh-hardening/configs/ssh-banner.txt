@@ -1,0 +1,8 @@
+╔══════════════════════════════════════════════════════════════╗
+║                   AUTHORIZED ACCESS ONLY                     ║
+║                                                              ║
+║  This system is monitored. Unauthorized access is            ║
+║  prohibited and may be subject to legal action.              ║
+║                                                              ║
+║  All connections are logged.                                 ║
+╚══════════════════════════════════════════════════════════════╝

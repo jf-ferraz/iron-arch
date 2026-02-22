@@ -1,0 +1,23 @@
+# Fonts & Theming Module
+# System fonts, icon theme, cursor, and GTK/Qt theming
+
+id = "fonts-theming"
+name = "Fonts & Theming"
+description = "Nerd Fonts, Papirus icons, Bibata cursor, GTK/Qt dark theme"
+kind = "Theme"
+
+packages = [
+    "noto-fonts",
+    "noto-fonts-cjk",
+    "noto-fonts-emoji",
+    "ttf-jetbrains-mono-nerd",
+    "inter-font",
+    "papirus-icon-theme",
+]
+aur_packages = []
+conflicts = []
+depends = []
+dotfiles = []
+
+[hooks]
+post_install = "hooks/install.sh"

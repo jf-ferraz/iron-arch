@@ -1,0 +1,17 @@
+id = "kernel-hardening"
+name = "Kernel Hardening"
+description = "Sysctl security parameters - ASLR, network hardening, memory protection"
+kind = "SecurityHardening"
+
+packages = []
+aur_packages = []
+conflicts = []
+depends = []
+dotfiles = []
+priority = 1
+requires_root = true
+
+[hooks]
+post_install = "hooks/install.sh"
+pre_uninstall = "hooks/uninstall.sh"
+status_check = "hooks/status.sh"
