@@ -426,6 +426,7 @@ impl App {
                 }
                 KeyCode::Char('w') => {
                     self.navigate(View::SetupWizard);
+                    self.init_wizard();
                     true
                 }
                 KeyCode::Char('s') => {
@@ -603,7 +604,10 @@ impl App {
             KeyCode::Char('u') => self.navigate(View::UpdatePreview),
             KeyCode::Char('l') => self.navigate(View::CleanSystem), // Phase 3: Cleanup
             KeyCode::Char('s') => self.navigate(View::Settings),
-            KeyCode::Char('w') => self.navigate(View::SetupWizard), // Re-enter wizard
+            KeyCode::Char('w') => {
+                self.navigate(View::SetupWizard);
+                self.init_wizard();
+            }
             KeyCode::Char('y') => self.navigate(View::Sync),        // Git sync
             KeyCode::Char('S') => self.navigate(View::Secrets),     // Shift+S = Secrets
             KeyCode::Char('R') => self.navigate(View::Recovery),    // Shift+R = Recovery
@@ -964,7 +968,7 @@ impl App {
                 }
                 _ => {}
             },
-            // D-012: Step 1 — Dotfile mapping editor
+            // D-012 / F0-011: Step 1 — Dotfile mapping editor
             1 => match key.code {
                 KeyCode::Esc => {
                     self.module_creator_step = 0;
@@ -973,13 +977,43 @@ impl App {
                     self.module_creator_dotfile_field = 1 - self.module_creator_dotfile_field;
                 }
                 KeyCode::Enter => {
-                    // Enter with empty source → advance to preview (step 2)
-                    // Enter with both filled → add the mapping, stay on step 1
-                    self.module_creator_step = 2;
+                    let src = self.module_creator_dotfile_source.trim().to_string();
+                    let tgt = self.module_creator_dotfile_target.trim().to_string();
+                    if !src.is_empty() && !tgt.is_empty() {
+                        // Both fields filled → add the mapping, clear inputs, stay on step 1
+                        self.module_creator_dotfiles.push((src, tgt));
+                        self.module_creator_dotfile_source.clear();
+                        self.module_creator_dotfile_target.clear();
+                        self.module_creator_dotfile_field = 0;
+                    } else {
+                        // Empty inputs → advance to preview (step 2)
+                        self.module_creator_step = 2;
+                    }
                 }
                 KeyCode::Backspace => {
-                    // Remove last dotfile entry if any
-                    self.module_creator_dotfiles.pop();
+                    // Delete character from active field; if empty, pop last dotfile entry
+                    match self.module_creator_dotfile_field {
+                        0 => {
+                            if self.module_creator_dotfile_source.is_empty() {
+                                self.module_creator_dotfiles.pop();
+                            } else {
+                                self.module_creator_dotfile_source.pop();
+                            }
+                        }
+                        _ => {
+                            if self.module_creator_dotfile_target.is_empty() {
+                                self.module_creator_dotfiles.pop();
+                            } else {
+                                self.module_creator_dotfile_target.pop();
+                            }
+                        }
+                    }
+                }
+                KeyCode::Char(c) => {
+                    match self.module_creator_dotfile_field {
+                        0 => self.module_creator_dotfile_source.push(c),
+                        _ => self.module_creator_dotfile_target.push(c),
+                    }
                 }
                 _ => {}
             },
@@ -1184,6 +1218,10 @@ mod tests {
             depends: vec![],
             pre_install: None,
             post_install: None,
+            pre_uninstall: None,
+            status_check: None,
+            priority: None,
+            requires_root: false,
         }
     }
 

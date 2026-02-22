@@ -30,6 +30,9 @@ pub trait ModuleService {
     /// Get module status
     fn status(&self, id: &str) -> IronResult<ModuleState>;
 
+    /// Run status check hook and return module state
+    fn check_status(&self, id: &str) -> IronResult<ModuleState>;
+
     /// List all enabled modules
     fn list_enabled(&self) -> IronResult<Vec<Module>>;
 
@@ -109,8 +112,8 @@ impl DefaultModuleService {
         Ok(())
     }
 
-    /// Execute a hook script
-    #[allow(dead_code)] // Will be used when module hooks are integrated
+    /// Execute a hook script from the module's hooks/ directory
+    #[allow(dead_code)]
     fn run_hook(&self, module: &Module, hook_name: &str) -> IronResult<bool> {
         let hook_path = self.module_dir(&module.id).join("hooks").join(hook_name);
 
@@ -240,6 +243,19 @@ impl ModuleService for DefaultModuleService {
     fn disable(&self, id: &str) -> IronResult<()> {
         let module = self.load(id)?;
 
+        // Run pre-uninstall hook if present
+        if let Some(script) = &module.pre_uninstall {
+            let hook_path = self.module_dir(&module.id).join(script);
+            if hook_path.exists() {
+                let _ = Command::new("bash")
+                    .arg(&hook_path)
+                    .current_dir(self.module_dir(&module.id))
+                    .env("IRON_MODULE_ID", &module.id)
+                    .env("IRON_MODULE_DIR", self.module_dir(&module.id))
+                    .status();
+            }
+        }
+
         // Unlink dotfiles
         for (_, target) in self.resolve_dotfiles(&module) {
             self.remove_symlink(&target, true)?;
@@ -315,6 +331,35 @@ impl ModuleService for DefaultModuleService {
         }
     }
 
+    fn check_status(&self, id: &str) -> IronResult<ModuleState> {
+        let module = self.load(id)?;
+
+        // If there's a status_check hook, run it and use exit code
+        if let Some(script) = &module.status_check {
+            let hook_path = self.module_dir(&module.id).join(script);
+            if hook_path.exists() {
+                let result = Command::new("bash")
+                    .arg(&hook_path)
+                    .current_dir(self.module_dir(&module.id))
+                    .env("IRON_MODULE_ID", &module.id)
+                    .env("IRON_MODULE_DIR", self.module_dir(&module.id))
+                    .status();
+
+                return match result {
+                    Ok(s) if s.success() => Ok(ModuleState::Installed),
+                    Ok(s) => match s.code() {
+                        Some(2) => Ok(ModuleState::Partial),
+                        _ => Ok(ModuleState::NotInstalled),
+                    },
+                    Err(_) => Ok(ModuleState::NotInstalled),
+                };
+            }
+        }
+
+        // Fall back to standard status check
+        self.status(id)
+    }
+
     fn list_enabled(&self) -> IronResult<Vec<Module>> {
         let active_ids = self.state_manager.active_modules();
         let mut enabled = Vec::new();
@@ -376,6 +421,10 @@ mod tests {
             depends: vec![],
             pre_install: None,
             post_install: None,
+            pre_uninstall: None,
+            status_check: None,
+            priority: None,
+            requires_root: false,
         };
 
         let config_path = module_dir.join("module.toml");
@@ -459,6 +508,10 @@ mod tests {
             depends: vec![],
             pre_install: None,
             post_install: None,
+            pre_uninstall: None,
+            status_check: None,
+            priority: None,
+            requires_root: false,
         };
 
         let config_path = module_dir.join("module.toml");
@@ -527,6 +580,10 @@ mod tests {
             depends: vec![],
             pre_install: None,
             post_install: None,
+            pre_uninstall: None,
+            status_check: None,
+            priority: None,
+            requires_root: false,
         };
 
         let config_path = module_dir.join("module.toml");
@@ -638,6 +695,10 @@ mod tests {
             depends: vec![],
             pre_install: None,
             post_install: None,
+            pre_uninstall: None,
+            status_check: None,
+            priority: None,
+            requires_root: false,
         };
 
         let config_path = module_dir.join("module.toml");

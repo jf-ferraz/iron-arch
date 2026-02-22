@@ -11,15 +11,23 @@ packages = [
     "hyprland",
     "waybar",
     "wofi",
+    "fuzzel",
     "hyprpaper",
     "hypridle",
     "hyprlock",
+    "hyprcursor",
     "xdg-desktop-portal-hyprland",
+    "xdg-desktop-portal",
     "wl-clipboard",
     "cliphist",
     "grim",
     "slurp",
     "mako",
+    "brightnessctl",
+    "playerctl",
+    "polkit-kde-agent",
+    "qt5-wayland",
+    "qt6-wayland",
 ]
 
 # AUR packages
@@ -32,7 +40,7 @@ profiles = ["minimal", "developer", "gaming", "streamer"]
 default_profile = "minimal"
 
 # Conflicts with other bundles
-conflicts = ["niri", "sway", "kde"]
+conflicts = ["niri", "sway", "kde", "cosmic", "gnome"]
 
 # Services to enable
 services = ["pipewire", "pipewire-pulse", "wireplumber"]

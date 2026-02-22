@@ -2,6 +2,7 @@
 //!
 //! Multi-step wizard for first-time setup and configuration.
 
+use iron_core::host::HardwareSpec;
 use iron_core::services::{
     BundleService, DefaultBundleService, DefaultModuleService, DefaultProfileService,
     ProfileService, StateManager,
@@ -91,6 +92,8 @@ pub struct WizardState {
     pub available_profiles: Vec<String>,
     /// Available profile summaries with descriptions
     pub profile_summaries: Vec<ProfileSummary>,
+    /// Detected hardware specifications
+    pub detected_hardware: Option<HardwareSpec>,
 }
 
 impl WizardState {
@@ -354,16 +357,14 @@ impl WizardState {
             use iron_core::services::host::{DefaultHostService, HostService};
             let host_service = DefaultHostService::new(config_dir);
             // Only create if the host file doesn't already exist
-            if host_service.load_host(&self.host_id).is_err() {
-                if let Err(e) =
-                    host_service.create_from_current(&self.host_id, &self.host_id)
-                {
-                    // Non-fatal: log but continue (host TOML is advisory, not blocking)
-                    self.error = Some(format!(
-                        "Warning: Could not create host config: {:?}",
-                        e
-                    ));
-                }
+            if host_service.load_host(&self.host_id).is_err()
+                && let Err(e) = host_service.create_from_current(&self.host_id, &self.host_id)
+            {
+                // Non-fatal: log but continue (host TOML is advisory, not blocking)
+                self.error = Some(format!(
+                    "Warning: Could not create host config: {:?}",
+                    e
+                ));
             }
         }
 

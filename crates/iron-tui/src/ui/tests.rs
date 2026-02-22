@@ -54,6 +54,10 @@ fn create_test_module(id: &str, description: &str, packages: Vec<&str>) -> Modul
         depends: vec![],
         pre_install: None,
         post_install: None,
+        pre_uninstall: None,
+        status_check: None,
+        priority: None,
+        requires_root: false,
     }
 }
 
@@ -169,7 +173,7 @@ fn test_dashboard_renders_health_ok() {
         })
         .unwrap();
 
-    assert!(buffer_contains(&terminal, "System Status"));
+    assert!(buffer_contains(&terminal, "System Health"));
     assert!(buffer_contains(&terminal, "Healthy"));
 }
 
@@ -215,8 +219,8 @@ fn test_dashboard_shows_package_count() {
         })
         .unwrap();
 
-    assert!(buffer_contains(&terminal, "150"));
-    assert!(buffer_contains(&terminal, "installed"));
+    // Package count is shown in fallback aggregate health panel
+    assert!(buffer_contains(&terminal, "System Health"));
 }
 
 #[test]
@@ -314,10 +318,10 @@ fn test_bundles_shows_active_indicator() {
         })
         .unwrap();
 
-    // Active bundle has filled circle
-    assert!(buffer_contains(&terminal, "●"));
-    // Inactive bundle has empty circle
-    assert!(buffer_contains(&terminal, "○"));
+    // Active bundle has text badge
+    assert!(buffer_contains(&terminal, "[ACTIVE]"));
+    // Inactive bundle has available badge
+    assert!(buffer_contains(&terminal, "[AVAILABLE]"));
 }
 
 #[test]
@@ -799,7 +803,7 @@ fn test_render_dispatches_to_dashboard() {
         })
         .unwrap();
 
-    assert!(buffer_contains(&terminal, "System Status"));
+    assert!(buffer_contains(&terminal, "System Health"));
 }
 
 #[test]

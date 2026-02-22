@@ -1,9 +1,31 @@
 # Current State
 
-## Status: Scenario 1 + Hardening Complete
+## Status: Phase 0 — Foundation Fixes (IMPLEMENTED)
 
 **Scenario 1 — Newcomer Journey** is **fully implemented** (45/45 tasks).
 **Hardening Sprints H1 + H2 + H3** addressed 65 gaps — **65 done, 0 remaining** (100%).
+**Phase 0 — Foundation Fixes** — **12/12 tasks implemented** (2026-02-22).
+
+### Phase 0 Results
+
+| Sprint | Focus | Tasks | Status |
+|--------|-------|-------|--------|
+| **0.1** | UX Quick Wins | 6 tasks (F0-001 → F0-006) | ✅ Done |
+| **0.2** | Tech Debt Closure | 6 tasks (F0-007 → F0-012) | ✅ Done |
+
+### Next: Phase 1 — Core Experience (Apply/Diff/Drift/Templates)
+
+Phase 1 sprint-level planning should begin now. See [`docs/product-review-and-roadmap.md`](product-review-and-roadmap.md) §11 for the roadmap-level tasks (F1-001 → F1-022).
+
+**Planning docs:**
+- [`docs/product-review-and-roadmap.md`](product-review-and-roadmap.md) — Full product review + 4-phase roadmap
+- [`docs/phase0-kanban.md`](phase0-kanban.md) — Sprint kanban board with acceptance criteria
+- [`docs/phase0-technical-guide.md`](phase0-technical-guide.md) — Implementation guide with exact file/line references
+
+**User research:**
+- [`docs/newcomer-expectations-brainstorm.md`](newcomer-expectations-brainstorm.md) — Newcomer persona analysis
+- [`docs/mid-level-user-expectations-brainstorm.md`](mid-level-user-expectations-brainstorm.md) — Mid-level persona analysis
+
 Branch: `feature/tui-enhancement-phase1`.
 
 ---

@@ -82,24 +82,24 @@ pub struct DefaultSyncService {
     repo_root: PathBuf,
     /// State manager
     state_manager: StateManager,
-    /// A-001: Optional command executor for resilient command execution (timeout + circuit breaker)
-    executor: Option<Arc<dyn CommandExecutor>>,
+    /// F0-007: Command executor (always present — 120s timeout + circuit breaker)
+    executor: Arc<dyn CommandExecutor>,
     /// A-010: Optional secrets service for pre-push lock check
     secrets_service: Option<Arc<dyn crate::services::secrets::SecretsService>>,
 }
 
 impl DefaultSyncService {
-    /// Create a new sync service (no executor — raw Command fallback)
+    /// Create a new sync service with default resilient executor (F0-007)
     pub fn new(repo_root: &Path, state_manager: StateManager) -> Self {
         Self {
             repo_root: repo_root.to_path_buf(),
             state_manager,
-            executor: None,
+            executor: Arc::new(RealCommandExecutor::with_defaults()),
             secrets_service: None,
         }
     }
 
-    /// A-001: Create a sync service with a custom command executor
+    /// Create a sync service with a custom command executor (for testing)
     pub fn with_executor(
         repo_root: &Path,
         state_manager: StateManager,
@@ -108,18 +108,14 @@ impl DefaultSyncService {
         Self {
             repo_root: repo_root.to_path_buf(),
             state_manager,
-            executor: Some(executor),
+            executor,
             secrets_service: None,
         }
     }
 
-    /// A-001: Create a sync service with the default resilient executor (120s timeout + circuit breaker)
+    /// Create a sync service with the default resilient executor (alias for new())
     pub fn with_resilience(repo_root: &Path, state_manager: StateManager) -> Self {
-        Self::with_executor(
-            repo_root,
-            state_manager,
-            Arc::new(RealCommandExecutor::with_defaults()),
-        )
+        Self::new(repo_root, state_manager)
     }
 
     /// A-010: Attach a secrets service for pre-push lock checks
@@ -131,56 +127,25 @@ impl DefaultSyncService {
         self
     }
 
-    /// Run git command — delegates to executor when available, otherwise raw Command
+    /// Run git command through the resilient executor (F0-007: no raw Command fallback)
     fn git(&self, args: &[&str]) -> IronResult<String> {
-        // A-001: Use CommandExecutor when available (provides 120s timeout + circuit breaker)
-        if let Some(ref executor) = self.executor {
-            let mut full_args = vec!["-C", self.repo_root.to_str().unwrap_or(".")];
-            full_args.extend(args);
+        let mut full_args = vec!["-C", self.repo_root.to_str().unwrap_or(".")];
+        full_args.extend(args);
 
-            let output =
-                executor
-                    .execute_full("git", &full_args)
-                    .map_err(|e| GitError::CommandFailed {
-                        message: format!("{}", e),
-                    })?;
-
-            if output.success() {
-                Ok(output.stdout.trim().to_string())
-            } else {
-                Err(GitError::CommandFailed {
-                    message: output.stderr.trim().to_string(),
-                }
-                .into())
-            }
-        } else {
-            // Fallback: direct Command (no timeout/circuit breaker)
-            let output = Command::new("git")
-                .args(args)
-                .current_dir(&self.repo_root)
-                .output()
-                .map_err(|e| {
-                    let message = format!("{}", e);
-                    match e.kind() {
-                        std::io::ErrorKind::NotFound => GitError::IoError {
-                            message: "git command not found — is git installed?".to_string(),
-                        },
-                        std::io::ErrorKind::PermissionDenied => GitError::IoError {
-                            message: format!(
-                                "permission denied running git in {}",
-                                self.repo_root.display()
-                            ),
-                        },
-                        _ => GitError::IoError { message },
-                    }
+        let output =
+            self.executor
+                .execute_full("git", &full_args)
+                .map_err(|e| GitError::CommandFailed {
+                    message: format!("{}", e),
                 })?;
 
-            if output.status.success() {
-                Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-            } else {
-                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                Err(GitError::CommandFailed { message: stderr }.into())
+        if output.success() {
+            Ok(output.stdout.trim().to_string())
+        } else {
+            Err(GitError::CommandFailed {
+                message: output.stderr.trim().to_string(),
             }
+            .into())
         }
     }
 
@@ -364,14 +329,21 @@ impl SyncService for DefaultSyncService {
             .into());
         }
 
-        // A-010: Lock secrets before push if they are unlocked
+        // F0-010: Lock secrets before push if they are unlocked (abort on failure)
         if let Some(ref secrets) = self.secrets_service {
             if let Ok(status) = secrets.status() {
-                if matches!(
-                    status,
-                    crate::services::secrets::SecretsStatus::Unlocked
-                ) {
-                    let _ = secrets.lock();
+                if matches!(status, crate::services::secrets::SecretsStatus::Unlocked) {
+                    tracing::info!("Auto-locking secrets before push");
+                    if let Err(e) = secrets.lock() {
+                        return Err(GitError::CommandFailed {
+                            message: format!(
+                                "Failed to lock secrets before push: {}. \
+                                 Aborting push to prevent leaking decrypted secrets.",
+                                e
+                            ),
+                        }
+                        .into());
+                    }
                 }
             }
         }

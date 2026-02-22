@@ -198,6 +198,10 @@ pub struct App {
     pub module_creator_dotfiles: Vec<(String, String)>,
     /// D-012: 0 = editing source, 1 = editing target within current dotfile entry
     pub module_creator_dotfile_field: usize,
+    /// F0-011: Current source input for dotfile step
+    pub module_creator_dotfile_source: String,
+    /// F0-011: Current target input for dotfile step
+    pub module_creator_dotfile_target: String,
     // -------------------------------------------------------------------------
     // System Scan State (Sprint 3 / S1-P1.5-003)
     // -------------------------------------------------------------------------
@@ -208,6 +212,11 @@ pub struct App {
     // -------------------------------------------------------------------------
     // Divergence Detection (Sprint 3 / S1-P3-001)
     // -------------------------------------------------------------------------
+    /// Cached health check results for dashboard display
+    /// Each entry: (check_name, message, status)
+    pub cached_health_checks: Vec<(String, String, HealthStatus)>,
+    /// Recent operations for dashboard display
+    pub recent_operations: Vec<(String, String)>,
     /// Module IDs whose dotfile symlinks are broken or point to unexpected targets
     pub diverged_modules: Vec<String>,
     /// Whether the divergence popup is showing (S1-P3-002)
@@ -403,8 +412,12 @@ impl App {
             module_creator_kind_index: 0,
             module_creator_dotfiles: Vec::new(),
             module_creator_dotfile_field: 0,
+            module_creator_dotfile_source: String::new(),
+            module_creator_dotfile_target: String::new(),
             scan_report: None,
             scan_scroll: 0,
+            cached_health_checks: Vec::new(),
+            recent_operations: Vec::new(),
             diverged_modules: Vec::new(),
             show_divergence_popup: false,
             divergence_selected: 0,

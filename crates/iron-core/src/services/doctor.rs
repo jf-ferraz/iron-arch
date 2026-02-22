@@ -500,6 +500,110 @@ impl DefaultDoctorService {
         }
     }
 
+    /// Check 11: Security modules status
+    fn check_security_modules(&self) -> HealthCheck {
+        let modules_dir = self.config.root.join("modules");
+        if !modules_dir.exists() {
+            return HealthCheck {
+                name: "security_modules".to_string(),
+                status: CheckStatus::Pass,
+                message: "No modules directory".to_string(),
+                details: vec![],
+            };
+        }
+
+        let security_modules: Vec<crate::Module> = std::fs::read_dir(&modules_dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+            .filter_map(|e| {
+                let toml_path = e.path().join("module.toml");
+                std::fs::read_to_string(&toml_path)
+                    .ok()
+                    .and_then(|c| toml::from_str::<crate::Module>(&c).ok())
+            })
+            .filter(|m| matches!(m.kind, crate::ModuleKind::SecurityHardening))
+            .collect();
+
+        if security_modules.is_empty() {
+            return HealthCheck {
+                name: "security_modules".to_string(),
+                status: CheckStatus::Warn,
+                message: "No security modules found".to_string(),
+                details: vec!["Consider enabling security modules (ufw, kernel-hardening, fail2ban)".to_string()],
+            };
+        }
+
+        // Check which have status_check hooks
+        let mut with_status = 0;
+        let mut details = Vec::new();
+
+        for module in &security_modules {
+            if let Some(ref check) = module.status_check {
+                let hook_path = modules_dir.join(&module.id).join(check);
+                if hook_path.exists() {
+                    with_status += 1;
+                    let result = Command::new("bash")
+                        .arg(&hook_path)
+                        .current_dir(modules_dir.join(&module.id))
+                        .output();
+
+                    match result {
+                        Ok(output) if output.status.success() => {
+                            details.push(format!("{}: pass", module.id));
+                        }
+                        Ok(output) if output.status.code() == Some(2) => {
+                            details.push(format!("{}: partial", module.id));
+                        }
+                        _ => {
+                            details.push(format!("{}: not active", module.id));
+                        }
+                    }
+                }
+            }
+        }
+
+        HealthCheck {
+            name: "security_modules".to_string(),
+            status: CheckStatus::Pass,
+            message: format!(
+                "{} security modules found, {} with status checks",
+                security_modules.len(),
+                with_status
+            ),
+            details,
+        }
+    }
+
+    /// Check 12: Firewall status
+    fn check_firewall(&self) -> HealthCheck {
+        let ufw_active = Command::new("ufw")
+            .arg("status")
+            .output()
+            .map(|o| {
+                o.status.success()
+                    && String::from_utf8_lossy(&o.stdout).contains("Status: active")
+            })
+            .unwrap_or(false);
+
+        if ufw_active {
+            HealthCheck {
+                name: "firewall".to_string(),
+                status: CheckStatus::Pass,
+                message: "UFW firewall active".to_string(),
+                details: vec![],
+            }
+        } else {
+            HealthCheck {
+                name: "firewall".to_string(),
+                status: CheckStatus::Warn,
+                message: "No active firewall detected".to_string(),
+                details: vec!["Enable ufw module: iron module enable ufw".to_string()],
+            }
+        }
+    }
+
     /// Check 10: Service availability (NFR-11)
     fn check_services(&self) -> HealthCheck {
         let availability = ServiceAvailability::check();
@@ -530,6 +634,90 @@ impl DefaultDoctorService {
             .map(|o| o.status.success())
             .unwrap_or(false)
     }
+
+    /// Check N: Root partition disk space (F0-003)
+    ///
+    /// Warns at < 5 GB free, fails at < 1 GB free.
+    fn check_disk_space(&self) -> HealthCheck {
+        #[cfg(unix)]
+        {
+            use std::ffi::CString;
+            use std::mem::MaybeUninit;
+
+            let path = match CString::new("/") {
+                Ok(p) => p,
+                Err(_) => {
+                    return HealthCheck {
+                        name: "disk_space".to_string(),
+                        status: CheckStatus::Warn,
+                        message: "Unable to check disk space".to_string(),
+                        details: vec![],
+                    };
+                }
+            };
+
+            let mut stat = MaybeUninit::<libc::statvfs>::uninit();
+            let result = unsafe { libc::statvfs(path.as_ptr(), stat.as_mut_ptr()) };
+
+            if result == 0 {
+                let stat = unsafe { stat.assume_init() };
+                let total_bytes = stat.f_blocks as u64 * stat.f_frsize as u64;
+                let free_bytes = stat.f_bavail as u64 * stat.f_frsize as u64;
+
+                if total_bytes == 0 {
+                    return HealthCheck {
+                        name: "disk_space".to_string(),
+                        status: CheckStatus::Warn,
+                        message: "Unable to determine disk size".to_string(),
+                        details: vec![],
+                    };
+                }
+
+                let free_gb = free_bytes as f64 / 1_073_741_824.0;
+                let pct_used =
+                    ((total_bytes - free_bytes) as f64 / total_bytes as f64 * 100.0) as u64;
+
+                if free_gb < 1.0 {
+                    return HealthCheck {
+                        name: "disk_space".to_string(),
+                        status: CheckStatus::Fail,
+                        message: format!(
+                            "Root: {:.1} GB free ({}% used) — critically low!",
+                            free_gb, pct_used
+                        ),
+                        details: vec!["Run 'iron clean' to free space".to_string()],
+                    };
+                }
+
+                if free_gb < 5.0 {
+                    return HealthCheck {
+                        name: "disk_space".to_string(),
+                        status: CheckStatus::Warn,
+                        message: format!(
+                            "Root: {:.1} GB free ({}% used) — consider cleanup",
+                            free_gb, pct_used
+                        ),
+                        details: vec!["Run 'iron clean' to free space".to_string()],
+                    };
+                }
+
+                return HealthCheck {
+                    name: "disk_space".to_string(),
+                    status: CheckStatus::Pass,
+                    message: format!("Root: {:.1} GB free ({}% used)", free_gb, pct_used),
+                    details: vec![],
+                };
+            }
+        }
+
+        // Fallback if statvfs fails or non-unix
+        HealthCheck {
+            name: "disk_space".to_string(),
+            status: CheckStatus::Warn,
+            message: "Unable to check disk space".to_string(),
+            details: vec![],
+        }
+    }
 }
 
 impl DoctorService for DefaultDoctorService {
@@ -538,6 +726,7 @@ impl DoctorService for DefaultDoctorService {
             self.check_state_file(),
             self.check_directories(),
             self.check_host(),
+            self.check_disk_space(),
             self.check_git(),
             self.check_tools(),
             self.check_packages(),
@@ -545,6 +734,8 @@ impl DoctorService for DefaultDoctorService {
             self.check_secrets(),
             self.check_symlinks(),
             self.check_services(),
+            self.check_security_modules(),
+            self.check_firewall(),
         ];
 
         let overall = if checks.iter().any(|c| c.status == CheckStatus::Fail) {
@@ -760,7 +951,7 @@ mod tests {
         let svc = DefaultDoctorService::new(create_test_config(tmp.path()));
         let report = svc.check_all().unwrap();
 
-        assert_eq!(report.checks.len(), 10);
+        assert_eq!(report.checks.len(), 12);
         assert!(!report.timestamp.is_empty());
         // At least state_file and directories should pass
         assert!(

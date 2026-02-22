@@ -38,6 +38,22 @@ pub struct Module {
 
     /// Post-install hook script
     pub post_install: Option<String>,
+
+    /// Pre-uninstall hook script
+    #[serde(default)]
+    pub pre_uninstall: Option<String>,
+
+    /// Status check hook script
+    #[serde(default)]
+    pub status_check: Option<String>,
+
+    /// Install ordering priority (lower = first)
+    #[serde(default)]
+    pub priority: Option<u32>,
+
+    /// Whether hooks require root privileges
+    #[serde(default)]
+    pub requires_root: bool,
 }
 
 /// Module classification
@@ -60,6 +76,9 @@ pub enum ModuleKind {
 
     /// Development tools
     DevTools,
+
+    /// Security hardening
+    SecurityHardening,
 }
 
 /// Mapping of dotfile source to target
@@ -156,6 +175,10 @@ mod tests {
             depends: vec!["base-dev".to_string()],
             pre_install: None,
             post_install: Some("nvim --headless +Lazy! sync +qa".to_string()),
+            pre_uninstall: None,
+            status_check: None,
+            priority: None,
+            requires_root: false,
         }
     }
 
@@ -176,6 +199,7 @@ mod tests {
             ModuleKind::Theme,
             ModuleKind::SystemUtil,
             ModuleKind::DevTools,
+            ModuleKind::SecurityHardening,
         ];
 
         for kind in kinds {
@@ -255,6 +279,10 @@ mod tests {
             depends: vec![],
             pre_install: None,
             post_install: None,
+            pre_uninstall: None,
+            status_check: None,
+            priority: None,
+            requires_root: false,
         };
 
         assert!(module.target_paths().is_empty());

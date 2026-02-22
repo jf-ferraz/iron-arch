@@ -45,9 +45,9 @@ pub fn render_bundles(frame: &mut Frame, area: Rect, app: &App) {
                 .map(|b| b.id == bundle.id)
                 .unwrap_or(false);
 
-            let status = if is_active { "●" } else { "○" };
+            let badge = if is_active { "[ACTIVE]" } else { "[AVAILABLE]" };
             let desc = bundle.description.as_deref().unwrap_or("");
-            let content = format!("{} {} - {}", status, bundle.id, desc);
+            let content = format!("{} {} - {}", badge, bundle.id, desc);
 
             let style = if i == app.selected_index {
                 theme::selected()

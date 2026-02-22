@@ -47,7 +47,11 @@ pub fn render_profiles(frame: &mut Frame, area: Rect, app: &App) {
 
             let status = if is_active { "●" } else { "○" };
             let desc = profile.description.as_deref().unwrap_or("");
-            let content = format!("{} {} - {}", status, profile.id, desc);
+            let module_count = profile.modules.len();
+            let content = format!(
+                "{} {} - {} ({} modules)",
+                status, profile.id, desc, module_count
+            );
 
             let style = if i == app.selected_index {
                 theme::selected()

@@ -8,6 +8,7 @@
 
 use crate::app::App;
 use crate::ui::theme;
+use iron_core::ModuleKind;
 use ratatui::prelude::*;
 use ratatui::widgets::{Cell, Paragraph, Row, Table};
 
@@ -34,16 +35,13 @@ impl SecurityCategory {
     }
 }
 
-/// Known security modules
-const SECURITY_MODULE_IDS: &[&str] = &[
-    "ufw",
-    "firewalld",
-    "fail2ban",
-    "auditd",
-    "apparmor",
-    "selinux",
-    "clamav",
-];
+/// Legacy security module IDs (fallback for modules not yet updated to SecurityHardening kind)
+const LEGACY_SECURITY_IDS: &[&str] = &["firewalld", "auditd", "selinux", "clamav"];
+
+/// Check if a module is a security module (by kind or legacy ID)
+fn is_security_module(module: &iron_core::Module) -> bool {
+    matches!(module.kind, ModuleKind::SecurityHardening) || LEGACY_SECURITY_IDS.contains(&module.id.as_str())
+}
 
 /// Render the security modules view
 pub fn render_security_modules(frame: &mut Frame, area: Rect, app: &App) {
@@ -66,15 +64,13 @@ fn render_header(frame: &mut Frame, area: Rect, app: &App) {
     let enabled_count = app
         .modules
         .iter()
-        .filter(|m| {
-            SECURITY_MODULE_IDS.contains(&m.id.as_str()) && app.active_modules.contains(&m.id)
-        })
+        .filter(|m| is_security_module(m) && app.active_modules.contains(&m.id))
         .count();
 
     let total_count = app
         .modules
         .iter()
-        .filter(|m| SECURITY_MODULE_IDS.contains(&m.id.as_str()))
+        .filter(|m| is_security_module(m))
         .count();
 
     let header_text = Line::from(vec![
@@ -110,12 +106,7 @@ fn render_module_list(frame: &mut Frame, area: Rect, app: &App) {
     let security_modules: Vec<_> = app
         .modules
         .iter()
-        .filter(|m| {
-            SECURITY_MODULE_IDS.contains(&m.id.as_str())
-                || m.id.contains("security")
-                || m.id.contains("firewall")
-                || m.id.contains("audit")
-        })
+        .filter(|m| is_security_module(m))
         .collect();
 
     if security_modules.is_empty() {
@@ -231,9 +222,39 @@ mod tests {
     }
 
     #[test]
-    fn test_security_module_ids() {
-        assert!(SECURITY_MODULE_IDS.contains(&"ufw"));
-        assert!(SECURITY_MODULE_IDS.contains(&"fail2ban"));
-        assert!(SECURITY_MODULE_IDS.contains(&"apparmor"));
+    fn test_legacy_security_ids() {
+        assert!(LEGACY_SECURITY_IDS.contains(&"firewalld"));
+        assert!(LEGACY_SECURITY_IDS.contains(&"clamav"));
+    }
+
+    #[test]
+    fn test_is_security_module_by_kind() {
+        use iron_core::{Module, ModuleKind};
+
+        let module = Module {
+            id: "test-sec".to_string(),
+            name: "Test".to_string(),
+            description: None,
+            kind: ModuleKind::SecurityHardening,
+            packages: vec![],
+            aur_packages: vec![],
+            dotfiles: vec![],
+            conflicts: vec![],
+            depends: vec![],
+            pre_install: None,
+            post_install: None,
+            pre_uninstall: None,
+            status_check: None,
+            priority: None,
+            requires_root: false,
+        };
+        assert!(is_security_module(&module));
+
+        let non_sec = Module {
+            kind: ModuleKind::AppConfig,
+            id: "nvim".to_string(),
+            ..module.clone()
+        };
+        assert!(!is_security_module(&non_sec));
     }
 }

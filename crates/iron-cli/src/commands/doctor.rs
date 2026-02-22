@@ -23,6 +23,7 @@ fn badge_for(status: CheckStatus) -> StatusBadge {
 /// Section headers per check name (for pretty-printed output)
 fn section_header(name: &str) -> Option<&'static str> {
     match name {
+        "state_file" => Some("State file"),
         "directories" => Some("Directory Structure"),
         "current_host" => Some("Host Configuration"),
         "git" => Some("Git Status"),
@@ -32,6 +33,8 @@ fn section_header(name: &str) -> Option<&'static str> {
         "secrets" => Some("Secrets Status"),
         "symlinks" => Some("Symlink Integrity"),
         "services" => Some("Service Availability"),
+        "security_modules" => Some("Security Modules"),
+        "firewall" => Some("Firewall"),
         _ => None,
     }
 }
@@ -134,6 +137,7 @@ mod tests {
 
     #[test]
     fn test_section_header_known() {
+        assert_eq!(section_header("state_file"), Some("State file"));
         assert_eq!(section_header("directories"), Some("Directory Structure"));
         assert_eq!(section_header("current_host"), Some("Host Configuration"));
         assert_eq!(section_header("git"), Some("Git Status"));
@@ -143,6 +147,8 @@ mod tests {
         assert_eq!(section_header("secrets"), Some("Secrets Status"));
         assert_eq!(section_header("symlinks"), Some("Symlink Integrity"));
         assert_eq!(section_header("services"), Some("Service Availability"));
+        assert_eq!(section_header("security_modules"), Some("Security Modules"));
+        assert_eq!(section_header("firewall"), Some("Firewall"));
     }
 
     #[test]

@@ -283,6 +283,10 @@ impl TestModule {
             depends: self.depends.clone(),
             pre_install: self.pre_install.clone(),
             post_install: self.post_install.clone(),
+            pre_uninstall: None,
+            status_check: None,
+            priority: None,
+            requires_root: false,
         }
     }
 }

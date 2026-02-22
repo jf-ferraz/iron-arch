@@ -870,6 +870,10 @@ mod tests {
             depends: depends.into_iter().map(String::from).collect(),
             pre_install: None,
             post_install: None,
+            pre_uninstall: None,
+            status_check: None,
+            priority: None,
+            requires_root: false,
         }
     }
 
@@ -1027,6 +1031,10 @@ mod tests {
                 depends: vec![],
                 pre_install: None,
                 post_install: None,
+                pre_uninstall: None,
+                status_check: None,
+                priority: None,
+                requires_root: false,
             },
             Module {
                 id: "fish-b".to_string(),
@@ -1044,6 +1052,10 @@ mod tests {
                 depends: vec![],
                 pre_install: None,
                 post_install: None,
+                pre_uninstall: None,
+                status_check: None,
+                priority: None,
+                requires_root: false,
             },
         ];
 
@@ -1071,6 +1083,10 @@ mod tests {
                 depends: vec![],
                 pre_install: None,
                 post_install: None,
+                pre_uninstall: None,
+                status_check: None,
+                priority: None,
+                requires_root: false,
             },
             Module {
                 id: "fish".to_string(),
@@ -1088,6 +1104,10 @@ mod tests {
                 depends: vec![],
                 pre_install: None,
                 post_install: None,
+                pre_uninstall: None,
+                status_check: None,
+                priority: None,
+                requires_root: false,
             },
         ];
 
@@ -1184,6 +1204,10 @@ mod tests {
             depends: vec![],
             pre_install: None,
             post_install: None,
+            pre_uninstall: None,
+            status_check: None,
+            priority: None,
+            requires_root: false,
         };
 
         let result = validate_module(&module, modules_root);
@@ -1207,6 +1231,10 @@ mod tests {
             depends: vec!["self-dep".to_string()],
             pre_install: None,
             post_install: None,
+            pre_uninstall: None,
+            status_check: None,
+            priority: None,
+            requires_root: false,
         };
 
         let result = validate_module(&module, modules_root);
@@ -1237,6 +1265,10 @@ mod tests {
             depends: vec![],
             pre_install: None,
             post_install: None,
+            pre_uninstall: None,
+            status_check: None,
+            priority: None,
+            requires_root: false,
         };
 
         let result = validate_module(&module, modules_root);
@@ -1265,6 +1297,10 @@ mod tests {
             depends: vec![],
             pre_install: None,
             post_install: None,
+            pre_uninstall: None,
+            status_check: None,
+            priority: None,
+            requires_root: false,
         };
 
         let result = validate_module(&module, modules_root);

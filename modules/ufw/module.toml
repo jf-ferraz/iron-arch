@@ -4,13 +4,17 @@
 id = "ufw"
 name = "UFW Firewall"
 description = "Uncomplicated Firewall - simple iptables frontend"
-kind = "SystemUtil"
+kind = "SecurityHardening"
 
 packages = ["ufw"]
 aur_packages = []
 conflicts = ["firewalld"]
 depends = []
 dotfiles = []
+priority = 1
+requires_root = true
 
 [hooks]
-post_install = "sudo ufw default deny incoming && sudo ufw default allow outgoing && sudo ufw enable"
+post_install = "hooks/install.sh"
+pre_uninstall = "hooks/uninstall.sh"
+status_check = "hooks/status.sh"

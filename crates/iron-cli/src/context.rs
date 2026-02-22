@@ -36,13 +36,14 @@ impl AppContext {
         verbose: bool,
         quiet: bool,
         no_color: bool,
+        explain: bool,
     ) -> Result<Self> {
         let root = expand_home(Path::new(root));
 
         let state =
             StateManager::new(root.clone()).context("Failed to initialize state manager")?;
 
-        let output = Output::new(format, verbose, quiet, no_color);
+        let output = Output::new(format, verbose, quiet, no_color).with_explain(explain);
 
         Ok(Self {
             root,

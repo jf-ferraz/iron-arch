@@ -42,6 +42,7 @@ struct ProgressStatus {
 }
 
 /// Execute update command
+#[allow(clippy::too_many_arguments)]
 pub fn execute(
     ctx: &AppContext,
     dry_run: bool,
@@ -324,6 +325,11 @@ pub fn execute(
                 output.warning(&format!("{} .pacnew files detected", pacnew_count));
                 output.info("Review with: sudo pacdiff");
             }
+
+            output.summary(&[
+                ("packages updated", plan.packages.len()),
+                ("pacnew files", pacnew_count),
+            ]);
         }
         Err(e) => {
             output.error(&format!("Update failed: {}", e));

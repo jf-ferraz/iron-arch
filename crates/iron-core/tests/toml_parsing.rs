@@ -627,6 +627,10 @@ mod roundtrip {
             depends: vec!["dep1".to_string()],
             pre_install: Some("pre.sh".to_string()),
             post_install: Some("post.sh".to_string()),
+            pre_uninstall: None,
+            status_check: None,
+            priority: None,
+            requires_root: false,
         };
 
         // Save

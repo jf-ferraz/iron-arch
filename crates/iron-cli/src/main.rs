@@ -26,7 +26,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Create application context
-    let ctx = AppContext::new(&cli.root, cli.format, cli.verbose, cli.quiet, cli.no_color)?;
+    let ctx = AppContext::new(&cli.root, cli.format, cli.verbose, cli.quiet, cli.no_color, cli.explain)?;
 
     // Execute command
     match cli.command {
@@ -87,30 +87,29 @@ fn main() -> Result<()> {
             Ok(())
         }
         None => {
-            // No command = show welcome message
+            // No command = launch TUI by default (F0-001)
+            // JSON mode still outputs structured data for machine consumers
             if matches!(cli.format, cli::OutputFormat::Json) {
-                // Structured JSON for machine consumption
                 let welcome = serde_json::json!({
                     "name": "iron",
                     "description": "Less is More - Turning your Arch into Iron",
                     "version": env!("CARGO_PKG_VERSION"),
-                    "hint": "Run 'iron --help' for CLI commands, 'iron go' for TUI"
+                    "hint": "Run 'iron --help' for CLI commands"
                 });
                 println!(
                     "{}",
                     serde_json::to_string_pretty(&welcome).unwrap_or_default()
                 );
+                Ok(())
             } else {
-                ctx.output.header("Welcome to Iron");
-                ctx.output
-                    .info("Less is More - Turning your Arch into Iron");
-                ctx.output.raw("");
-                ctx.output.info("Run 'iron --help' for CLI commands");
-                ctx.output
-                    .info("Run 'iron init' to initialize Iron on this host");
-                ctx.output.info("Run 'iron go' to launch the TUI dashboard");
+                // Default: launch TUI dashboard
+                let root = std::path::PathBuf::from(&cli.root);
+                let package_manager =
+                    std::sync::Arc::new(iron_pacman::DefaultPackageManager::default());
+                let service_manager =
+                    std::sync::Arc::new(iron_systemd::SystemdServiceAdapter::user());
+                iron_tui::run_with_config(root, package_manager, service_manager)
             }
-            Ok(())
         }
     }
 }

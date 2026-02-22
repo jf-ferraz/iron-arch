@@ -205,6 +205,29 @@ fn build_report_lines(report: &ScanReport) -> Vec<Line<'_>> {
         lines.push(Line::from(""));
     }
 
+    // --- Next Steps guidance for newcomers ---
+    lines.push(Line::from(Span::styled(
+        "  Next Steps",
+        Style::default().fg(theme::GREEN).bold(),
+    )));
+    lines.push(Line::from(vec![
+        Span::styled("    [Esc]", Style::default().fg(theme::MAUVE).bold()),
+        Span::styled(" Go to Dashboard", Style::default().fg(theme::TEXT)),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("    [m]  ", Style::default().fg(theme::MAUVE).bold()),
+        Span::styled(" Browse and enable modules", Style::default().fg(theme::TEXT)),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("    [b]  ", Style::default().fg(theme::MAUVE).bold()),
+        Span::styled(" Explore bundles", Style::default().fg(theme::TEXT)),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("    [u]  ", Style::default().fg(theme::MAUVE).bold()),
+        Span::styled(" Check for system updates", Style::default().fg(theme::TEXT)),
+    ]));
+    lines.push(Line::from(""));
+
     lines
 }
 

@@ -258,18 +258,18 @@ impl<S: SnapshotManager> RecoveryService for DefaultRecoveryService<S> {
             }
 
             // AUR packages
-            if !export.aur_packages.is_empty() {
-                if let Err(e) = pm.install(&export.aur_packages) {
-                    self.state_manager.record_operation(
-                        "import_aur_packages",
-                        OperationStatus::Failed,
-                        Some(format!(
-                            "Failed to install {} AUR packages: {}",
-                            export.aur_packages.len(),
-                            e
-                        )),
-                    )?;
-                }
+            if !export.aur_packages.is_empty()
+                && let Err(e) = pm.install(&export.aur_packages)
+            {
+                self.state_manager.record_operation(
+                    "import_aur_packages",
+                    OperationStatus::Failed,
+                    Some(format!(
+                        "Failed to install {} AUR packages: {}",
+                        export.aur_packages.len(),
+                        e
+                    )),
+                )?;
             }
         }
 
@@ -287,8 +287,128 @@ impl<S: SnapshotManager> RecoveryService for DefaultRecoveryService<S> {
             }
         }
 
-        self.state_manager
-            .record_operation("import_recovery", OperationStatus::Success, None)?;
+        // F0-012 Step 7: Re-link dotfiles for active modules
+        let modules_dir = self.iron_root.join("modules");
+        for module_id in &export.active_modules {
+            let module_dir = modules_dir.join(module_id);
+            let module_toml = module_dir.join("module.toml");
+            if !module_toml.exists() {
+                self.state_manager.record_operation(
+                    "import_dotfiles",
+                    OperationStatus::Failed,
+                    Some(format!(
+                        "Module '{}' not found on disk, skipping dotfiles",
+                        module_id
+                    )),
+                )?;
+                continue;
+            }
+
+            match crate::module::Module::load(&module_dir) {
+                Ok(module) => {
+                    for dotfile in &module.dotfiles {
+                        let source = module_dir.join(&dotfile.source);
+                        let target =
+                            crate::validation::expand_home(std::path::Path::new(&dotfile.target));
+
+                        if !source.exists() {
+                            continue;
+                        }
+
+                        // Create parent directories
+                        if let Some(parent) = target.parent() {
+                            let _ = fs::create_dir_all(parent);
+                        }
+
+                        // Backup existing non-symlink file
+                        if target.exists() && !target.is_symlink() {
+                            let backup = target.with_extension("iron-backup");
+                            let _ = fs::rename(&target, &backup);
+                        }
+
+                        // Remove existing symlink
+                        if target.is_symlink() {
+                            let _ = fs::remove_file(&target);
+                        }
+
+                        // Create symlink
+                        #[cfg(unix)]
+                        if let Err(e) = std::os::unix::fs::symlink(&source, &target) {
+                            self.state_manager.record_operation(
+                                "import_dotfiles",
+                                OperationStatus::Failed,
+                                Some(format!(
+                                    "Failed to link {} -> {}: {}",
+                                    source.display(),
+                                    target.display(),
+                                    e
+                                )),
+                            )?;
+                        }
+                    }
+
+                    // F0-012 Step 8: Run post-install hook if present
+                    if let Some(ref hook) = module.post_install {
+                        let hook_path = module_dir.join("hooks").join(hook);
+                        if hook_path.exists() {
+                            let status = std::process::Command::new("bash")
+                                .arg(&hook_path)
+                                .current_dir(&module_dir)
+                                .env("IRON_MODULE_ID", &module.id)
+                                .env("IRON_MODULE_DIR", &module_dir)
+                                .status();
+
+                            match status {
+                                Ok(s) if !s.success() => {
+                                    self.state_manager.record_operation(
+                                        "import_hook",
+                                        OperationStatus::Failed,
+                                        Some(format!(
+                                            "Post-install hook failed for '{}'",
+                                            module_id
+                                        )),
+                                    )?;
+                                }
+                                Err(e) => {
+                                    self.state_manager.record_operation(
+                                        "import_hook",
+                                        OperationStatus::Failed,
+                                        Some(format!(
+                                            "Failed to run hook for '{}': {}",
+                                            module_id, e
+                                        )),
+                                    )?;
+                                }
+                                _ => {} // success
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    self.state_manager.record_operation(
+                        "import_dotfiles",
+                        OperationStatus::Failed,
+                        Some(format!("Failed to load module '{}': {}", module_id, e)),
+                    )?;
+                }
+            }
+        }
+
+        // F0-012 Step 9: Verification
+        let verification = self.verify_installation(export);
+        if verification.passed {
+            self.state_manager.record_operation(
+                "import_recovery",
+                OperationStatus::Success,
+                Some(verification.summary),
+            )?;
+        } else {
+            self.state_manager.record_operation(
+                "import_recovery",
+                OperationStatus::Partial,
+                Some(verification.summary),
+            )?;
+        }
 
         Ok(())
     }

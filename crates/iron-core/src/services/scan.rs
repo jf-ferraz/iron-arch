@@ -508,6 +508,10 @@ mod tests {
             depends: vec![],
             pre_install: None,
             post_install: None,
+            pre_uninstall: None,
+            status_check: None,
+            priority: None,
+            requires_root: false,
         }];
 
         let svc = setup_scan_service(tmp.path());
@@ -543,6 +547,10 @@ mod tests {
             depends: vec![],
             pre_install: None,
             post_install: None,
+            pre_uninstall: None,
+            status_check: None,
+            priority: None,
+            requires_root: false,
         }];
 
         let svc = setup_scan_service(Path::new("/home/user"));
@@ -577,6 +585,10 @@ mod tests {
             depends: vec![],
             pre_install: None,
             post_install: None,
+            pre_uninstall: None,
+            status_check: None,
+            priority: None,
+            requires_root: false,
         }];
 
         let svc = setup_scan_service(Path::new("/home/user"));

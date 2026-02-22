@@ -4,13 +4,17 @@
 id = "fail2ban"
 name = "Fail2ban"
 description = "Intrusion prevention - bans IPs with too many failed login attempts"
-kind = "SystemUtil"
+kind = "SecurityHardening"
 
 packages = ["fail2ban"]
 aur_packages = []
 conflicts = []
-depends = []
+depends = ["ufw"]
 dotfiles = []
+priority = 2
+requires_root = true
 
 [hooks]
-post_install = "sudo systemctl enable --now fail2ban"
+post_install = "hooks/install.sh"
+pre_uninstall = "hooks/uninstall.sh"
+status_check = "hooks/status.sh"

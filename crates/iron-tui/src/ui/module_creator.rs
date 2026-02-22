@@ -271,29 +271,53 @@ fn render_step_dotfiles(frame: &mut Frame, area: Rect, app: &App) {
         theme::OVERLAY
     };
 
-    // Get the "in-progress" values from the last empty entry or defaults
-    lines.push(Line::from(vec![
-        Span::styled(
-            format!("  {}. Source: ", entry_num),
-            Style::default().fg(theme::SUBTEXT),
-        ),
-        Span::styled("▏ ", Style::default().fg(src_color)),
-        Span::styled(
-            format!("(e.g. config/{}/)", app.module_creator_name),
-            Style::default().fg(theme::OVERLAY).italic(),
-        ),
-    ]));
-    lines.push(Line::from(vec![
-        Span::styled(
-            format!("     Target: "),
-            Style::default().fg(theme::SUBTEXT),
-        ),
-        Span::styled("▏ ", Style::default().fg(tgt_color)),
-        Span::styled(
-            format!("(e.g. ~/.config/{}/)", app.module_creator_name),
-            Style::default().fg(theme::OVERLAY).italic(),
-        ),
-    ]));
+    // Current input row — show typed values or placeholder
+    let src_value = &app.module_creator_dotfile_source;
+    let tgt_value = &app.module_creator_dotfile_target;
+
+    let source_display: Vec<Span> = if src_value.is_empty() {
+        vec![
+            Span::styled("▏", Style::default().fg(src_color)),
+            Span::styled(
+                format!(" config/{}/", app.module_creator_name),
+                Style::default().fg(theme::OVERLAY).italic(),
+            ),
+        ]
+    } else {
+        vec![
+            Span::styled(src_value.as_str(), Style::default().fg(theme::LAVENDER)),
+            Span::styled("▏", Style::default().fg(src_color)),
+        ]
+    };
+
+    let target_display: Vec<Span> = if tgt_value.is_empty() {
+        vec![
+            Span::styled("▏", Style::default().fg(tgt_color)),
+            Span::styled(
+                format!(" ~/.config/{}/", app.module_creator_name),
+                Style::default().fg(theme::OVERLAY).italic(),
+            ),
+        ]
+    } else {
+        vec![
+            Span::styled(tgt_value.as_str(), Style::default().fg(theme::GREEN)),
+            Span::styled("▏", Style::default().fg(tgt_color)),
+        ]
+    };
+
+    let mut src_spans = vec![Span::styled(
+        format!("  {}. Source: ", entry_num),
+        Style::default().fg(theme::SUBTEXT),
+    )];
+    src_spans.extend(source_display);
+    lines.push(Line::from(src_spans));
+
+    let mut tgt_spans = vec![Span::styled(
+        "     Target: ".to_string(),
+        Style::default().fg(theme::SUBTEXT),
+    )];
+    tgt_spans.extend(target_display);
+    lines.push(Line::from(tgt_spans));
 
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(

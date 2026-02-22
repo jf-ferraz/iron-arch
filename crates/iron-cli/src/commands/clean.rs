@@ -23,6 +23,9 @@ pub fn execute(
     let service = DefaultCleanupService::new()
         .with_package_manager(std::sync::Arc::new(
             iron_pacman::DefaultPackageManager::new(),
+        ))
+        .with_executor(std::sync::Arc::new(
+            iron_core::resilience::RealCommandExecutor::with_defaults(),
         ));
 
     // Build category list from flags
@@ -99,6 +102,12 @@ pub fn execute(
         summary.successful,
         summary.failed,
     ));
+
+    output.summary(&[
+        ("items cleaned", summary.total_items),
+        ("categories succeeded", summary.successful),
+        ("categories failed", summary.failed),
+    ]);
 
     Ok(())
 }

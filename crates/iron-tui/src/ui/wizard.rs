@@ -116,7 +116,7 @@ fn render_wizard_host_setup(frame: &mut Frame, area: Rect, app: &App) {
     let cursor_hint = if is_editing { "│" } else { "" };
     let input_value = format!("{}{}", app.host_input.value, cursor_hint);
 
-    let text = vec![
+    let mut text = vec![
         Line::from(""),
         Line::from(Span::styled(
             "Host Setup",
@@ -129,22 +129,75 @@ fn render_wizard_host_setup(frame: &mut Frame, area: Rect, app: &App) {
         Line::from("This allows you to maintain separate configurations per machine."),
         Line::from(""),
         Line::from(format!("Detected hostname: {}", app.wizard.host_id)),
-        Line::from(""),
-        Line::from("Host ID:"),
-        Line::from(Span::styled(format!("  > {} ", input_value), input_style)),
-        Line::from(""),
-        if is_editing {
-            Line::from(Span::styled(
-                "Press Enter to confirm, Esc to cancel",
-                Style::default().fg(theme::SUBTEXT),
-            ))
-        } else {
-            Line::from(Span::styled(
-                "Press [e] to edit, Enter to continue",
-                Style::default().fg(theme::SUBTEXT),
-            ))
-        },
     ];
+
+    // Show detected hardware info
+    if let Some(ref hw) = app.wizard.detected_hardware {
+        text.push(Line::from(""));
+        text.push(Line::from(Span::styled(
+            "Detected Hardware:",
+            Style::default().fg(theme::TEAL).bold(),
+        )));
+        if let Some(ref cpu) = hw.cpu {
+            text.push(Line::from(vec![
+                Span::styled("  CPU      ", Style::default().fg(theme::SUBTEXT)),
+                Span::styled(cpu.as_str(), Style::default().fg(theme::TEXT)),
+            ]));
+        }
+        if let Some(ref gpu) = hw.gpu {
+            text.push(Line::from(vec![
+                Span::styled("  GPU      ", Style::default().fg(theme::SUBTEXT)),
+                Span::styled(gpu.as_str(), Style::default().fg(theme::TEXT)),
+            ]));
+        }
+        if let Some(ram_mb) = hw.ram_mb {
+            let ram_gb = ram_mb as f64 / 1024.0;
+            text.push(Line::from(vec![
+                Span::styled("  RAM      ", Style::default().fg(theme::SUBTEXT)),
+                Span::styled(
+                    format!("{:.1} GB", ram_gb),
+                    Style::default().fg(theme::TEXT),
+                ),
+            ]));
+        }
+        if let Some(ref chassis) = hw.chassis {
+            text.push(Line::from(vec![
+                Span::styled("  Chassis  ", Style::default().fg(theme::SUBTEXT)),
+                Span::styled(
+                    format!("{:?}", chassis),
+                    Style::default().fg(theme::TEXT),
+                ),
+            ]));
+        }
+        if !hw.monitors.is_empty() {
+            text.push(Line::from(vec![
+                Span::styled("  Monitors ", Style::default().fg(theme::SUBTEXT)),
+                Span::styled(
+                    format!("{} detected", hw.monitors.len()),
+                    Style::default().fg(theme::TEXT),
+                ),
+            ]));
+        }
+    }
+
+    text.push(Line::from(""));
+    text.push(Line::from("Host ID:"));
+    text.push(Line::from(Span::styled(
+        format!("  > {} ", input_value),
+        input_style,
+    )));
+    text.push(Line::from(""));
+    text.push(if is_editing {
+        Line::from(Span::styled(
+            "Press Enter to confirm, Esc to cancel",
+            Style::default().fg(theme::SUBTEXT),
+        ))
+    } else {
+        Line::from(Span::styled(
+            "Press [e] to edit, Enter to continue",
+            Style::default().fg(theme::SUBTEXT),
+        ))
+    });
 
     let block = theme::themed_block("Host Setup", theme::MAUVE);
 

@@ -6,6 +6,7 @@ use crate::app::{App, HealthStatus};
 use crate::ui::theme;
 use crate::ui::utils::format_relative_time;
 use chrono::Utc;
+use iron_core::services::sync::SyncStatus;
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Paragraph};
 
@@ -21,6 +22,42 @@ fn simple_block(title: &str) -> Block<'_> {
 /// Create a mini progress bar string (uses theme)
 fn progress_bar(current: usize, total: usize, width: usize) -> String {
     theme::mini_progress_bar(current, total, width)
+}
+
+/// Get disk space display string and color (F0-002)
+fn get_disk_display() -> (String, Color) {
+    #[cfg(unix)]
+    {
+        use std::ffi::CString;
+        use std::mem::MaybeUninit;
+
+        if let Ok(path) = CString::new("/") {
+            let mut stat = MaybeUninit::<libc::statvfs>::uninit();
+            let result = unsafe { libc::statvfs(path.as_ptr(), stat.as_mut_ptr()) };
+            if result == 0 {
+                let stat = unsafe { stat.assume_init() };
+                let total = stat.f_blocks as u64 * stat.f_frsize as u64;
+                let free = stat.f_bavail as u64 * stat.f_frsize as u64;
+                if total > 0 {
+                    let pct = ((total - free) as f64 / total as f64 * 100.0) as u64;
+                    let free_gb = free as f64 / 1_073_741_824.0;
+                    let total_gb = total as f64 / 1_073_741_824.0;
+                    let color = if pct > 85 {
+                        theme::RED
+                    } else if pct > 70 {
+                        theme::YELLOW
+                    } else {
+                        theme::GREEN
+                    };
+                    return (
+                        format!("{}% ({:.0}G / {:.0}G)", pct, total_gb - free_gb, total_gb),
+                        color,
+                    );
+                }
+            }
+        }
+    }
+    ("— Unknown".to_string(), theme::OVERLAY)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -40,9 +77,9 @@ pub fn render_dashboard(frame: &mut Frame, area: Rect, app: &App) {
     let left_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(7), // System Status
-            Constraint::Length(6), // Quick Stats
-            Constraint::Min(7),    // Quick Actions
+            Constraint::Length(10), // System Status (health checks)
+            Constraint::Length(8),  // Quick Stats (F0-002: +sync +disk)
+            Constraint::Min(8),    // Quick Actions
         ])
         .split(main_columns[0]);
 
@@ -50,7 +87,8 @@ pub fn render_dashboard(frame: &mut Frame, area: Rect, app: &App) {
     let right_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(9), // Active Configuration
+            Constraint::Length(10), // Active Configuration
+            Constraint::Length(8),  // Recent Operations
             Constraint::Min(5),    // Alerts & Notifications
         ])
         .split(main_columns[1]);
@@ -60,76 +98,60 @@ pub fn render_dashboard(frame: &mut Frame, area: Rect, app: &App) {
     render_quick_stats(frame, left_layout[1], app);
     render_quick_actions(frame, left_layout[2]);
     render_active_config(frame, right_layout[0], app);
-    render_alerts(frame, right_layout[1], app);
+    render_recent_ops_or_getting_started(frame, right_layout[1], app);
+    render_alerts(frame, right_layout[2], app);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Panel Renderers
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// System Status panel - health overview with visual indicators
+/// System Status panel - granular health checks
 fn render_system_status(frame: &mut Frame, area: Rect, app: &App) {
-    let block = simple_block("System Status");
+    let block = simple_block("System Health");
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    // Determine health status and styling
-    let (icon, status_text, status_color, desc) = match app.system_health() {
-        HealthStatus::Ok => ("[OK]", "Healthy", theme::GREEN, "All systems operational"),
-        HealthStatus::Warning => (
-            "[!!]",
-            "Attention",
-            theme::YELLOW,
-            "Updates or issues pending",
-        ),
-        HealthStatus::Error => ("[XX]", "Critical", theme::RED, "Action required"),
-    };
+    let mut content = vec![Line::from("")];
 
-    let packages = app.package_count();
-    let updates = app.pending_update_count();
-
-    // Build status display
-    let status_line = Line::from(vec![
-        Span::styled(
-            format!(" {} ", icon),
-            Style::default().fg(status_color).bold(),
-        ),
-        Span::styled(status_text, Style::default().fg(status_color).bold()),
-        Span::styled(format!("  {}", desc), Style::default().fg(theme::SUBTEXT)),
-    ]);
-
-    let packages_line = Line::from(vec![
-        Span::styled("   Packages   ", Style::default().fg(theme::SUBTEXT)),
-        Span::styled(
-            format!("{}", packages),
-            Style::default().fg(theme::TEXT).bold(),
-        ),
-        Span::styled(" installed", Style::default().fg(theme::SUBTEXT)),
-    ]);
-
-    let updates_line = if updates > 0 {
-        Line::from(vec![
-            Span::styled("   Updates    ", Style::default().fg(theme::SUBTEXT)),
-            Span::styled(
-                format!("{}", updates),
-                Style::default().fg(theme::YELLOW).bold(),
+    if app.cached_health_checks.is_empty() {
+        // Fallback: show aggregate status like before
+        let (icon, status_text, status_color, desc) = match app.system_health() {
+            HealthStatus::Ok => ("[OK]", "Healthy", theme::GREEN, "All systems operational"),
+            HealthStatus::Warning => (
+                "[!!]",
+                "Attention",
+                theme::YELLOW,
+                "Updates or issues pending",
             ),
-            Span::styled(" available", Style::default().fg(theme::SUBTEXT)),
-        ])
+            HealthStatus::Error => ("[XX]", "Critical", theme::RED, "Action required"),
+        };
+        content.push(Line::from(vec![
+            Span::styled(
+                format!(" {} ", icon),
+                Style::default().fg(status_color).bold(),
+            ),
+            Span::styled(status_text, Style::default().fg(status_color).bold()),
+            Span::styled(format!("  {}", desc), Style::default().fg(theme::SUBTEXT)),
+        ]));
     } else {
-        Line::from(vec![
-            Span::styled("   Updates    ", Style::default().fg(theme::SUBTEXT)),
-            Span::styled("[OK] up to date", Style::default().fg(theme::GREEN)),
-        ])
-    };
-
-    let content = vec![
-        Line::from(""),
-        status_line,
-        Line::from(""),
-        packages_line,
-        updates_line,
-    ];
+        // Show up to 7 individual checks
+        for (name, message, status) in app.cached_health_checks.iter().take(7) {
+            let (icon, color) = match status {
+                HealthStatus::Ok => ("[OK]", theme::GREEN),
+                HealthStatus::Warning => ("[!!]", theme::YELLOW),
+                HealthStatus::Error => ("[XX]", theme::RED),
+            };
+            content.push(Line::from(vec![
+                Span::styled(format!("  {} ", icon), Style::default().fg(color).bold()),
+                Span::styled(
+                    format!("{:<12}", name),
+                    Style::default().fg(theme::SUBTEXT),
+                ),
+                Span::styled(message.as_str(), Style::default().fg(color)),
+            ]));
+        }
+    }
 
     frame.render_widget(Paragraph::new(content), inner);
 }
@@ -194,6 +216,35 @@ fn render_quick_stats(frame: &mut Frame, area: Rect, app: &App) {
             Span::styled("   Last Cleanup  ", Style::default().fg(theme::SUBTEXT)),
             Span::styled(clean_str, Style::default().fg(clean_color)),
         ]),
+        // F0-002: Sync status
+        {
+            let (sync_str, sync_color) = match &app.sync_info {
+                Some(info) => match info.status {
+                    SyncStatus::UpToDate => ("✓ Up to date".to_string(), theme::GREEN),
+                    SyncStatus::Ahead => (format!("↑ {} ahead", info.commits_ahead), theme::YELLOW),
+                    SyncStatus::Behind => (format!("↓ {} behind", info.commits_behind), theme::YELLOW),
+                    SyncStatus::Diverged => (
+                        format!("⚠ {}↑ {}↓", info.commits_ahead, info.commits_behind),
+                        theme::RED,
+                    ),
+                    SyncStatus::Dirty => ("~ Uncommitted".to_string(), theme::YELLOW),
+                    SyncStatus::NotARepo => ("— Not a repo".to_string(), theme::OVERLAY),
+                },
+                None => ("— Unknown".to_string(), theme::OVERLAY),
+            };
+            Line::from(vec![
+                Span::styled("   Sync          ", Style::default().fg(theme::SUBTEXT)),
+                Span::styled(sync_str, Style::default().fg(sync_color)),
+            ])
+        },
+        // F0-002: Disk space
+        {
+            let (disk_str, disk_color) = get_disk_display();
+            Line::from(vec![
+                Span::styled("   Disk          ", Style::default().fg(theme::SUBTEXT)),
+                Span::styled(disk_str, Style::default().fg(disk_color)),
+            ])
+        },
     ];
 
     frame.render_widget(Paragraph::new(content), inner);
@@ -238,7 +289,18 @@ fn render_quick_actions(frame: &mut Frame, area: Rect) {
         Span::styled(" Help", Style::default().fg(theme::SUBTEXT)),
     ]);
 
-    let content = vec![Line::from(""), row1, row2, row3];
+    // Row 4: More tools
+    let row4 = Line::from(vec![
+        Span::raw("  "),
+        Span::styled("[d]", Style::default().fg(theme::MAUVE).bold()),
+        Span::styled(" Doctor   ", Style::default().fg(theme::SUBTEXT)),
+        Span::styled("[H]", Style::default().fg(theme::MAUVE).bold()),
+        Span::styled(" Hosts     ", Style::default().fg(theme::SUBTEXT)),
+        Span::styled("[w]", Style::default().fg(theme::MAUVE).bold()),
+        Span::styled(" Wizard", Style::default().fg(theme::SUBTEXT)),
+    ]);
+
+    let content = vec![Line::from(""), row1, row2, row3, row4];
 
     frame.render_widget(Paragraph::new(content), inner);
 }
@@ -248,6 +310,11 @@ fn render_active_config(frame: &mut Frame, area: Rect, app: &App) {
     let block = simple_block("Active Configuration");
     let inner = block.inner(area);
     frame.render_widget(block, area);
+
+    let host = app
+        .current_host
+        .as_deref()
+        .unwrap_or("not set");
 
     let bundle = app
         .active_bundle
@@ -264,6 +331,19 @@ fn render_active_config(frame: &mut Frame, area: Rect, app: &App) {
 
     let content = vec![
         Line::from(""),
+        Line::from(vec![
+            Span::styled("  Host      ", Style::default().fg(theme::SUBTEXT)),
+            Span::styled(
+                host,
+                Style::default()
+                    .fg(if host == "not set" {
+                        theme::OVERLAY
+                    } else {
+                        theme::TEXT
+                    })
+                    .bold(),
+            ),
+        ]),
         Line::from(vec![
             Span::styled("  Bundle    ", Style::default().fg(theme::SUBTEXT)),
             Span::styled(
@@ -325,6 +405,75 @@ fn render_active_config(frame: &mut Frame, area: Rect, app: &App) {
             ),
         ]),
     ];
+
+    frame.render_widget(Paragraph::new(content), inner);
+}
+
+/// Conditionally renders Getting Started (for new users) or Recent Operations (F0-004)
+fn render_recent_ops_or_getting_started(frame: &mut Frame, area: Rect, app: &App) {
+    if app.recent_operations.len() < 3 {
+        render_getting_started(frame, area, app.recent_operations.len());
+    } else {
+        render_recent_ops(frame, area, app);
+    }
+}
+
+/// Getting Started panel — shown when user has < 3 operations (F0-004)
+fn render_getting_started(frame: &mut Frame, area: Rect, completed: usize) {
+    let block = simple_block("Getting Started");
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let steps: &[(&str, &str, &str)] = &[
+        ("[s]", "Scan system", "Discover existing configs"),
+        ("[u]", "Check updates", "Safe update with risk scoring"),
+        ("[b]", "Explore bundles", "Choose a desktop environment"),
+        ("[m]", "Browse modules", "Enable app configurations"),
+    ];
+
+    let mut content = vec![Line::from("")];
+    for (i, (key, action, desc)) in steps.iter().enumerate() {
+        let done = i < completed;
+        let (icon, icon_color) = if done {
+            ("✓", theme::GREEN)
+        } else {
+            ("→", theme::MAUVE)
+        };
+        content.push(Line::from(vec![
+            Span::styled(format!("  {} ", icon), Style::default().fg(icon_color)),
+            Span::styled(
+                format!("{} ", key),
+                Style::default().fg(theme::MAUVE).bold(),
+            ),
+            Span::styled(*action, Style::default().fg(theme::TEXT)),
+            Span::styled(format!("  {}", desc), Style::default().fg(theme::SUBTEXT)),
+        ]));
+    }
+
+    frame.render_widget(Paragraph::new(content), inner);
+}
+
+/// Recent Operations panel - last few audit log entries
+fn render_recent_ops(frame: &mut Frame, area: Rect, app: &App) {
+    let block = simple_block("Recent Operations");
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let mut content = vec![Line::from("")];
+
+    if app.recent_operations.is_empty() {
+        content.push(Line::from(Span::styled(
+            "  No operations recorded yet",
+            Style::default().fg(theme::OVERLAY),
+        )));
+    } else {
+        for (time, operation) in app.recent_operations.iter().take(5) {
+            content.push(Line::from(vec![
+                Span::styled(format!("  {} ", time), Style::default().fg(theme::SUBTEXT)),
+                Span::styled(operation.as_str(), Style::default().fg(theme::TEXT)),
+            ]));
+        }
+    }
 
     frame.render_widget(Paragraph::new(content), inner);
 }

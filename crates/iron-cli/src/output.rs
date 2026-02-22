@@ -12,6 +12,7 @@ pub struct Output {
     verbose: bool,
     quiet: bool,
     no_color: bool,
+    explain: bool,
 }
 
 impl Output {
@@ -22,7 +23,14 @@ impl Output {
             verbose,
             quiet,
             no_color,
+            explain: false,
         }
+    }
+
+    /// Create new output context with explain mode (F0-006)
+    pub fn with_explain(mut self, explain: bool) -> Self {
+        self.explain = explain;
+        self
     }
 
     /// Print a success message
@@ -266,6 +274,82 @@ impl Output {
     /// Check if verbose mode
     pub fn is_verbose(&self) -> bool {
         self.verbose
+    }
+
+    /// Print an operation summary block (F0-005)
+    ///
+    /// Renders a final summary line after multi-step operations.
+    /// Items: slice of (label, count) pairs. Zero-count items are hidden.
+    /// Color: green when no "error"/"fail" items > 0, red otherwise.
+    pub fn summary(&self, items: &[(&str, usize)]) {
+        if self.quiet {
+            return;
+        }
+        match self.format {
+            OutputFormat::Text => {
+                let parts: Vec<String> = items
+                    .iter()
+                    .filter(|(_, count)| *count > 0)
+                    .map(|(label, count)| format!("{} {}", count, label))
+                    .collect();
+
+                if parts.is_empty() {
+                    return;
+                }
+
+                let summary_text = parts.join(" · ");
+                let has_errors = items.iter().any(|(label, count)| {
+                    *count > 0
+                        && (label.contains("error") || label.contains("fail"))
+                });
+
+                if self.no_color {
+                    let prefix = if has_errors { "[!]" } else { "[=]" };
+                    println!("\n  {} Summary: {}", prefix, summary_text);
+                } else {
+                    let color = if has_errors { "\x1b[31m" } else { "\x1b[32m" };
+                    println!("\n  {}▸ Summary:\x1b[0m {}", color, summary_text);
+                }
+            }
+            OutputFormat::Json => {
+                let map: serde_json::Value = serde_json::Value::Object(
+                    items
+                        .iter()
+                        .map(|(k, v)| {
+                            (
+                                k.replace(' ', "_"),
+                                serde_json::Value::Number((*v).into()),
+                            )
+                        })
+                        .collect(),
+                );
+                println!(r#"{{"summary":{}}}"#, map);
+            }
+            OutputFormat::Minimal => {}
+        }
+    }
+
+    /// Print an explain line showing the command being executed (F0-006)
+    ///
+    /// Only outputs when `--explain` is active. Shows the underlying system
+    /// command so users can learn what Iron does under the hood.
+    pub fn explain_cmd(&self, cmd: &str) {
+        if !self.explain || self.quiet {
+            return;
+        }
+        match self.format {
+            OutputFormat::Text => {
+                if self.no_color {
+                    println!("  -> Running: {}", cmd);
+                } else {
+                    println!("  \x1b[36m→\x1b[0m \x1b[90m{}\x1b[0m", cmd);
+                }
+            }
+            OutputFormat::Json => {
+                println!(r#"{{"command":"{}"}}"#, cmd);
+            }
+            OutputFormat::Minimal => {}
+        }
     }
 }
 

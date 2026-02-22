@@ -299,6 +299,8 @@ pub struct DefaultCleanupService {
     state_manager: Option<crate::services::StateManager>,
     /// F-005: Injected package manager for orphan/cache operations
     package_manager: Option<Arc<dyn crate::PackageManager>>,
+    /// F0-008: Command executor for journalctl/sudo commands (timeout + circuit breaker)
+    executor: Option<Arc<dyn crate::resilience::CommandExecutor>>,
 }
 
 impl Default for DefaultCleanupService {
@@ -318,6 +320,7 @@ impl DefaultCleanupService {
             package_cache_keep: 3,
             state_manager: None,
             package_manager: None,
+            executor: None,
         }
     }
 
@@ -335,6 +338,7 @@ impl DefaultCleanupService {
             package_cache_keep,
             state_manager: None,
             package_manager: None,
+            executor: None,
         }
     }
 
@@ -347,6 +351,12 @@ impl DefaultCleanupService {
     /// F-005: Inject a PackageManager for orphan/cache operations
     pub fn with_package_manager(mut self, pm: Arc<dyn crate::PackageManager>) -> Self {
         self.package_manager = Some(pm);
+        self
+    }
+
+    /// F0-008: Inject a CommandExecutor for journalctl/sudo commands
+    pub fn with_executor(mut self, executor: Arc<dyn crate::resilience::CommandExecutor>) -> Self {
+        self.executor = Some(executor);
         self
     }
 
@@ -418,14 +428,22 @@ impl DefaultCleanupService {
     }
 
     fn preview_systemd_journal(&self) -> CleanupPreview {
-        let output = Command::new("journalctl").args(["--disk-usage"]).output();
-
-        let size = match output {
-            Ok(result) => {
-                let stdout = String::from_utf8_lossy(&result.stdout);
-                parse_journal_size(&stdout)
+        // F0-008: Use executor when available, fallback to raw Command
+        let size = if let Some(ref executor) = self.executor {
+            executor
+                .execute("journalctl", &["--disk-usage"])
+                .ok()
+                .map(|stdout| parse_journal_size(&stdout))
+                .unwrap_or(0)
+        } else {
+            let output = Command::new("journalctl").args(["--disk-usage"]).output();
+            match output {
+                Ok(result) => {
+                    let stdout = String::from_utf8_lossy(&result.stdout);
+                    parse_journal_size(&stdout)
+                }
+                Err(_) => 0,
             }
-            Err(_) => 0,
         };
 
         let target_size = self.journal_max_size_mb * 1024 * 1024;
@@ -801,33 +819,60 @@ impl DefaultCleanupService {
             );
         }
 
-        let output = Command::new("sudo")
-            .args([
-                "journalctl",
-                &format!("--vacuum-size={}M", self.journal_max_size_mb),
-            ])
-            .output();
-
-        match output {
-            Ok(result) => {
-                let stdout = String::from_utf8_lossy(&result.stdout).to_string();
-                let stderr = String::from_utf8_lossy(&result.stderr).to_string();
-
-                if result.status.success() {
-                    // Parse freed space from output
-                    let freed = parse_journal_freed(&stdout);
-                    CleanupResult::success(CleanupCategory::SystemdJournal, 1, freed, stdout)
-                } else {
-                    CleanupResult::failure(
-                        CleanupCategory::SystemdJournal,
-                        format!("journalctl vacuum failed: {}", stderr),
-                    )
+        // F0-008: Use executor when available, fallback to raw Command
+        if let Some(ref executor) = self.executor {
+            let vacuum_arg = format!("--vacuum-size={}M", self.journal_max_size_mb);
+            match executor.execute_full("sudo", &["journalctl", &vacuum_arg]) {
+                Ok(output) => {
+                    if output.success() {
+                        let freed = parse_journal_freed(&output.stdout);
+                        CleanupResult::success(
+                            CleanupCategory::SystemdJournal,
+                            1,
+                            freed,
+                            output.stdout,
+                        )
+                    } else {
+                        CleanupResult::failure(
+                            CleanupCategory::SystemdJournal,
+                            format!("journalctl vacuum failed: {}", output.stderr),
+                        )
+                    }
                 }
+                Err(e) => CleanupResult::failure(
+                    CleanupCategory::SystemdJournal,
+                    format!("Failed to vacuum journal: {}", e),
+                ),
             }
-            Err(e) => CleanupResult::failure(
-                CleanupCategory::SystemdJournal,
-                format!("Failed to vacuum journal: {}", e),
-            ),
+        } else {
+            let output = Command::new("sudo")
+                .args([
+                    "journalctl",
+                    &format!("--vacuum-size={}M", self.journal_max_size_mb),
+                ])
+                .output();
+
+            match output {
+                Ok(result) => {
+                    let stdout = String::from_utf8_lossy(&result.stdout).to_string();
+                    let stderr = String::from_utf8_lossy(&result.stderr).to_string();
+
+                    if result.status.success() {
+                        // Parse freed space from output
+                        let freed = parse_journal_freed(&stdout);
+                        CleanupResult::success(CleanupCategory::SystemdJournal, 1, freed, stdout)
+                    } else {
+                        CleanupResult::failure(
+                            CleanupCategory::SystemdJournal,
+                            format!("journalctl vacuum failed: {}", stderr),
+                        )
+                    }
+                }
+                Err(e) => CleanupResult::failure(
+                    CleanupCategory::SystemdJournal,
+                    format!("Failed to vacuum journal: {}", e),
+                ),
+            }
         }
     }
 
@@ -1691,6 +1736,7 @@ mod tests {
             package_cache_keep: 3,
             state_manager: None,
             package_manager: None,
+            executor: None,
         }
     }
 

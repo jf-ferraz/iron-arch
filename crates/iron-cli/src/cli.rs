@@ -36,6 +36,10 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub no_color: bool,
 
+    /// Show underlying system commands being executed (F0-006)
+    #[arg(long, global = true)]
+    pub explain: bool,
+
     #[command(subcommand)]
     pub command: Option<Commands>,
 }

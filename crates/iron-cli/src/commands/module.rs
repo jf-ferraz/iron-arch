@@ -261,6 +261,11 @@ fn enable(ctx: &AppContext, id: &str, force: bool) -> Result<()> {
 
     output.success(&format!("Module '{}' enabled", id));
 
+    output.summary(&[
+        ("packages", module.packages.len() + module.aur_packages.len()),
+        ("configs linked", module.dotfiles.len()),
+    ]);
+
     Ok(())
 }
 
@@ -299,6 +304,10 @@ fn disable(ctx: &AppContext, id: &str, yes: bool) -> Result<()> {
     module_service.disable(id)?;
 
     output.success(&format!("Module '{}' disabled", id));
+
+    output.summary(&[
+        ("configs unlinked", module.dotfiles.len()),
+    ]);
 
     Ok(())
 }

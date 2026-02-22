@@ -102,7 +102,51 @@ impl App {
                 self.scan_report = sm.load_scan_report();
             }
 
+        // Populate dashboard health checks
+        self.refresh_health_checks();
+
+        // Load recent operations for dashboard
+        if let Some(ref sm) = self.state_manager {
+            self.recent_operations = sm
+                .recent_audit(5)
+                .iter()
+                .map(|entry| {
+                    let time = entry.timestamp.format("%m-%d %H:%M").to_string();
+                    (time, entry.operation.clone())
+                })
+                .collect();
+        }
+
         Ok(())
+    }
+
+    /// Refresh cached health checks for dashboard display
+    pub fn refresh_health_checks(&mut self) {
+        use iron_core::services::doctor::{
+            CheckStatus, DefaultDoctorService, DoctorConfig, DoctorService,
+        };
+
+        let config = DoctorConfig {
+            root: self.config_dir.clone(),
+            current_host: self.current_host.clone(),
+            active_bundle: self.active_bundle.as_ref().map(|b| b.id.clone()),
+            snapshot_backend: self.snapshot_backend,
+        };
+
+        if let Ok(report) = DefaultDoctorService::new(config).check_all() {
+            self.cached_health_checks = report
+                .checks
+                .iter()
+                .map(|c| {
+                    let status = match c.status {
+                        CheckStatus::Pass => super::HealthStatus::Ok,
+                        CheckStatus::Warn => super::HealthStatus::Warning,
+                        CheckStatus::Fail => super::HealthStatus::Error,
+                    };
+                    (c.name.clone(), c.message.clone(), status)
+                })
+                .collect();
+        }
     }
 
     /// Load discovered hosts from disk (S1-P2-001)
@@ -445,6 +489,11 @@ impl App {
         self.wizard.load_bundles(&self.config_dir);
         self.wizard.load_profiles(&self.config_dir);
         self.host_input = TextInput::new(&self.wizard.host_id);
+
+        // Detect hardware for display in HostSetup step
+        use iron_core::services::host::{DefaultHostService, HostService};
+        let host_service = DefaultHostService::new(&self.config_dir);
+        self.wizard.detected_hardware = host_service.detect_hardware().ok();
     }
 
     /// Run system scan after wizard completion (S1-P1.5-004)
@@ -1529,6 +1578,10 @@ mod tests {
             depends: vec![],
             pre_install: None,
             post_install: None,
+            pre_uninstall: None,
+            status_check: None,
+            priority: None,
+            requires_root: false,
         }
     }
 
@@ -2315,6 +2368,10 @@ depends = []
             depends: vec![],
             pre_install: None,
             post_install: None,
+            pre_uninstall: None,
+            status_check: None,
+            priority: None,
+            requires_root: false,
         }];
         // Module not in active list → should not be diverged
         app.active_modules = vec![];
@@ -2338,6 +2395,10 @@ depends = []
             depends: vec![],
             pre_install: None,
             post_install: None,
+            pre_uninstall: None,
+            status_check: None,
+            priority: None,
+            requires_root: false,
         }];
         app.active_modules = vec!["empty-mod".to_string()];
 

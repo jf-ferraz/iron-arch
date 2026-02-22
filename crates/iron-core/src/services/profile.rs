@@ -303,6 +303,10 @@ mod tests {
             depends: vec![],
             pre_install: None,
             post_install: None,
+            pre_uninstall: None,
+            status_check: None,
+            priority: None,
+            requires_root: false,
         };
 
         let config_path = module_dir.join("module.toml");
