@@ -10,6 +10,7 @@ pub mod init;
 pub mod module;
 pub mod profile;
 pub mod recover;
+pub mod scan;
 pub mod secrets;
 pub mod status;
 pub mod sync;

@@ -58,3 +58,8 @@ state.json
 
 # IDE workspace files
 *.code-workspace
+
+# Mind Agent Framework
+docs/iterations/**/WIP.md
+docs/iterations/**/PLAN.md
+docs/iterations/**/LEARNINGS.md

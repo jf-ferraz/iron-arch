@@ -1,0 +1,108 @@
+version = 1
+
+# =============================================================================
+# Update Policy Configuration
+# Controls system maintenance operations: doctor, clean, update
+# =============================================================================
+
+[policy]
+# Update mode: "manual" = require user confirmation, "auto" = unattended
+mode = "manual"
+# Require a filesystem snapshot before updates
+require_snapshot = true
+# Allow full system upgrades (pacman -Syu)
+allow_full_upgrade = true
+# Maximum parallel jobs for operations
+max_parallel_jobs = 1
+
+# =============================================================================
+# Doctor - System Health Verification
+# =============================================================================
+[doctor]
+# Exit non-zero on warnings (not just errors)
+strict_mode = false
+# Automatically fix keyring if older than threshold
+auto_fix_keyring = true
+# Keyring age threshold in days
+keyring_max_age_days = 30
+# Disk usage warning threshold (percent)
+disk_warn_percent = 80
+# Disk usage critical threshold (percent)
+disk_critical_percent = 90
+# Maximum journal size before warning
+journal_max_size = "500M"
+
+# =============================================================================
+# Clean - Resource Reclamation
+# =============================================================================
+[clean]
+# Number of package versions to keep in cache
+cache_keep = 3
+# Remove cached packages of uninstalled packages
+remove_uninstalled = true
+# Maximum age (days) for user cache files before cleanup
+user_cache_max_age_days = 30
+# Maximum journal size
+journal_max_size = "500M"
+# Maximum journal age
+journal_max_age = "2weeks"
+# Clean thumbnail cache
+clean_thumbnails = true
+# Clean browser caches (Firefox, Chrome) - opt-in, requires --aggressive
+clean_browser_caches = false
+# Clean developer caches (npm, yarn, pip, cargo) - opt-in, requires --aggressive
+clean_dev_caches = false
+# Show memory usage report and high-memory process suggestions
+show_memory_suggestions = true
+
+# =============================================================================
+# Update - System Upgrade
+# =============================================================================
+[update]
+# Minimum free disk space required (GB)
+require_min_disk_space_gb = 2
+# Minimum battery level required (percent, 0 to disable)
+require_min_battery_percent = 20
+# Require acknowledgment of new Arch News before updating
+require_news_acknowledgment = true
+# Update archlinux-keyring before full upgrade (prevents signature errors)
+update_keyring_first = true
+# Update AUR packages after system upgrade
+update_aur = true
+# AUR helper to use: "auto" (detect paru/yay), "paru", "yay", "none"
+aur_helper = "auto"
+# Create filesystem snapshot before upgrade (requires snapper)
+create_snapshot = false
+# Collect boot time benchmarks after upgrade
+collect_benchmarks = true
+
+# =============================================================================
+# Mirror Configuration
+# =============================================================================
+[mirrors]
+# Refresh mirrors with reflector before update
+update_mirrors = false
+# Country code for mirror selection
+mirror_country = "US"
+# Number of latest mirrors to test
+mirror_latest = 20
+# Sort mirrors by: "rate", "score", "age"
+mirror_sort = "rate"
+
+# =============================================================================
+# Benchmark Collection
+# =============================================================================
+[benchmarks]
+# Enable boot time benchmark collection
+run_bench = true
+
+# =============================================================================
+# Maintenance Windows
+# =============================================================================
+[windows]
+# Daily maintenance window start time
+daily_start = "05:00"
+# Daily maintenance window end time
+daily_end = "07:00"
+# Timezone for maintenance windows
+timezone = "local"

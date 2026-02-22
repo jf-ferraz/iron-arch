@@ -1,0 +1,95 @@
+version = 1
+id = "updates"
+name = "System Update Module"
+kind = "operation"
+status = "active"
+owner = "laraj"
+description = "Stability-first Arch update workflow with preflight checks, news checks, lock/log handling, and safety gates."
+
+[paths]
+root = "modules/updates"
+script = "scripts/update-system.sh"
+policy_manifest = "app/manifests/update-policy.toml"
+state_logs = "app/state/logs"
+state_locks = "app/state/locks"
+
+[compat]
+os = ["arch-linux"]
+requires = ["bash", "pacman", "systemd"]
+optional = ["reflector", "pacman-contrib", "curl"]
+
+[capabilities]
+provides = [
+  "update-dry-run",
+  "update-execution",
+  "structured-logging",
+  "single-run-lock",
+  "arch-news-check",
+  "pacnew-detection",
+  "service-health-checks",
+  "cache-prune"
+]
+
+[[inputs]]
+name = "dry_run"
+type = "bool"
+required = false
+default = true
+description = "Preview mode that performs checks and logs planned actions without changing packages."
+
+[[inputs]]
+name = "apply"
+type = "bool"
+required = false
+default = false
+description = "Execute real package operations (equivalent to --apply)."
+
+[[inputs]]
+name = "non_interactive"
+type = "bool"
+required = false
+default = false
+description = "Use non-interactive pacman flags for unattended execution."
+
+[[artifacts]]
+name = "update_script"
+kind = "file"
+path = "scripts/update-system.sh"
+role = "executor"
+
+[[artifacts]]
+name = "update_policy"
+kind = "file"
+path = "app/manifests/update-policy.toml"
+role = "policy"
+
+[[artifacts]]
+name = "daily_log"
+kind = "file-pattern"
+path = "app/state/logs/update-*.log"
+role = "runtime-log"
+
+[[operations]]
+id = "dry-run"
+description = "Execute update workflow in dry-run mode."
+command = "scripts/update-system.sh --dry-run"
+
+[[operations]]
+id = "run"
+description = "Execute update workflow (real changes)."
+command = "scripts/update-system.sh --apply"
+
+[[operations]]
+id = "run-non-interactive"
+description = "Execute update workflow unattended."
+command = "scripts/update-system.sh --apply --non-interactive"
+
+[[operations]]
+id = "status"
+description = "Show latest update log file."
+command = "sh -c 'ls -1 app/state/logs/update-*.log 2>/dev/null | tail -n 1 || true'"
+
+[hooks]
+pre_apply = []
+post_apply = []
+rollback = []

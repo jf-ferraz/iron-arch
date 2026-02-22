@@ -1,0 +1,16 @@
+# Fail2ban Module
+# Intrusion prevention framework
+
+id = "fail2ban"
+name = "Fail2ban"
+description = "Intrusion prevention - bans IPs with too many failed login attempts"
+kind = "SystemUtil"
+
+packages = ["fail2ban"]
+aur_packages = []
+conflicts = []
+depends = []
+dotfiles = []
+
+[hooks]
+post_install = "sudo systemctl enable --now fail2ban"

@@ -2,13 +2,15 @@
 //!
 //! Provides git sync status, push/pull workflows, and conflict detection.
 
+use crate::CommandExecutor;
 use crate::services::state::StateManager;
 use crate::state::OperationStatus;
-use crate::{GitError, IronResult};
+use crate::{GitError, IronResult, RealCommandExecutor};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Arc;
 
 /// Git sync status
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -74,49 +76,118 @@ pub trait SyncService {
 }
 
 /// Default sync service implementation
+#[derive(Clone)]
 pub struct DefaultSyncService {
     /// Repository root
     repo_root: PathBuf,
     /// State manager
     state_manager: StateManager,
+    /// A-001: Optional command executor for resilient command execution (timeout + circuit breaker)
+    executor: Option<Arc<dyn CommandExecutor>>,
+    /// A-010: Optional secrets service for pre-push lock check
+    secrets_service: Option<Arc<dyn crate::services::secrets::SecretsService>>,
 }
 
 impl DefaultSyncService {
-    /// Create a new sync service
+    /// Create a new sync service (no executor — raw Command fallback)
     pub fn new(repo_root: &Path, state_manager: StateManager) -> Self {
         Self {
             repo_root: repo_root.to_path_buf(),
             state_manager,
+            executor: None,
+            secrets_service: None,
         }
     }
 
-    /// Run git command
-    fn git(&self, args: &[&str]) -> IronResult<String> {
-        let output = Command::new("git")
-            .args(args)
-            .current_dir(&self.repo_root)
-            .output()
-            .map_err(|_| GitError::NotARepository {
-                path: self.repo_root.clone(),
-            })?;
+    /// A-001: Create a sync service with a custom command executor
+    pub fn with_executor(
+        repo_root: &Path,
+        state_manager: StateManager,
+        executor: Arc<dyn CommandExecutor>,
+    ) -> Self {
+        Self {
+            repo_root: repo_root.to_path_buf(),
+            state_manager,
+            executor: Some(executor),
+            secrets_service: None,
+        }
+    }
 
-        if output.status.success() {
-            Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    /// A-001: Create a sync service with the default resilient executor (120s timeout + circuit breaker)
+    pub fn with_resilience(repo_root: &Path, state_manager: StateManager) -> Self {
+        Self::with_executor(
+            repo_root,
+            state_manager,
+            Arc::new(RealCommandExecutor::with_defaults()),
+        )
+    }
+
+    /// A-010: Attach a secrets service for pre-push lock checks
+    pub fn with_secrets_service(
+        mut self,
+        secrets: Arc<dyn crate::services::secrets::SecretsService>,
+    ) -> Self {
+        self.secrets_service = Some(secrets);
+        self
+    }
+
+    /// Run git command — delegates to executor when available, otherwise raw Command
+    fn git(&self, args: &[&str]) -> IronResult<String> {
+        // A-001: Use CommandExecutor when available (provides 120s timeout + circuit breaker)
+        if let Some(ref executor) = self.executor {
+            let mut full_args = vec!["-C", self.repo_root.to_str().unwrap_or(".")];
+            full_args.extend(args);
+
+            let output =
+                executor
+                    .execute_full("git", &full_args)
+                    .map_err(|e| GitError::CommandFailed {
+                        message: format!("{}", e),
+                    })?;
+
+            if output.success() {
+                Ok(output.stdout.trim().to_string())
+            } else {
+                Err(GitError::CommandFailed {
+                    message: output.stderr.trim().to_string(),
+                }
+                .into())
+            }
         } else {
-            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            Err(GitError::CommandFailed { message: stderr }.into())
+            // Fallback: direct Command (no timeout/circuit breaker)
+            let output = Command::new("git")
+                .args(args)
+                .current_dir(&self.repo_root)
+                .output()
+                .map_err(|e| {
+                    let message = format!("{}", e);
+                    match e.kind() {
+                        std::io::ErrorKind::NotFound => GitError::IoError {
+                            message: "git command not found — is git installed?".to_string(),
+                        },
+                        std::io::ErrorKind::PermissionDenied => GitError::IoError {
+                            message: format!(
+                                "permission denied running git in {}",
+                                self.repo_root.display()
+                            ),
+                        },
+                        _ => GitError::IoError { message },
+                    }
+                })?;
+
+            if output.status.success() {
+                Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                Err(GitError::CommandFailed { message: stderr }.into())
+            }
         }
     }
 
     /// Check if this is a git repository
     fn is_repo(&self) -> bool {
         self.repo_root.join(".git").exists()
-            || Command::new("git")
-                .args(["rev-parse", "--git-dir"])
-                .current_dir(&self.repo_root)
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false)
+            || self.git(&["rev-parse", "--git-dir"]).is_ok()
     }
 
     /// Get current branch name
@@ -158,6 +229,60 @@ impl DefaultSyncService {
     fn fetch(&self) -> IronResult<()> {
         self.git(&["fetch", "--quiet"])?;
         Ok(())
+    }
+
+    /// D-008: Re-link config files that changed between two commits.
+    ///
+    /// After a pull, if any files under `bundles/`, `modules/`, or `profiles/`
+    /// changed, we re-create their symlinks so the live system reflects the
+    /// remote state. Errors are logged but do not fail the pull.
+    fn post_pull_relink(&self, old_head: &str, new_head: &str) {
+        // Get list of changed files between the two commits
+        let changed = match self.git(&["diff", "--name-only", old_head, new_head]) {
+            Ok(output) => output,
+            Err(_) => return,
+        };
+
+        let config_dirs = ["bundles/", "modules/", "profiles/", "hosts/"];
+        let changed_configs: Vec<&str> = changed
+            .lines()
+            .filter(|line| config_dirs.iter().any(|d| line.starts_with(d)))
+            .collect();
+
+        if changed_configs.is_empty() {
+            return;
+        }
+
+        // Re-link each changed config file to its target location
+        for rel_path in &changed_configs {
+            let source = self.repo_root.join(rel_path);
+            if !source.exists() {
+                continue; // File was deleted in pull, skip
+            }
+
+            // For files under bundles/<id>/config/, link to ~/.<rest>
+            // For files under modules/<id>/config/, link to ~/.<rest>
+            let target = if let Some(rest) = rel_path
+                .split_once("/config/")
+                .map(|(_, rest)| rest)
+            {
+                dirs::home_dir().map(|h| h.join(format!(".{}", rest)))
+            } else {
+                None
+            };
+
+            if let Some(target) = target {
+                // Create parent directory if needed
+                if let Some(parent) = target.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                // Only re-link if target is already a symlink (don't create new links)
+                if target.is_symlink() {
+                    let _ = std::fs::remove_file(&target);
+                    let _ = std::os::unix::fs::symlink(&source, &target);
+                }
+            }
+        }
     }
 }
 
@@ -214,7 +339,16 @@ impl SyncService for DefaultSyncService {
             .into());
         }
 
+        // Capture HEAD before pull so we can detect what changed
+        let head_before = self.git(&["rev-parse", "HEAD"]).unwrap_or_default();
+
         self.git(&["pull", "--rebase"])?;
+
+        // D-008: Re-link config files that changed during pull
+        let head_after = self.git(&["rev-parse", "HEAD"]).unwrap_or_default();
+        if head_before != head_after {
+            self.post_pull_relink(&head_before, &head_after);
+        }
 
         self.state_manager
             .record_operation("git_pull", OperationStatus::Success, None)?;
@@ -228,6 +362,18 @@ impl SyncService for DefaultSyncService {
                 path: self.repo_root.clone(),
             }
             .into());
+        }
+
+        // A-010: Lock secrets before push if they are unlocked
+        if let Some(ref secrets) = self.secrets_service {
+            if let Ok(status) = secrets.status() {
+                if matches!(
+                    status,
+                    crate::services::secrets::SecretsStatus::Unlocked
+                ) {
+                    let _ = secrets.lock();
+                }
+            }
         }
 
         self.git(&["push"])?;
@@ -272,8 +418,20 @@ impl SyncService for DefaultSyncService {
             .into());
         }
 
-        // Stage all changes
-        self.git(&["add", "-A"])?;
+        // Stage only tracked/known config paths to avoid leaking unrelated files
+        self.git(&["add", "-u"])?;
+
+        // Also stage new files in iron-managed directories
+        for dir in &["bundles", "modules", "profiles", "hosts", "secrets", "scripts"] {
+            let path = self.repo_root.join(dir);
+            if path.exists() {
+                self.git(&["add", dir]).ok();
+            }
+        }
+        // Always stage state.json
+        if self.repo_root.join("state.json").exists() {
+            self.git(&["add", "state.json"]).ok();
+        }
 
         // Commit
         self.git(&["commit", "-m", message])?;
@@ -712,5 +870,195 @@ mod tests {
 
         let info = service.status().unwrap();
         assert!(info.branch.is_some());
+    }
+
+    // -----------------------------------------------------------------------
+    // E-014: SyncService error-path tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_push_fails_not_a_repo() {
+        let temp_dir = TempDir::new().unwrap();
+        let state_manager = StateManager::new(temp_dir.path().to_path_buf()).unwrap();
+        let service = DefaultSyncService::new(temp_dir.path(), state_manager);
+        // No git init → push should fail
+        let result = service.push();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_pull_fails_not_a_repo() {
+        let temp_dir = TempDir::new().unwrap();
+        let state_manager = StateManager::new(temp_dir.path().to_path_buf()).unwrap();
+        let service = DefaultSyncService::new(temp_dir.path(), state_manager);
+        let result = service.pull();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_push_fails_no_remote() {
+        let (service, temp_dir) = create_test_service();
+        init_git_repo(temp_dir.path());
+        // Create a commit so the repo is valid
+        std::fs::write(temp_dir.path().join("f.txt"), "data").unwrap();
+        Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "init"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+        // No remote configured → push should fail
+        let result = service.push();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_pull_fails_no_remote() {
+        let (service, temp_dir) = create_test_service();
+        init_git_repo(temp_dir.path());
+        std::fs::write(temp_dir.path().join("f.txt"), "data").unwrap();
+        Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "init"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+        let result = service.pull();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_status_not_a_repo_returns_not_a_repo() {
+        let temp_dir = TempDir::new().unwrap();
+        let state_manager = StateManager::new(temp_dir.path().to_path_buf()).unwrap();
+        let service = DefaultSyncService::new(temp_dir.path(), state_manager);
+        let info = service.status().unwrap();
+        assert_eq!(info.status, SyncStatus::NotARepo);
+    }
+
+    #[test]
+    fn test_stash_fails_not_a_repo() {
+        let temp_dir = TempDir::new().unwrap();
+        let state_manager = StateManager::new(temp_dir.path().to_path_buf()).unwrap();
+        let service = DefaultSyncService::new(temp_dir.path(), state_manager);
+        let result = service.stash();
+        assert!(result.is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // A-001: CommandExecutor-backed SyncService tests
+    // -----------------------------------------------------------------------
+
+    fn create_resilient_service() -> (DefaultSyncService, TempDir) {
+        let temp_dir = TempDir::new().unwrap();
+        let state_manager = StateManager::new(temp_dir.path().to_path_buf()).unwrap();
+        let service = DefaultSyncService::with_resilience(temp_dir.path(), state_manager);
+        (service, temp_dir)
+    }
+
+    fn create_executor_service() -> (DefaultSyncService, TempDir) {
+        let temp_dir = TempDir::new().unwrap();
+        let state_manager = StateManager::new(temp_dir.path().to_path_buf()).unwrap();
+        let executor = Arc::new(RealCommandExecutor::with_defaults());
+        let service =
+            DefaultSyncService::with_executor(temp_dir.path(), state_manager, executor);
+        (service, temp_dir)
+    }
+
+    #[test]
+    fn test_with_resilience_not_a_repo() {
+        let (service, _temp) = create_resilient_service();
+        let info = service.status().unwrap();
+        assert_eq!(info.status, SyncStatus::NotARepo);
+    }
+
+    #[test]
+    fn test_with_executor_not_a_repo() {
+        let (service, _temp) = create_executor_service();
+        let info = service.status().unwrap();
+        assert_eq!(info.status, SyncStatus::NotARepo);
+    }
+
+    #[test]
+    fn test_with_resilience_status_dirty() {
+        let (service, temp_dir) = create_resilient_service();
+        init_git_repo(temp_dir.path());
+        std::fs::write(temp_dir.path().join("dirty.txt"), "content").unwrap();
+        let info = service.status().unwrap();
+        assert_eq!(info.status, SyncStatus::Dirty);
+    }
+
+    #[test]
+    fn test_with_executor_push_fails_not_a_repo() {
+        let (service, _temp) = create_executor_service();
+        let result = service.push();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_with_executor_pull_fails_not_a_repo() {
+        let (service, _temp) = create_executor_service();
+        let result = service.pull();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_with_resilience_commit_works() {
+        let (service, temp_dir) = create_resilient_service();
+        init_git_repo(temp_dir.path());
+        std::fs::write(temp_dir.path().join("test.txt"), "content").unwrap();
+        Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+        let result = service.commit("Test commit via executor");
+        assert!(result.is_ok());
+    }
+
+    // -----------------------------------------------------------------------
+    // A-010: Pre-push secrets lock check tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_push_without_secrets_service() {
+        // Push should work (and fail for no-remote) without any secrets service
+        let (service, temp_dir) = create_resilient_service();
+        init_git_repo(temp_dir.path());
+        std::fs::write(temp_dir.path().join("f.txt"), "data").unwrap();
+        Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "init"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+        // No remote → push fails, but the secrets check path is exercised (no panic)
+        let result = service.push();
+        assert!(result.is_err()); // fails because no remote, not because of secrets
+    }
+
+    #[test]
+    fn test_with_secrets_service_builder() {
+        let temp_dir = TempDir::new().unwrap();
+        let state_manager = StateManager::new(temp_dir.path().to_path_buf()).unwrap();
+        let service = DefaultSyncService::with_resilience(temp_dir.path(), state_manager)
+            .with_secrets_service(Arc::new(
+                crate::services::secrets::DefaultSecretsService::new(temp_dir.path()),
+            ));
+        // Just verify the builder chain works, status should return NotARepo
+        let info = service.status().unwrap();
+        assert_eq!(info.status, SyncStatus::NotARepo);
     }
 }

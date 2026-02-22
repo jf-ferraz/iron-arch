@@ -12,7 +12,7 @@ use clap::{CommandFactory, Parser};
 use clap_complete::generate;
 use cli::{Cli, Commands};
 use context::AppContext;
-use iron_core::logging::{init_logging, LogConfig};
+use iron_core::logging::{LogConfig, init_logging};
 
 fn main() -> Result<()> {
     // Initialize structured JSON logging (NFR-9, NFR-10)
@@ -57,22 +57,29 @@ fn main() -> Result<()> {
         Some(Commands::Sync { action }) => commands::sync::execute(&ctx, action),
         Some(Commands::Secrets { action }) => commands::secrets::execute(&ctx, action),
         Some(Commands::Doctor) => commands::doctor::execute(&ctx),
+        Some(Commands::Scan) => commands::scan::execute(&ctx),
         Some(Commands::Clean {
             orphans,
             cache,
             symlinks,
+            journal,
+            logs,
             all,
-        }) => commands::clean::execute(&ctx, orphans, cache, symlinks, all),
+        }) => commands::clean::execute(&ctx, orphans, cache, symlinks, journal, logs, all),
         Some(Commands::Recover {
             export,
             import,
             script,
-        }) => commands::recover::execute(&ctx, export, import, script),
+            backup,
+            restore,
+        }) => commands::recover::execute(&ctx, export, import, script, backup, restore),
         Some(Commands::Go) => {
             ctx.output.info("Launching Iron TUI...");
             let root = std::path::PathBuf::from(&cli.root);
-            let package_manager = std::sync::Arc::new(iron_pacman::DefaultPackageManager::default());
-            iron_tui::run_with_config(root, package_manager)
+            let package_manager =
+                std::sync::Arc::new(iron_pacman::DefaultPackageManager::default());
+            let service_manager = std::sync::Arc::new(iron_systemd::SystemdServiceAdapter::user());
+            iron_tui::run_with_config(root, package_manager, service_manager)
         }
         Some(Commands::Completions { shell }) => {
             let mut cmd = Cli::command();
@@ -81,14 +88,28 @@ fn main() -> Result<()> {
         }
         None => {
             // No command = show welcome message
-            ctx.output.header("Welcome to Iron");
-            ctx.output
-                .info("Less is More - Turning your Arch into Iron");
-            ctx.output.raw("");
-            ctx.output.info("Run 'iron --help' for CLI commands");
-            ctx.output
-                .info("Run 'iron init' to initialize Iron on this host");
-            ctx.output.info("Run 'iron go' to launch the TUI dashboard");
+            if matches!(cli.format, cli::OutputFormat::Json) {
+                // Structured JSON for machine consumption
+                let welcome = serde_json::json!({
+                    "name": "iron",
+                    "description": "Less is More - Turning your Arch into Iron",
+                    "version": env!("CARGO_PKG_VERSION"),
+                    "hint": "Run 'iron --help' for CLI commands, 'iron go' for TUI"
+                });
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&welcome).unwrap_or_default()
+                );
+            } else {
+                ctx.output.header("Welcome to Iron");
+                ctx.output
+                    .info("Less is More - Turning your Arch into Iron");
+                ctx.output.raw("");
+                ctx.output.info("Run 'iron --help' for CLI commands");
+                ctx.output
+                    .info("Run 'iron init' to initialize Iron on this host");
+                ctx.output.info("Run 'iron go' to launch the TUI dashboard");
+            }
             Ok(())
         }
     }

@@ -1,0 +1,12 @@
+# Drop noisy user data and caches from version control
+obsidian/
+obs-studio/logs
+obs-studio/profiler_data
+
+# Generated/volatile files
+kitty/kitty.conf.bak
+gtk-3.0/*.bak
+gtk-4.0/*.bak
+*.log
+*.csv.gz
+vesktop/state.json

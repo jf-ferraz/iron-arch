@@ -117,16 +117,12 @@ pub struct DefaultGitManager {
 }
 
 impl DefaultGitManager {
-    /// Create a new git manager for the given repository
+    /// Create a new git manager for the given repository with a default resilient executor.
+    ///
+    /// The circuit breaker opens after 3 consecutive failures and stays open
+    /// for 60 seconds, preventing hangs from git operations in a broken environment.
     pub fn new(root: PathBuf) -> IronResult<Self> {
-        // Verify this is a git repository
-        if !root.join(".git").exists() {
-            return Err(GitError::NotARepository { path: root }.into());
-        }
-        Ok(Self {
-            root,
-            executor: None,
-        })
+        Self::with_resilience(root)
     }
 
     /// Create a git manager with a command executor for resilient operations
@@ -260,12 +256,9 @@ pub struct DefaultSecretsManager {
 }
 
 impl DefaultSecretsManager {
-    /// Create a new secrets manager
+    /// Create a new secrets manager with a default resilient executor.
     pub fn new(root: PathBuf) -> Self {
-        Self {
-            root,
-            executor: None,
-        }
+        Self::with_resilience(root)
     }
 
     /// Create a secrets manager with a command executor for resilient operations
@@ -385,6 +378,29 @@ impl SecretsManager for DefaultSecretsManager {
 
         let output = self.run_gitcrypt(&["status", "-e"])?;
         Ok(parse_encrypted_files(&output))
+    }
+}
+
+// =========================================================================
+// SecretsBackend impl — allows iron-core's DefaultSecretsService to
+// delegate git-crypt operations to this resilient manager.
+// =========================================================================
+
+impl iron_core::services::secrets::SecretsBackend for DefaultSecretsManager {
+    fn is_unlocked(&self) -> bool {
+        SecretsManager::is_unlocked(self)
+    }
+
+    fn unlock(&self, key_path: Option<&Path>) -> IronResult<()> {
+        SecretsManager::unlock(self, key_path)
+    }
+
+    fn lock(&self) -> IronResult<()> {
+        SecretsManager::lock(self)
+    }
+
+    fn list_encrypted(&self) -> IronResult<Vec<PathBuf>> {
+        SecretsManager::list_encrypted(self)
     }
 }
 
@@ -1005,16 +1021,16 @@ encrypted: secrets/token.txt
     }
 
     #[test]
-    fn test_git_manager_without_executor() {
+    fn test_git_manager_new_has_resilient_executor() {
         use tempfile::TempDir;
 
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let root = temp_dir.path().to_path_buf();
         std::fs::create_dir_all(root.join(".git")).expect("Failed to create .git");
 
-        // Test backward compatibility - new() should work without executor
+        // new() always initializes with a circuit-breaker executor
         let manager = DefaultGitManager::new(root).expect("Failed to create manager");
-        assert!(manager.executor.is_none());
+        assert!(manager.executor.is_some());
     }
 
     #[test]
@@ -1043,15 +1059,15 @@ encrypted: secrets/token.txt
     }
 
     #[test]
-    fn test_secrets_manager_without_executor() {
+    fn test_secrets_manager_new_has_resilient_executor() {
         use tempfile::TempDir;
 
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let root = temp_dir.path().to_path_buf();
 
-        // Test backward compatibility - new() should work without executor
+        // new() always initializes with a circuit-breaker executor
         let manager = DefaultSecretsManager::new(root);
-        assert!(manager.executor.is_none());
+        assert!(manager.executor.is_some());
     }
 
     // ==========================================================================
@@ -1390,7 +1406,9 @@ encrypted: secrets/token.txt
         // No .git-crypt
 
         let manager = DefaultSecretsManager::new(root);
-        let files = manager.list_encrypted().expect("list_encrypted should succeed");
+        let files = manager
+            .list_encrypted()
+            .expect("list_encrypted should succeed");
         assert!(files.is_empty());
     }
 
@@ -1446,8 +1464,16 @@ encrypted: secrets/token.txt
         let output = "## main\n M file with spaces.rs\n?? another file.txt\n";
         let status = parse_git_status(output);
         assert!(!status.is_clean);
-        assert!(status.modified.contains(&PathBuf::from("file with spaces.rs")));
-        assert!(status.untracked.contains(&PathBuf::from("another file.txt")));
+        assert!(
+            status
+                .modified
+                .contains(&PathBuf::from("file with spaces.rs"))
+        );
+        assert!(
+            status
+                .untracked
+                .contains(&PathBuf::from("another file.txt"))
+        );
     }
 
     #[test]
@@ -1474,7 +1500,8 @@ encrypted: secrets/token.txt
 
     #[test]
     fn test_parse_encrypted_files_with_special_chars() {
-        let output = "encrypted: secrets/key-with-dash.txt\nencrypted: secrets/key_with_underscore.env\n";
+        let output =
+            "encrypted: secrets/key-with-dash.txt\nencrypted: secrets/key_with_underscore.env\n";
         let files = parse_encrypted_files(output);
         assert_eq!(files.len(), 2);
     }

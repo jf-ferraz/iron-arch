@@ -1,0 +1,20 @@
+version = 1
+id = "gnome"
+name = "GNOME Config Module"
+kind = "config"
+status = "draft"
+owner = "laraj"
+description = "GNOME desktop configuration module."
+
+[paths]
+root = "modules/configs/gnome"
+
+[[operations]]
+id = "lint"
+description = "Validate module structure."
+command = "sh -c 'test -d modules/configs/gnome'"
+
+[hooks]
+pre_apply = []
+post_apply = []
+rollback = []

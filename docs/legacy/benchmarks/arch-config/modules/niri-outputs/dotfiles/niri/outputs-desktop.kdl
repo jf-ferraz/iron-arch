@@ -1,0 +1,20 @@
+// Left monitor
+output "DP-2" {
+    mode "1920x1080@60.000"
+    position x=0 y=0
+    scale 0.75
+}
+
+// Middle ultrawide monitor
+output "DP-1" {
+    mode "3440x1440@180"
+    position x=2560 y=0
+    scale 1
+}
+
+// Right monitor
+output "DP-3" {
+    mode "2560x1440@59.951"
+    position x=6000 y=0
+    scale 1
+}

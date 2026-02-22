@@ -3,23 +3,52 @@
 //! Main rendering functions for all views.
 
 mod bundles;
+mod clean;
+mod config;
 mod dashboard;
+mod doctor;
+mod host_selection;
+mod maintenance;
+mod module_creator;
 mod modules;
+pub mod operation_log;
+mod profile_builder;
 mod profiles;
+mod recovery;
+mod secrets;
+mod security;
 mod settings;
+mod system_scan;
+pub mod theme;
 mod update;
+pub mod utils;
 mod wizard;
 
 use crate::app::{App, View};
-use crate::widgets::{render_confirm_dialog, render_footer, render_header, render_help_overlay};
+use crate::widgets::{
+    render_confirm_dialog, render_footer, render_header, render_help_overlay,
+    render_progress_dialog,
+};
 use ratatui::prelude::*;
 
 // Re-export for external use
 pub use bundles::{render_bundle_detail, render_bundles};
+pub use clean::{render_clean_system, render_cleanup_preview, render_cleanup_results};
+pub use config::render_config_manager;
 pub use dashboard::render_dashboard;
+pub use doctor::render_doctor;
+pub use host_selection::render_host_selection;
+pub use maintenance::render_system_maintenance;
+pub use module_creator::render_module_creator;
 pub use modules::{render_module_detail, render_modules};
+pub use operation_log::render_operation_log;
+pub use profile_builder::render_profile_builder;
 pub use profiles::{render_profile_detail, render_profiles};
+pub use recovery::render_recovery;
+pub use secrets::render_secrets;
+pub use security::render_security_modules;
 pub use settings::render_settings;
+pub use system_scan::render_system_scan;
 pub use update::{render_sync, render_update_preview};
 pub use wizard::render_setup_wizard;
 
@@ -53,19 +82,45 @@ pub fn render(frame: &mut Frame, app: &App) {
         View::UpdatePreview => render_update_preview(frame, layout[1], app),
         View::Sync => render_sync(frame, layout[1], app),
         View::Settings => render_settings(frame, layout[1], app),
+        // Phase 3: System Cleanup
+        View::CleanSystem => render_clean_system(frame, layout[1], app),
+        View::CleanupPreview => clean::render_cleanup_preview(frame, layout[1], app),
+        View::CleanupResults => clean::render_cleanup_results(frame, layout[1], app),
+        // Phase 4-5 views
+        View::SystemMaintenance => render_system_maintenance(frame, layout[1], app),
+        View::SecurityModules => render_security_modules(frame, layout[1], app),
+        View::ConfigManager => render_config_manager(frame, layout[1], app),
+        View::OperationLog => render_operation_log(frame, layout[1], app),
+        View::Doctor => render_doctor(frame, layout[1], app),
+        View::Secrets => render_secrets(frame, layout[1], app),
+        View::Recovery => render_recovery(frame, layout[1], app),
+        View::ProfileBuilder => render_profile_builder(frame, layout[1], app),
+        View::ModuleCreator => render_module_creator(frame, layout[1], app),
+        View::SystemScan => render_system_scan(frame, layout[1], app),
+        View::HostSelection => render_host_selection(frame, layout[1], app),
     }
 
     // Render footer
     render_footer(frame, layout[2], app);
 
     // Render overlays
+    if app.show_divergence_popup {
+        dashboard::render_divergence_popup(frame, area, app);
+    }
+
     if app.show_help {
-        render_help_overlay(frame, area);
+        render_help_overlay(frame, area, app);
     }
 
     if app.show_confirm {
         render_confirm_dialog(frame, area, app);
     }
+
+    // Render progress dialog for long-running operations
+    if app.progress.is_some() {
+        render_progress_dialog(frame, area, app);
+    }
 }
+
 #[cfg(test)]
 mod tests;

@@ -188,6 +188,20 @@ impl StateManager {
         )
     }
 
+    /// Clear active bundle for a host (used on deactivation)
+    pub fn clear_active_bundle(&self, host_id: &str) -> IronResult<()> {
+        {
+            let mut state = self.state.lock().unwrap();
+            state.active_bundles.remove(host_id);
+        }
+        self.persist()?;
+        self.audit(
+            "clear_active_bundle",
+            OperationStatus::Success,
+            Some(host_id.to_string()),
+        )
+    }
+
     /// Get active profile for a host
     pub fn active_profile(&self, host_id: &str) -> Option<String> {
         self.state().active_profiles.get(host_id).cloned()
@@ -245,6 +259,36 @@ impl StateManager {
     /// Is a module active?
     pub fn is_module_active(&self, module_id: &str) -> bool {
         self.state().active_modules.contains(&module_id.to_string())
+    }
+
+    // ==========================================================================
+    // Scan History (S1-P1.5-005)
+    // ==========================================================================
+
+    /// Save a scan report to state for history / re-scan
+    pub fn save_scan_report(
+        &self,
+        report: &crate::services::scan::ScanReport,
+    ) -> IronResult<()> {
+        {
+            let mut state = self.state.lock().unwrap();
+            state.last_scan_report = Some(report.clone());
+        }
+        self.persist()?;
+        self.audit(
+            "save_scan_report",
+            OperationStatus::Success,
+            Some(format!(
+                "conflicts={} recommendations={}",
+                report.potential_conflicts.len(),
+                report.recommendations.len()
+            )),
+        )
+    }
+
+    /// Load last scan report from state
+    pub fn load_scan_report(&self) -> Option<crate::services::scan::ScanReport> {
+        self.state().last_scan_report.clone()
     }
 
     /// Get maintenance state
@@ -593,6 +637,62 @@ impl StateManager {
         self.persist()?;
         self.audit("import_state", OperationStatus::Success, None)
     }
+
+    // ==========================================================================
+    // News Acknowledgment Methods (Phase 2.2)
+    // ==========================================================================
+
+    /// Check if a news item has been acknowledged
+    pub fn is_news_acknowledged(&self, url: &str) -> bool {
+        self.state().is_news_acknowledged(url)
+    }
+
+    /// Acknowledge a single news item
+    pub fn acknowledge_news(&self, url: &str) -> IronResult<()> {
+        {
+            let mut state = self.state.lock().unwrap();
+            state.acknowledge_news(url);
+        }
+        self.persist()?;
+        self.audit(
+            "acknowledge_news",
+            OperationStatus::Success,
+            Some(url.to_string()),
+        )
+    }
+
+    /// Acknowledge multiple news items
+    pub fn acknowledge_all_news(&self, urls: &[&str]) -> IronResult<()> {
+        {
+            let mut state = self.state.lock().unwrap();
+            state.acknowledge_all_news(urls);
+        }
+        self.persist()?;
+        self.audit(
+            "acknowledge_all_news",
+            OperationStatus::Success,
+            Some(format!("{} items", urls.len())),
+        )
+    }
+
+    /// Mark news as recently fetched
+    pub fn mark_news_fetched(&self) -> IronResult<()> {
+        {
+            let mut state = self.state.lock().unwrap();
+            state.mark_news_fetched();
+        }
+        self.persist()
+    }
+
+    /// Check if news should be refetched
+    pub fn should_refetch_news(&self) -> bool {
+        self.state().should_refetch_news()
+    }
+
+    /// Get count of acknowledged news items
+    pub fn acknowledged_news_count(&self) -> usize {
+        self.state().news_acknowledgment.acknowledged_count()
+    }
 }
 
 #[cfg(test)]
@@ -627,6 +727,24 @@ mod tests {
             manager.active_bundle("laptop"),
             Some("hyprland".to_string())
         );
+    }
+
+    #[test]
+    fn test_clear_active_bundle() {
+        let (manager, _temp) = create_test_manager();
+        manager.set_active_bundle("laptop", "hyprland").unwrap();
+        assert!(manager.active_bundle("laptop").is_some());
+
+        manager.clear_active_bundle("laptop").unwrap();
+        assert!(manager.active_bundle("laptop").is_none());
+    }
+
+    #[test]
+    fn test_clear_active_bundle_nonexistent_host() {
+        let (manager, _temp) = create_test_manager();
+        // Clearing a non-existent host should succeed (no-op remove)
+        manager.clear_active_bundle("nonexistent").unwrap();
+        assert!(manager.active_bundle("nonexistent").is_none());
     }
 
     #[test]
@@ -1346,6 +1464,37 @@ mod tests {
                 i
             );
         }
+    }
+
+    #[test]
+    fn test_save_and_load_scan_report() {
+        use crate::services::scan::{ScanReport, ScanSummary};
+
+        let (manager, _temp) = create_test_manager();
+
+        // Initially no scan report
+        assert!(manager.load_scan_report().is_none());
+
+        // Save a scan report
+        let report = ScanReport {
+            existing_configs: vec![],
+            installed_packages: vec!["git".to_string(), "neovim".to_string()],
+            potential_conflicts: vec![],
+            recommendations: vec!["Backup existing configs".to_string()],
+            summary: ScanSummary::default(),
+        };
+        manager.save_scan_report(&report).unwrap();
+
+        // Load it back
+        let loaded = manager.load_scan_report().unwrap();
+        assert_eq!(loaded.installed_packages.len(), 2);
+        assert_eq!(loaded.recommendations.len(), 1);
+        assert_eq!(loaded.recommendations[0], "Backup existing configs");
+
+        // Verify persistence across new manager instances
+        let manager2 = StateManager::new(_temp.path().to_path_buf()).unwrap();
+        let loaded2 = manager2.load_scan_report().unwrap();
+        assert_eq!(loaded2.installed_packages.len(), 2);
     }
 }
 

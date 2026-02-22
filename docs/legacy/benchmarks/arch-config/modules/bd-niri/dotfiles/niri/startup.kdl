@@ -1,0 +1,16 @@
+// Start up Commands
+
+//spawn-at-startup "dms" "run"
+// spawn-at-startup "qs" "-c" "noctalia-shell" // Commented by shell-switcher
+spawn-at-startup "sunshine"
+spawn-at-startup "swayidle" "-w" "timeout" "1800" "qs -c noctalia-shell ipc call lockscreen lock"
+spawn-at-startup "sway-audio-idle-inhibit"
+// spawn-sh-at-startup "/home/don/.config/niri/scripts/zed-resize-fix.sh"
+
+// To run a shell command (with variables, pipes, etc.), use spawn-sh-at-startup:
+// spawn-sh-at-startup "qs -c ~/source/qs/MyAwesomeShell"
+
+hotkey-overlay {
+    // Uncomment this line to disable the "Important Hotkeys" pop-up at startup.
+skip-at-startup
+}

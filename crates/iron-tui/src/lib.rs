@@ -9,6 +9,8 @@
 
 pub mod app;
 pub mod event;
+pub mod message;
+pub mod screen;
 pub mod terminal;
 pub mod ui;
 pub mod widgets;
@@ -16,7 +18,7 @@ pub mod wizard;
 
 use app::App;
 use event::{Event, EventHandler};
-use iron_core::PackageManager;
+use iron_core::{PackageManager, SystemService};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -26,20 +28,24 @@ use terminal::Terminal;
 const TICK_RATE: Duration = Duration::from_millis(250);
 
 /// Run the TUI application with a package manager
-pub fn run(package_manager: Arc<dyn PackageManager>) -> anyhow::Result<()> {
-    run_with_config(PathBuf::from("."), package_manager)
+pub fn run(
+    package_manager: Arc<dyn PackageManager>,
+    service_manager: Arc<dyn SystemService>,
+) -> anyhow::Result<()> {
+    run_with_config(PathBuf::from("."), package_manager, service_manager)
 }
 
 /// Run the TUI application with a specific config directory and package manager
 pub fn run_with_config(
     config_dir: PathBuf,
     package_manager: Arc<dyn PackageManager>,
+    service_manager: Arc<dyn SystemService>,
 ) -> anyhow::Result<()> {
     // Initialize terminal
     let mut terminal = Terminal::new()?;
 
     // Create application state
-    let mut app = App::new(config_dir, package_manager);
+    let mut app = App::new(config_dir, package_manager, service_manager);
     app.init()?;
 
     // Create event handler
@@ -124,10 +130,10 @@ mod tests {
         let mut app = App::default();
 
         app.set_status("Test status");
-        assert_eq!(app.status_message, Some("Test status".to_string()));
+        assert_eq!(app.status_text(), Some("Test status"));
 
         app.set_error("Test error");
-        assert_eq!(app.error_message, Some("Test error".to_string()));
+        assert_eq!(app.error_text(), Some("Test error"));
 
         app.clear_messages();
         assert!(app.status_message.is_none());
@@ -496,14 +502,17 @@ mod tests {
         let mut app = App::default();
         app.update_risk = RiskLevel::Low;
         // More than 50 updates triggers warning
-        app.pending_updates = (0..51).map(|i| PackageUpdate {
-            name: format!("pkg-{}", i),
-            current_version: "1.0.0".to_string(),
-            new_version: "1.1.0".to_string(),
-            is_aur: false,
-            is_flagged: false,
-            repository: "extra".to_string(),
-        }).collect();
+        app.pending_updates = (0..51)
+            .map(|i| PackageUpdate {
+                name: format!("pkg-{}", i),
+                current_version: "1.0.0".to_string(),
+                new_version: "1.1.0".to_string(),
+                is_aur: false,
+                is_flagged: false,
+                repository: "extra".to_string(),
+                ..Default::default()
+            })
+            .collect();
 
         assert_eq!(app.system_health(), HealthStatus::Warning);
     }
@@ -531,16 +540,15 @@ mod tests {
         use iron_core::PackageUpdate;
 
         let mut app = App::default();
-        app.pending_updates = vec![
-            PackageUpdate {
-                name: "test-pkg".to_string(),
-                current_version: "1.0.0".to_string(),
-                new_version: "2.0.0".to_string(),
-                is_aur: false,
-                is_flagged: false,
-                repository: "core".to_string(),
-            }
-        ];
+        app.pending_updates = vec![PackageUpdate {
+            name: "test-pkg".to_string(),
+            current_version: "1.0.0".to_string(),
+            new_version: "2.0.0".to_string(),
+            is_aur: false,
+            is_flagged: false,
+            repository: "core".to_string(),
+            ..Default::default()
+        }];
 
         let updates = app.pending_updates_list();
         assert_eq!(updates.len(), 1);

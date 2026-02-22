@@ -343,7 +343,15 @@ mod tests {
 
         // Warning should identify the service and include the reason
         let warning = &warnings[0];
-        assert!(warning.contains("Secrets"), "Should identify service: {}", warning);
-        assert!(warning.contains("git-crypt"), "Should include reason: {}", warning);
+        assert!(
+            warning.contains("Secrets"),
+            "Should identify service: {}",
+            warning
+        );
+        assert!(
+            warning.contains("git-crypt"),
+            "Should include reason: {}",
+            warning
+        );
     }
 }

@@ -10,8 +10,10 @@ path = "src/main.rs"
 
 [dependencies]
 iron-core = { path = "../iron-core" }
+iron-git = { path = "../iron-git" }
 iron-tui = { path = "../iron-tui" }
 iron-pacman = { path = "../iron-pacman" }
+iron-systemd = { path = "../iron-systemd" }
 clap.workspace = true
 clap_complete = "4.5"
 anyhow.workspace = true

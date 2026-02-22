@@ -1,0 +1,9 @@
+[Unit]
+Description=JFF Arch Update Dry-Run
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Documents/jff-arch-config
+ExecStart=%h/Documents/jff-arch-config/scripts/update-system.sh --dry-run

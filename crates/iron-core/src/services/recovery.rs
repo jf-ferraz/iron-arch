@@ -10,6 +10,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 /// Recovery export format
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,6 +54,21 @@ pub struct InstallScriptOptions {
     pub interactive: bool,
 }
 
+/// C-010: Result of post-install/post-restore verification
+#[derive(Debug, Clone, Default)]
+pub struct VerificationResult {
+    /// Packages that should be installed but aren't
+    pub missing_packages: Vec<String>,
+    /// Symlinks that are broken or missing
+    pub broken_symlinks: Vec<PathBuf>,
+    /// Services that should be enabled but aren't
+    pub missing_services: Vec<String>,
+    /// Overall pass/fail
+    pub passed: bool,
+    /// Summary message
+    pub summary: String,
+}
+
 /// Recovery service trait
 pub trait RecoveryService {
     /// Export current state to recovery format
@@ -75,6 +91,9 @@ pub trait RecoveryService {
 
     /// Restore from backup
     fn restore_backup(&self, backup_path: &Path) -> IronResult<()>;
+
+    /// C-010: Verify installation after restore/import
+    fn verify_installation(&self, export: &RecoveryExport) -> VerificationResult;
 }
 
 /// Default recovery service implementation
@@ -85,6 +104,10 @@ pub struct DefaultRecoveryService<S: SnapshotManager> {
     state_manager: StateManager,
     /// Snapshot manager
     snapshot_manager: S,
+    /// C-009: Optional package manager for full import (install packages)
+    package_manager: Option<Arc<dyn crate::PackageManager>>,
+    /// C-009: Optional system service for full import (enable services)
+    service_manager: Option<Arc<dyn crate::SystemService>>,
 }
 
 impl<S: SnapshotManager> DefaultRecoveryService<S> {
@@ -94,7 +117,21 @@ impl<S: SnapshotManager> DefaultRecoveryService<S> {
             iron_root: iron_root.to_path_buf(),
             state_manager,
             snapshot_manager,
+            package_manager: None,
+            service_manager: None,
         }
+    }
+
+    /// C-009: Inject a PackageManager for full import (install packages)
+    pub fn with_package_manager(mut self, pm: Arc<dyn crate::PackageManager>) -> Self {
+        self.package_manager = Some(pm);
+        self
+    }
+
+    /// C-009: Inject a SystemService for full import (enable services)
+    pub fn with_service_manager(mut self, sm: Arc<dyn crate::SystemService>) -> Self {
+        self.service_manager = Some(sm);
+        self
     }
 
     /// Get list of explicitly installed packages
@@ -178,24 +215,76 @@ impl<S: SnapshotManager> RecoveryService for DefaultRecoveryService<S> {
     }
 
     fn import(&self, export: &RecoveryExport) -> IronResult<()> {
-        // Set current host
+        // Step 1: Set current host
         self.state_manager.set_current_host(&export.host_id)?;
 
-        // Set active bundle
+        // Step 2: Set active bundle
         if let Some(bundle_id) = &export.active_bundle {
             self.state_manager
                 .set_active_bundle(&export.host_id, bundle_id)?;
         }
 
-        // Set active profile
+        // Step 3: Set active profile
         if let Some(profile_id) = &export.active_profile {
             self.state_manager
                 .set_active_profile(&export.host_id, profile_id)?;
         }
 
-        // Enable modules
+        // Step 4: Enable modules
         for module_id in &export.active_modules {
             self.state_manager.enable_module(module_id)?;
+        }
+
+        // C-009 Step 5: Install packages (when PackageManager is injected)
+        if let Some(ref pm) = self.package_manager {
+            // Official packages (exclude AUR ones)
+            let official: Vec<String> = export
+                .packages
+                .iter()
+                .filter(|p| !export.aur_packages.contains(p))
+                .cloned()
+                .collect();
+
+            if !official.is_empty() {
+                // Best-effort: log but don't fail the whole import if packages
+                // can't be installed (e.g., offline)
+                if let Err(e) = pm.install(&official) {
+                    self.state_manager.record_operation(
+                        "import_packages",
+                        OperationStatus::Failed,
+                        Some(format!("Failed to install {} packages: {}", official.len(), e)),
+                    )?;
+                }
+            }
+
+            // AUR packages
+            if !export.aur_packages.is_empty() {
+                if let Err(e) = pm.install(&export.aur_packages) {
+                    self.state_manager.record_operation(
+                        "import_aur_packages",
+                        OperationStatus::Failed,
+                        Some(format!(
+                            "Failed to install {} AUR packages: {}",
+                            export.aur_packages.len(),
+                            e
+                        )),
+                    )?;
+                }
+            }
+        }
+
+        // C-009 Step 6: Enable systemd user services (when SystemService is injected)
+        if let Some(ref svc_mgr) = self.service_manager {
+            for service in &export.services {
+                // Best-effort: log failures but continue
+                if let Err(e) = svc_mgr.enable_service(service) {
+                    self.state_manager.record_operation(
+                        "import_service_enable",
+                        OperationStatus::Failed,
+                        Some(format!("Failed to enable service '{}': {}", service, e)),
+                    )?;
+                }
+            }
         }
 
         self.state_manager
@@ -455,6 +544,77 @@ impl<S: SnapshotManager> RecoveryService for DefaultRecoveryService<S> {
             .record_operation("restore_backup", OperationStatus::Success, None)?;
 
         Ok(())
+    }
+
+    /// C-010: Verify that the system matches the expected state from an export
+    fn verify_installation(&self, export: &RecoveryExport) -> VerificationResult {
+        let mut result = VerificationResult::default();
+
+        // Check packages: which expected packages are missing?
+        let installed = self.get_installed_packages();
+        let installed_aur = self.get_aur_packages();
+        let all_installed: std::collections::HashSet<&str> = installed
+            .iter()
+            .chain(installed_aur.iter())
+            .map(|s| s.as_str())
+            .collect();
+
+        for pkg in &export.packages {
+            if !all_installed.contains(pkg.as_str()) {
+                result.missing_packages.push(pkg.clone());
+            }
+        }
+        for pkg in &export.aur_packages {
+            if !all_installed.contains(pkg.as_str()) {
+                result.missing_packages.push(pkg.clone());
+            }
+        }
+
+        // Check services: which expected services are not enabled?
+        let active_services = self.get_enabled_services();
+        let enabled_set: std::collections::HashSet<&str> =
+            active_services.iter().map(|s| s.as_str()).collect();
+        for svc in &export.services {
+            if !enabled_set.contains(svc.as_str()) {
+                result.missing_services.push(svc.clone());
+            }
+        }
+
+        // Check symlinks in config directories
+        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/home"));
+        let config_dir = home.join(".config");
+        if config_dir.exists()
+            && let Ok(entries) = fs::read_dir(&config_dir)
+        {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Ok(meta) = fs::symlink_metadata(&path)
+                    && meta.file_type().is_symlink()
+                    && !path.exists()
+                {
+                    result.broken_symlinks.push(path);
+                }
+            }
+        }
+
+        // Build summary
+        let issues = result.missing_packages.len()
+            + result.missing_services.len()
+            + result.broken_symlinks.len();
+        result.passed = issues == 0;
+        result.summary = if result.passed {
+            "All checks passed: packages, services, and symlinks verified".to_string()
+        } else {
+            format!(
+                "{} issue(s): {} missing packages, {} missing services, {} broken symlinks",
+                issues,
+                result.missing_packages.len(),
+                result.missing_services.len(),
+                result.broken_symlinks.len()
+            )
+        };
+
+        result
     }
 }
 

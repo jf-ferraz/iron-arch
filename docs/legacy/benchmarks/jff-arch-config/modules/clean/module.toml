@@ -1,0 +1,41 @@
+version = 1
+id = "clean"
+name = "System Cleanup Module"
+kind = "operation"
+status = "active"
+owner = "laraj"
+description = "System maintenance cleanup: package cache, orphan removal, journal vacuum, temp files, log rotation."
+
+[paths]
+root = "modules/clean"
+script = "scripts/clean-system.sh"
+state_logs = "app/state/logs"
+
+[compat]
+os = ["arch-linux"]
+requires = ["bash", "pacman"]
+optional = ["pacman-contrib", "journalctl"]
+
+[capabilities]
+provides = [
+  "cache-cleanup",
+  "orphan-removal",
+  "journal-vacuum",
+  "tmp-cleanup",
+  "log-rotation"
+]
+
+[[operations]]
+id = "dry-run"
+description = "Preview cleanup actions without making changes."
+command = "scripts/clean-system.sh --dry-run"
+
+[[operations]]
+id = "run"
+description = "Execute system cleanup (real changes)."
+command = "scripts/clean-system.sh --apply"
+
+[hooks]
+pre_apply = []
+post_apply = []
+rollback = []

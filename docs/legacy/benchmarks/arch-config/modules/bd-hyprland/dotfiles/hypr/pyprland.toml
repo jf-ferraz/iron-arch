@@ -1,0 +1,26 @@
+# Pyprland Configuration
+# https://hyprland-community.github.io/pyprland/
+
+[pyprland]
+plugins = [
+    "scratchpads",
+    "magnify"
+]
+
+# ==================
+# SCRATCHPADS
+# ==================
+[scratchpads.term]
+animation = "fromTop"
+command = "kitty --class kitty-dropterm"
+class = "kitty-dropterm"
+size = "75% 60%"
+margin = 50
+lazy = true
+
+# ==================
+# MAGNIFY (ZOOM)
+# ==================
+[magnify]
+factor = 1.5
+update_delay = 0.05

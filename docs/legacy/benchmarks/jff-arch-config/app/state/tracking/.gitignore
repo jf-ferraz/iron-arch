@@ -1,0 +1,3 @@
+# State tracking files are local to each machine
+*.json
+module_states/

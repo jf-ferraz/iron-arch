@@ -487,12 +487,13 @@ impl CommandExecutor for RealCommandExecutor {
     fn execute(&self, command: &str, args: &[&str]) -> Result<String, CommandError> {
         // Check circuit breaker first
         if let Some(cb) = &self.circuit_breaker
-            && !cb.can_execute() {
-                return Err(CommandError::CircuitOpen(CircuitOpenError {
-                    service: cb.name().to_string(),
-                    time_until_reset: cb.time_until_reset(),
-                }));
-            }
+            && !cb.can_execute()
+        {
+            return Err(CommandError::CircuitOpen(CircuitOpenError {
+                service: cb.name().to_string(),
+                time_until_reset: cb.time_until_reset(),
+            }));
+        }
 
         let output = self.execute_with_retry(command, args, None)?;
         Ok(output.stdout)
@@ -501,12 +502,13 @@ impl CommandExecutor for RealCommandExecutor {
     fn execute_full(&self, command: &str, args: &[&str]) -> Result<CommandOutput, CommandError> {
         // Check circuit breaker first
         if let Some(cb) = &self.circuit_breaker
-            && !cb.can_execute() {
-                return Err(CommandError::CircuitOpen(CircuitOpenError {
-                    service: cb.name().to_string(),
-                    time_until_reset: cb.time_until_reset(),
-                }));
-            }
+            && !cb.can_execute()
+        {
+            return Err(CommandError::CircuitOpen(CircuitOpenError {
+                service: cb.name().to_string(),
+                time_until_reset: cb.time_until_reset(),
+            }));
+        }
 
         self.execute_with_retry(command, args, None)
     }
@@ -519,12 +521,13 @@ impl CommandExecutor for RealCommandExecutor {
     ) -> Result<String, CommandError> {
         // Check circuit breaker first
         if let Some(cb) = &self.circuit_breaker
-            && !cb.can_execute() {
-                return Err(CommandError::CircuitOpen(CircuitOpenError {
-                    service: cb.name().to_string(),
-                    time_until_reset: cb.time_until_reset(),
-                }));
-            }
+            && !cb.can_execute()
+        {
+            return Err(CommandError::CircuitOpen(CircuitOpenError {
+                service: cb.name().to_string(),
+                time_until_reset: cb.time_until_reset(),
+            }));
+        }
 
         let output = self.execute_with_retry(command, args, Some(env))?;
         Ok(output.stdout)

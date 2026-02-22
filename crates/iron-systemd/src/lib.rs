@@ -126,12 +126,12 @@ pub struct DefaultServiceManager {
 }
 
 impl DefaultServiceManager {
-    /// Create a new service manager
+    /// Create a new service manager with a default resilient executor.
+    ///
+    /// The circuit breaker opens after 3 consecutive failures and stays open
+    /// for 60 seconds, preventing hangs from a broken systemd environment.
     pub fn new(scope: ServiceScope) -> Self {
-        Self {
-            scope,
-            executor: None,
-        }
+        Self::with_resilience(scope)
     }
 
     /// Create a service manager for user services
@@ -336,6 +336,62 @@ impl ServiceManager for DefaultServiceManager {
         }
 
         Ok(services)
+    }
+}
+
+// ==========================================================================
+// SystemService adapter — bridges iron-systemd → iron-core::SystemService
+// ==========================================================================
+
+/// Adapter that implements `iron_core::SystemService` by delegating to
+/// `DefaultServiceManager`. This bridges the rich `ServiceManager` trait
+/// (8 methods, status, restart, exists, list) down to the narrow 4-method
+/// trait that `BundleService` and `ModuleService` require.
+pub struct SystemdServiceAdapter {
+    inner: DefaultServiceManager,
+}
+
+impl SystemdServiceAdapter {
+    /// Create an adapter for the given scope with default resilient executor.
+    pub fn new(scope: ServiceScope) -> Self {
+        Self {
+            inner: DefaultServiceManager::new(scope),
+        }
+    }
+
+    /// Create an adapter for user services.
+    pub fn user() -> Self {
+        Self::new(ServiceScope::User)
+    }
+
+    /// Create an adapter for system services.
+    pub fn system() -> Self {
+        Self::new(ServiceScope::System)
+    }
+
+    /// Create an adapter with a custom command executor.
+    pub fn with_executor(scope: ServiceScope, executor: Arc<dyn CommandExecutor>) -> Self {
+        Self {
+            inner: DefaultServiceManager::with_executor(scope, executor),
+        }
+    }
+}
+
+impl iron_core::SystemService for SystemdServiceAdapter {
+    fn enable_service(&self, name: &str) -> IronResult<()> {
+        self.inner.enable(name)
+    }
+
+    fn disable_service(&self, name: &str) -> IronResult<()> {
+        self.inner.disable(name)
+    }
+
+    fn start_service(&self, name: &str) -> IronResult<()> {
+        self.inner.start(name)
+    }
+
+    fn stop_service(&self, name: &str) -> IronResult<()> {
+        self.inner.stop(name)
     }
 }
 
@@ -998,23 +1054,72 @@ sshd.service               loaded active running OpenSSH Daemon"#;
     }
 
     #[test]
-    fn test_service_manager_without_executor() {
-        // Test backward compatibility - new() should work without executor
+    fn test_service_manager_new_has_resilient_executor() {
+        // new() always initializes with a circuit-breaker executor
         let manager = DefaultServiceManager::new(ServiceScope::User);
-        assert!(manager.executor.is_none());
+        assert!(manager.executor.is_some());
     }
 
     #[test]
-    fn test_service_manager_user_without_executor() {
+    fn test_service_manager_user_has_resilient_executor() {
         let manager = DefaultServiceManager::user();
-        assert!(manager.executor.is_none());
+        assert!(manager.executor.is_some());
         assert_eq!(manager.scope, ServiceScope::User);
     }
 
     #[test]
-    fn test_service_manager_system_without_executor() {
+    fn test_service_manager_system_has_resilient_executor() {
         let manager = DefaultServiceManager::system();
-        assert!(manager.executor.is_none());
+        assert!(manager.executor.is_some());
         assert_eq!(manager.scope, ServiceScope::System);
+    }
+
+    // ==========================================================================
+    // SystemdServiceAdapter tests
+    // ==========================================================================
+
+    #[test]
+    fn test_adapter_user_constructor() {
+        let _adapter = SystemdServiceAdapter::user();
+        // Verifies it can be constructed without panic
+    }
+
+    #[test]
+    fn test_adapter_system_constructor() {
+        let _adapter = SystemdServiceAdapter::system();
+    }
+
+    #[test]
+    fn test_adapter_with_executor() {
+        use iron_core::resilience::RealCommandExecutor;
+        let executor = Arc::new(RealCommandExecutor::with_defaults());
+        let _adapter = SystemdServiceAdapter::with_executor(ServiceScope::User, executor);
+    }
+
+    #[test]
+    fn test_adapter_implements_system_service() {
+        // Ensure the adapter can be used as Arc<dyn SystemService>
+        use iron_core::SystemService;
+        let adapter = SystemdServiceAdapter::user();
+        let _arc: Arc<dyn SystemService> = Arc::new(adapter);
+    }
+
+    #[test]
+    fn test_adapter_delegates_to_mock() {
+        // Use test_fixtures to verify delegation works end-to-end
+        use crate::test_fixtures::SystemdMockBuilder;
+        use iron_core::SystemService;
+
+        let executor = SystemdMockBuilder::new()
+            .user_scope()
+            .with_service("sshd", ServiceState::Active, EnabledState::Enabled)
+            .build();
+        let adapter = SystemdServiceAdapter::with_executor(ServiceScope::User, Arc::new(executor));
+
+        // enable/disable/start/stop should all succeed (mock always succeeds for known services)
+        assert!(adapter.enable_service("sshd").is_ok());
+        assert!(adapter.disable_service("sshd").is_ok());
+        assert!(adapter.start_service("sshd").is_ok());
+        assert!(adapter.stop_service("sshd").is_ok());
     }
 }

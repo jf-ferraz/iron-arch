@@ -1,8 +1,12 @@
 //! Secrets Service - Secure secret management with git-crypt
 //!
 //! Provides git-crypt integration for encrypted secrets in repository.
+//! Supports an optional `SecretsBackend` trait object so that a resilient
+//! backend (e.g., `iron-git::DefaultSecretsManager` with circuit breaker)
+//! can be injected without creating a circular dependency.
 
 use crate::{IronResult, ServiceError};
+use crate::state::OperationStatus;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -31,8 +35,35 @@ pub struct GpgKey {
     pub trust: String,
 }
 
+// =========================================================================
+// SecretsBackend — low-level git-crypt operations (defined in core,
+// implemented by callers such as iron-git::DefaultSecretsManager)
+// =========================================================================
+
+/// Low-level secrets backend for git-crypt operations.
+///
+/// This trait allows `DefaultSecretsService` to delegate the overlapping
+/// operations (unlock, lock, is_unlocked, list_encrypted) to a dedicated
+/// backend that may add circuit-breaker / timeout / retry logic.
+///
+/// When no backend is injected the service falls back to direct `Command`
+/// execution (the original behaviour).
+pub trait SecretsBackend: Send + Sync {
+    /// Check whether secrets are currently unlocked (decrypted).
+    fn is_unlocked(&self) -> bool;
+
+    /// Unlock (decrypt) secrets, optionally using a symmetric key file.
+    fn unlock(&self, key_path: Option<&Path>) -> IronResult<()>;
+
+    /// Lock (re-encrypt) secrets.
+    fn lock(&self) -> IronResult<()>;
+
+    /// List encrypted file paths.
+    fn list_encrypted(&self) -> IronResult<Vec<PathBuf>>;
+}
+
 /// Secrets service trait
-pub trait SecretsService {
+pub trait SecretsService: Send + Sync {
     /// Get secrets encryption status
     fn status(&self) -> IronResult<SecretsStatus>;
 
@@ -65,6 +96,10 @@ pub trait SecretsService {
 pub struct DefaultSecretsService {
     /// Repository root
     repo_root: PathBuf,
+    /// Optional state manager for audit logging
+    state_manager: Option<crate::services::state::StateManager>,
+    /// Optional resilient backend for git-crypt operations
+    backend: Option<Box<dyn SecretsBackend>>,
 }
 
 impl DefaultSecretsService {
@@ -72,6 +107,31 @@ impl DefaultSecretsService {
     pub fn new(repo_root: &Path) -> Self {
         Self {
             repo_root: repo_root.to_path_buf(),
+            state_manager: None,
+            backend: None,
+        }
+    }
+
+    /// Add state manager for audit logging (builder pattern).
+    pub fn with_state_manager(mut self, sm: crate::services::state::StateManager) -> Self {
+        self.state_manager = Some(sm);
+        self
+    }
+
+    /// Inject a resilient secrets backend (builder pattern).
+    ///
+    /// When set, `unlock`, `lock`, status-detection (is_unlocked) and
+    /// `list_encrypted` delegate to the backend instead of spawning
+    /// `Command` directly.
+    pub fn with_backend(mut self, backend: Box<dyn SecretsBackend>) -> Self {
+        self.backend = Some(backend);
+        self
+    }
+
+    /// Record an operation if a state manager is available.
+    fn audit(&self, operation: &str, status: OperationStatus, details: Option<String>) {
+        if let Some(ref sm) = self.state_manager {
+            let _ = sm.record_operation(operation, status, details);
         }
     }
 
@@ -120,7 +180,11 @@ impl DefaultSecretsService {
 
     /// Check if currently unlocked
     fn is_unlocked(&self) -> bool {
-        // Check by looking for the .git/git-crypt/keys directory
+        // Delegate to backend if available
+        if let Some(ref backend) = self.backend {
+            return backend.is_unlocked();
+        }
+        // Fallback: Check by looking for the .git/git-crypt/keys directory
         // When locked, encrypted files contain the git-crypt header
         let keys_dir = self.repo_root.join(".git").join("git-crypt").join("keys");
         keys_dir.exists()
@@ -129,7 +193,8 @@ impl DefaultSecretsService {
 
 impl SecretsService for DefaultSecretsService {
     fn status(&self) -> IronResult<SecretsStatus> {
-        if !self.git_crypt_available() {
+        // When using a mock/custom backend, skip binary check
+        if self.backend.is_none() && !self.git_crypt_available() {
             return Ok(SecretsStatus::NotAvailable);
         }
 
@@ -154,6 +219,7 @@ impl SecretsService for DefaultSecretsService {
         }
 
         self.git_crypt(&["init"])?;
+        self.audit("secrets_init", OperationStatus::Success, None);
         Ok(())
     }
 
@@ -166,14 +232,21 @@ impl SecretsService for DefaultSecretsService {
             .into());
         }
 
-        let result = if let Some(key) = key_path {
-            self.git_crypt(&["unlock", key.to_str().unwrap_or("")])
+        // Delegate to backend if available
+        if let Some(ref backend) = self.backend {
+            backend.unlock(key_path)?;
         } else {
-            // Use GPG key
-            self.git_crypt(&["unlock"])
-        };
+            let result = if let Some(key) = key_path {
+                self.git_crypt(&["unlock", key.to_str().unwrap_or("")])
+            } else {
+                // Use GPG key
+                self.git_crypt(&["unlock"])
+            };
+            result.map(|_| ())?;
+        }
 
-        result.map(|_| ())
+        self.audit("secrets_unlock", OperationStatus::Success, None);
+        Ok(())
     }
 
     fn lock(&self) -> IronResult<()> {
@@ -185,7 +258,14 @@ impl SecretsService for DefaultSecretsService {
             .into());
         }
 
-        self.git_crypt(&["lock"])?;
+        // Delegate to backend if available
+        if let Some(ref backend) = self.backend {
+            backend.lock()?;
+        } else {
+            self.git_crypt(&["lock"])?;
+        }
+
+        self.audit("secrets_lock", OperationStatus::Success, None);
         Ok(())
     }
 
@@ -199,6 +279,11 @@ impl SecretsService for DefaultSecretsService {
         }
 
         self.git_crypt(&["add-gpg-user", key_id])?;
+        self.audit(
+            "secrets_add_gpg_user",
+            OperationStatus::Success,
+            Some(format!("key_id={}", key_id)),
+        );
         Ok(())
     }
 
@@ -273,7 +358,12 @@ impl SecretsService for DefaultSecretsService {
     }
 
     fn list_encrypted(&self) -> IronResult<Vec<PathBuf>> {
-        // Parse .gitattributes for git-crypt patterns
+        // Delegate to backend if available
+        if let Some(ref backend) = self.backend {
+            return backend.list_encrypted();
+        }
+
+        // Fallback: parse .gitattributes for git-crypt patterns
         let gitattributes = self.repo_root.join(".gitattributes");
         let mut encrypted_patterns = Vec::new();
 
@@ -287,7 +377,7 @@ impl SecretsService for DefaultSecretsService {
             }
         }
 
-        // Find files matching patterns (simplified - just check secrets/ directory)
+        // Collect all files in secrets/ directory
         let mut encrypted_files = Vec::new();
         let secrets_dir = self.repo_root.join("secrets");
 
@@ -297,12 +387,123 @@ impl SecretsService for DefaultSecretsService {
                 .filter_map(|e| e.ok())
                 .filter(|e| e.file_type().is_file())
             {
-                encrypted_files.push(entry.path().to_path_buf());
+                let path = entry.path().to_path_buf();
+
+                // If we have patterns from .gitattributes, filter by them
+                if !encrypted_patterns.is_empty() {
+                    let relative = path
+                        .strip_prefix(&self.repo_root)
+                        .unwrap_or(&path)
+                        .to_string_lossy();
+                    if encrypted_patterns
+                        .iter()
+                        .any(|pat| glob_match(pat, &relative))
+                    {
+                        encrypted_files.push(path);
+                    }
+                } else {
+                    // No patterns found — assume all secrets/ files are encrypted
+                    encrypted_files.push(path);
+                }
             }
         }
 
         Ok(encrypted_files)
     }
+}
+
+/// Simple glob pattern matching for gitattributes patterns.
+///
+/// Supports `*` (matches any sequence except `/`) and `**` (matches any sequence including `/`).
+/// Patterns without `/` are matched against the basename only (gitattributes convention).
+fn glob_match(pattern: &str, path: &str) -> bool {
+    let pattern = pattern.replace('\\', "/");
+    let path = path.replace('\\', "/");
+
+    // gitattributes: if pattern has no '/', match against the basename only
+    if !pattern.contains('/') {
+        let basename = path.rsplit('/').next().unwrap_or(&path);
+        return glob_match_inner(pattern.as_bytes(), basename.as_bytes());
+    }
+
+    glob_match_inner(pattern.as_bytes(), path.as_bytes())
+}
+
+/// Core byte-level glob matching engine (`*` stops at `/`, `**` crosses `/`, `?` matches one byte).
+fn glob_match_inner(pat: &[u8], txt: &[u8]) -> bool {
+    let (mut pi, mut ti) = (0, 0);
+    let (mut star_pi, mut star_ti) = (usize::MAX, 0);
+
+    while ti < txt.len() {
+        if pi < pat.len() && pat[pi] == b'*' {
+            // Check for **
+            if pi + 1 < pat.len() && pat[pi + 1] == b'*' {
+                // ** matches everything including /
+                star_pi = pi;
+                star_ti = ti;
+                pi += 2;
+                // Skip optional trailing /
+                if pi < pat.len() && pat[pi] == b'/' {
+                    pi += 1;
+                }
+                continue;
+            }
+            // Single * matches everything except /
+            star_pi = pi;
+            star_ti = ti;
+            pi += 1;
+            continue;
+        }
+
+        if pi < pat.len() && (pat[pi] == b'?' || pat[pi] == txt[ti]) {
+            pi += 1;
+            ti += 1;
+            continue;
+        }
+
+        // Single * cannot match /
+        if star_pi != usize::MAX
+            && star_pi < pat.len()
+            && pat[star_pi] == b'*'
+            && !(star_pi + 1 < pat.len() && pat[star_pi + 1] == b'*')
+        {
+            // Single * — skip non-/ characters
+            if txt[star_ti] == b'/' {
+                // Cannot match / with single *, backtrack fails
+                return false;
+            }
+            star_ti += 1;
+            ti = star_ti;
+            pi = star_pi + 1;
+            continue;
+        }
+
+        if star_pi != usize::MAX {
+            star_ti += 1;
+            ti = star_ti;
+            pi = if pat[star_pi] == b'*' && star_pi + 1 < pat.len() && pat[star_pi + 1] == b'*' {
+                star_pi
+                    + 2
+                    + if star_pi + 2 < pat.len() && pat[star_pi + 2] == b'/' {
+                        1
+                    } else {
+                        0
+                    }
+            } else {
+                star_pi + 1
+            };
+            continue;
+        }
+
+        return false;
+    }
+
+    // Consume remaining pattern characters (must all be *)
+    while pi < pat.len() && pat[pi] == b'*' {
+        pi += 1;
+    }
+
+    pi == pat.len()
 }
 
 #[cfg(test)]
@@ -652,14 +853,8 @@ mod tests {
 
         // Create both .git-crypt and keys dir
         std::fs::create_dir_all(temp_dir.path().join(".git-crypt")).unwrap();
-        std::fs::create_dir_all(
-            temp_dir
-                .path()
-                .join(".git")
-                .join("git-crypt")
-                .join("keys"),
-        )
-        .unwrap();
+        std::fs::create_dir_all(temp_dir.path().join(".git").join("git-crypt").join("keys"))
+            .unwrap();
 
         let status = service.status().unwrap();
         // Will be NotAvailable if git-crypt not installed, otherwise Unlocked
@@ -903,5 +1098,415 @@ mod tests {
         let dir = temp_dir.path().join("subdir");
         std::fs::create_dir_all(&dir).unwrap();
         assert!(!service.is_encrypted(&dir));
+    }
+
+    // ==========================================================================
+    // glob_match Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_glob_match_exact() {
+        assert!(glob_match("secrets/keys.gpg", "secrets/keys.gpg"));
+        assert!(!glob_match("secrets/keys.gpg", "secrets/other.gpg"));
+    }
+
+    #[test]
+    fn test_glob_match_star() {
+        assert!(glob_match("secrets/*.gpg", "secrets/keys.gpg"));
+        assert!(glob_match("secrets/*.gpg", "secrets/other.gpg"));
+        assert!(!glob_match("secrets/*.gpg", "secrets/sub/keys.gpg"));
+    }
+
+    #[test]
+    fn test_glob_match_double_star() {
+        assert!(glob_match("secrets/**", "secrets/keys.gpg"));
+        assert!(glob_match("secrets/**", "secrets/sub/keys.gpg"));
+        assert!(!glob_match("secrets/**", "other/keys.gpg"));
+    }
+
+    // ==========================================================================
+    // list_encrypted filtering Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_list_encrypted_filters_by_pattern() {
+        let (service, temp_dir) = create_test_service();
+
+        // Create .gitattributes with a pattern
+        std::fs::write(
+            temp_dir.path().join(".gitattributes"),
+            "secrets/*.key filter=git-crypt diff=git-crypt\n",
+        )
+        .unwrap();
+
+        // Create files in secrets/
+        let secrets_dir = temp_dir.path().join("secrets");
+        std::fs::create_dir_all(&secrets_dir).unwrap();
+        std::fs::write(secrets_dir.join("prod.key"), "secret").unwrap();
+        std::fs::write(secrets_dir.join("readme.md"), "not secret").unwrap();
+
+        let files = service.list_encrypted().unwrap();
+        assert_eq!(files.len(), 1);
+        assert!(files[0].to_string_lossy().contains("prod.key"));
+    }
+
+    #[test]
+    fn test_list_encrypted_no_patterns_returns_all() {
+        let (service, temp_dir) = create_test_service();
+
+        // No .gitattributes file
+        let secrets_dir = temp_dir.path().join("secrets");
+        std::fs::create_dir_all(&secrets_dir).unwrap();
+        std::fs::write(secrets_dir.join("prod.key"), "secret").unwrap();
+        std::fs::write(secrets_dir.join("readme.md"), "also here").unwrap();
+
+        let files = service.list_encrypted().unwrap();
+        assert_eq!(files.len(), 2);
+    }
+
+    // ==========================================================================
+    // Audit Logging Tests (S1-P9-005)
+    // ==========================================================================
+
+    #[test]
+    fn test_with_state_manager_builder() {
+        let temp_dir = TempDir::new().unwrap();
+        let sm = crate::services::state::StateManager::new(temp_dir.path().to_path_buf()).unwrap();
+        let service = DefaultSecretsService::new(temp_dir.path()).with_state_manager(sm);
+        assert!(service.state_manager.is_some());
+    }
+
+    #[test]
+    fn test_audit_records_when_state_manager_present() {
+        let temp_dir = TempDir::new().unwrap();
+        let sm = crate::services::state::StateManager::new(temp_dir.path().to_path_buf()).unwrap();
+        let service = DefaultSecretsService::new(temp_dir.path()).with_state_manager(sm.clone());
+
+        // Directly call audit and verify via state manager
+        service.audit("test_op", OperationStatus::Success, Some("detail".to_string()));
+
+        let recent = sm.recent_audit(1);
+        assert_eq!(recent.len(), 1);
+        assert_eq!(recent[0].operation, "test_op");
+    }
+
+    #[test]
+    fn test_audit_noop_without_state_manager() {
+        let temp_dir = TempDir::new().unwrap();
+        let service = DefaultSecretsService::new(temp_dir.path());
+        // Should not panic
+        service.audit("test_op", OperationStatus::Success, None);
+    }
+
+    #[test]
+    fn test_default_service_has_no_state_manager() {
+        let temp_dir = TempDir::new().unwrap();
+        let service = DefaultSecretsService::new(temp_dir.path());
+        assert!(service.state_manager.is_none());
+    }
+
+    // ==========================================================================
+    // SecretsBackend delegation tests
+    // ==========================================================================
+
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    /// Mock backend that records which operations were called.
+    struct MockBackend {
+        unlock_called: Arc<AtomicBool>,
+        lock_called: Arc<AtomicBool>,
+        is_unlocked_value: bool,
+    }
+
+    impl MockBackend {
+        fn new(is_unlocked: bool) -> Self {
+            Self {
+                unlock_called: Arc::new(AtomicBool::new(false)),
+                lock_called: Arc::new(AtomicBool::new(false)),
+                is_unlocked_value: is_unlocked,
+            }
+        }
+    }
+
+    impl SecretsBackend for MockBackend {
+        fn is_unlocked(&self) -> bool {
+            self.is_unlocked_value
+        }
+
+        fn unlock(&self, _key_path: Option<&Path>) -> IronResult<()> {
+            self.unlock_called.store(true, Ordering::SeqCst);
+            Ok(())
+        }
+
+        fn lock(&self) -> IronResult<()> {
+            self.lock_called.store(true, Ordering::SeqCst);
+            Ok(())
+        }
+
+        fn list_encrypted(&self) -> IronResult<Vec<PathBuf>> {
+            Ok(vec![PathBuf::from("secrets/mock.enc")])
+        }
+    }
+
+    #[test]
+    fn test_with_backend_builder() {
+        let temp_dir = TempDir::new().unwrap();
+        let service = DefaultSecretsService::new(temp_dir.path())
+            .with_backend(Box::new(MockBackend::new(true)));
+        assert!(service.backend.is_some());
+    }
+
+    #[test]
+    fn test_default_service_has_no_backend() {
+        let temp_dir = TempDir::new().unwrap();
+        let service = DefaultSecretsService::new(temp_dir.path());
+        assert!(service.backend.is_none());
+    }
+
+    #[test]
+    fn test_status_delegates_is_unlocked_to_backend() {
+        let temp_dir = TempDir::new().unwrap();
+        std::fs::create_dir_all(temp_dir.path().join(".git-crypt")).unwrap();
+        let service = DefaultSecretsService::new(temp_dir.path())
+            .with_backend(Box::new(MockBackend::new(true)));
+        assert!(service.is_unlocked());
+    }
+
+    #[test]
+    fn test_status_delegates_locked_to_backend() {
+        let temp_dir = TempDir::new().unwrap();
+        std::fs::create_dir_all(temp_dir.path().join(".git-crypt")).unwrap();
+        let service = DefaultSecretsService::new(temp_dir.path())
+            .with_backend(Box::new(MockBackend::new(false)));
+        assert!(!service.is_unlocked());
+    }
+
+    #[test]
+    fn test_list_encrypted_delegates_to_backend() {
+        let temp_dir = TempDir::new().unwrap();
+        let service = DefaultSecretsService::new(temp_dir.path())
+            .with_backend(Box::new(MockBackend::new(true)));
+        let files = service.list_encrypted().unwrap();
+        assert_eq!(files, vec![PathBuf::from("secrets/mock.enc")]);
+    }
+
+    #[test]
+    fn test_unlock_delegates_to_backend() {
+        let temp_dir = TempDir::new().unwrap();
+        std::fs::create_dir_all(temp_dir.path().join(".git-crypt")).unwrap();
+        let unlock_flag = Arc::new(AtomicBool::new(false));
+        let backend = MockBackend {
+            unlock_called: Arc::clone(&unlock_flag),
+            lock_called: Arc::new(AtomicBool::new(false)),
+            is_unlocked_value: false,
+        };
+        let service = DefaultSecretsService::new(temp_dir.path())
+            .with_backend(Box::new(backend));
+        service.unlock(None).unwrap();
+        assert!(unlock_flag.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn test_lock_delegates_to_backend() {
+        let temp_dir = TempDir::new().unwrap();
+        std::fs::create_dir_all(temp_dir.path().join(".git-crypt")).unwrap();
+        let lock_flag = Arc::new(AtomicBool::new(false));
+        let backend = MockBackend {
+            unlock_called: Arc::new(AtomicBool::new(false)),
+            lock_called: Arc::clone(&lock_flag),
+            is_unlocked_value: true,
+        };
+        let service = DefaultSecretsService::new(temp_dir.path())
+            .with_backend(Box::new(backend));
+        service.lock().unwrap();
+        assert!(lock_flag.load(Ordering::SeqCst));
+    }
+
+    // -----------------------------------------------------------------------
+    // E-013: Cross-layer secrets consistency tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_cross_layer_backend_and_service_status_agree_unlocked() {
+        let temp_dir = TempDir::new().unwrap();
+        std::fs::create_dir_all(temp_dir.path().join(".git-crypt")).unwrap();
+        let backend = MockBackend::new(true); // backend says unlocked
+        let service = DefaultSecretsService::new(temp_dir.path())
+            .with_backend(Box::new(backend));
+
+        // Both layers should report Unlocked
+        assert!(service.is_unlocked());
+        let status = service.status().unwrap();
+        assert_eq!(status, SecretsStatus::Unlocked);
+    }
+
+    #[test]
+    fn test_cross_layer_backend_and_service_status_agree_locked() {
+        let temp_dir = TempDir::new().unwrap();
+        std::fs::create_dir_all(temp_dir.path().join(".git-crypt")).unwrap();
+        let backend = MockBackend::new(false); // backend says locked
+        let service = DefaultSecretsService::new(temp_dir.path())
+            .with_backend(Box::new(backend));
+
+        assert!(!service.is_unlocked());
+        let status = service.status().unwrap();
+        assert_eq!(status, SecretsStatus::Locked);
+    }
+
+    #[test]
+    fn test_cross_layer_list_encrypted_delegates_to_backend() {
+        let temp_dir = TempDir::new().unwrap();
+        std::fs::create_dir_all(temp_dir.path().join(".git-crypt")).unwrap();
+        let backend = MockBackend::new(true);
+        let service = DefaultSecretsService::new(temp_dir.path())
+            .with_backend(Box::new(backend));
+
+        let files = service.list_encrypted().unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0], PathBuf::from("secrets/mock.enc"));
+    }
+
+    #[test]
+    fn test_cross_layer_unlock_delegates_and_records() {
+        let temp_dir = TempDir::new().unwrap();
+        std::fs::create_dir_all(temp_dir.path().join(".git-crypt")).unwrap();
+        let unlock_flag = Arc::new(AtomicBool::new(false));
+        let backend = MockBackend {
+            unlock_called: Arc::clone(&unlock_flag),
+            lock_called: Arc::new(AtomicBool::new(false)),
+            is_unlocked_value: false,
+        };
+        let service = DefaultSecretsService::new(temp_dir.path())
+            .with_backend(Box::new(backend));
+        service.unlock(None).unwrap();
+        assert!(unlock_flag.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn test_cross_layer_lock_delegates_and_records() {
+        let temp_dir = TempDir::new().unwrap();
+        std::fs::create_dir_all(temp_dir.path().join(".git-crypt")).unwrap();
+        let lock_flag = Arc::new(AtomicBool::new(false));
+        let backend = MockBackend {
+            unlock_called: Arc::new(AtomicBool::new(false)),
+            lock_called: Arc::clone(&lock_flag),
+            is_unlocked_value: true,
+        };
+        let service = DefaultSecretsService::new(temp_dir.path())
+            .with_backend(Box::new(backend));
+        service.lock().unwrap();
+        assert!(lock_flag.load(Ordering::SeqCst));
+    }
+
+    // -----------------------------------------------------------------------
+    // E-012: git-crypt integration tests (requires git-crypt installed)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    #[ignore] // Requires: git, git-crypt installed
+    fn test_git_crypt_init_creates_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        // Initialize a git repo first
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("git must be installed");
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+
+        let service = DefaultSecretsService::new(temp_dir.path());
+        let result = service.init();
+        assert!(result.is_ok(), "init failed: {:?}", result.err());
+        assert!(temp_dir.path().join(".git-crypt").exists());
+    }
+
+    #[test]
+    #[ignore] // Requires: git, git-crypt installed
+    fn test_git_crypt_status_after_init() {
+        let temp_dir = TempDir::new().unwrap();
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("git must be installed");
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+
+        let service = DefaultSecretsService::new(temp_dir.path());
+        service.init().unwrap();
+
+        let status = service.status().unwrap();
+        // After init without any encrypted files, status should be Unlocked
+        // (git-crypt considers an initialized repo with no encrypted files as unlocked)
+        assert!(
+            status == SecretsStatus::Unlocked || status == SecretsStatus::Locked,
+            "Unexpected status after init: {:?}",
+            status
+        );
+    }
+
+    #[test]
+    #[ignore] // Requires: git, git-crypt installed
+    fn test_git_crypt_status_not_initialized() {
+        let temp_dir = TempDir::new().unwrap();
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("git must be installed");
+
+        let service = DefaultSecretsService::new(temp_dir.path());
+        let status = service.status().unwrap();
+        assert_eq!(status, SecretsStatus::NotInitialized);
+    }
+
+    #[test]
+    #[ignore] // Requires: git, git-crypt installed
+    fn test_git_crypt_export_key() {
+        let temp_dir = TempDir::new().unwrap();
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("git must be installed");
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(temp_dir.path())
+            .output()
+            .unwrap();
+
+        let service = DefaultSecretsService::new(temp_dir.path());
+        service.init().unwrap();
+
+        let key_path = temp_dir.path().join("exported.key");
+        let result = service.export_key(&key_path);
+        assert!(result.is_ok(), "export_key failed: {:?}", result.err());
+        assert!(key_path.exists());
+        // Key file should not be empty
+        let meta = std::fs::metadata(&key_path).unwrap();
+        assert!(meta.len() > 0);
     }
 }

@@ -25,11 +25,11 @@ pub struct Cli {
     pub format: OutputFormat,
 
     /// Verbose output (show details)
-    #[arg(short, long, global = true)]
+    #[arg(short, long, global = true, conflicts_with = "quiet")]
     pub verbose: bool,
 
     /// Quiet output (minimal)
-    #[arg(short, long, global = true)]
+    #[arg(short, long, global = true, conflicts_with = "verbose")]
     pub quiet: bool,
 
     /// No color output
@@ -134,7 +134,11 @@ pub enum Commands {
         action: SyncAction,
     },
 
-    /// Secrets management (git-crypt)
+    /// Secrets management (git-crypt).
+    ///
+    /// Manages encrypted secrets using git-crypt. Secrets are stored in the
+    /// secrets/ directory and encrypted at rest. Use 'init' to set up, 'unlock'
+    /// to decrypt, 'link' to symlink to ~/.config, and 'lock' before pushing.
     Secrets {
         #[command(subcommand)]
         action: SecretsAction,
@@ -142,6 +146,9 @@ pub enum Commands {
 
     /// System health check
     Doctor,
+
+    /// Scan system for existing configs, package overlaps, and conflicts
+    Scan,
 
     /// System cleanup
     Clean {
@@ -156,6 +163,14 @@ pub enum Commands {
         /// Remove broken symlinks
         #[arg(long)]
         symlinks: bool,
+
+        /// Vacuum systemd journal logs
+        #[arg(long)]
+        journal: bool,
+
+        /// Remove old application logs
+        #[arg(long)]
+        logs: bool,
 
         /// All cleanup operations
         #[arg(short, long)]
@@ -175,6 +190,14 @@ pub enum Commands {
         /// Generate install script
         #[arg(long)]
         script: bool,
+
+        /// Create a full backup (configs + state)
+        #[arg(long)]
+        backup: bool,
+
+        /// Restore from a backup directory
+        #[arg(long)]
+        restore: Option<String>,
     },
 
     /// Launch TUI dashboard
@@ -325,6 +348,20 @@ pub enum ModuleAction {
         #[arg(short, long)]
         yes: bool,
     },
+
+    /// Create a new module scaffold
+    Create {
+        /// Module ID (lowercase, alphanumeric + hyphens)
+        id: String,
+
+        /// Module description
+        #[arg(short = 'D', long)]
+        description: Option<String>,
+
+        /// Module kind (AppConfig, SystemConfig, DevTools, Shell)
+        #[arg(short, long, default_value = "AppConfig")]
+        kind: String,
+    },
 }
 
 /// Host subcommands
@@ -384,6 +421,9 @@ pub enum SecretsAction {
     /// Show secrets status
     Status,
 
+    /// Initialize git-crypt in the repository
+    Init,
+
     /// Unlock encrypted secrets
     Unlock {
         /// GPG key file
@@ -394,8 +434,26 @@ pub enum SecretsAction {
     /// Lock secrets before push
     Lock,
 
-    /// Link secrets to proper locations
+    /// Link secrets to proper locations.
+    ///
+    /// Creates symlinks from the secrets/ directory to their expected system
+    /// locations. Convention: secrets/<module>/<file> → ~/.config/<module>/<file>.
+    /// Files must be unlocked first (iron secrets unlock).
     Link,
+
+    /// Add a GPG user key for encryption
+    AddKey {
+        /// GPG key ID to add
+        #[arg(required = true)]
+        key_id: String,
+    },
+
+    /// Export the git-crypt encryption key
+    ExportKey {
+        /// Output path for the exported key
+        #[arg(short, long, default_value = "iron-secrets.key")]
+        output: String,
+    },
 }
 
 #[cfg(test)]
@@ -421,6 +479,12 @@ mod tests {
     fn test_cli_doctor_command() {
         let cli = Cli::try_parse_from(["iron", "doctor"]).unwrap();
         assert!(matches!(cli.command, Some(Commands::Doctor)));
+    }
+
+    #[test]
+    fn test_cli_scan_command() {
+        let cli = Cli::try_parse_from(["iron", "scan"]).unwrap();
+        assert!(matches!(cli.command, Some(Commands::Scan)));
     }
 
     #[test]
@@ -760,6 +824,8 @@ mod tests {
             orphans,
             cache,
             symlinks,
+            journal: _,
+            logs: _,
             all,
         }) = cli.command
         {
@@ -789,11 +855,15 @@ mod tests {
             export,
             import,
             script,
+            backup,
+            restore,
         }) = cli.command
         {
             assert!(export);
             assert!(import.is_none());
             assert!(!script);
+            assert!(!backup);
+            assert!(restore.is_none());
         } else {
             panic!("Expected Recover command");
         }
@@ -807,13 +877,68 @@ mod tests {
             export,
             import,
             script,
+            backup,
+            restore,
         }) = cli.command
         {
             assert!(!export);
             assert_eq!(import, Some("/path/to/backup.json".to_string()));
             assert!(!script);
+            assert!(!backup);
+            assert!(restore.is_none());
         } else {
             panic!("Expected Recover command");
+        }
+    }
+
+    #[test]
+    fn test_cli_recover_backup() {
+        let cli = Cli::try_parse_from(["iron", "recover", "--backup"]).unwrap();
+        if let Some(Commands::Recover { backup, .. }) = cli.command {
+            assert!(backup);
+        } else {
+            panic!("Expected Recover command");
+        }
+    }
+
+    #[test]
+    fn test_cli_recover_restore() {
+        let cli =
+            Cli::try_parse_from(["iron", "recover", "--restore", "./my-backup"]).unwrap();
+        if let Some(Commands::Recover { restore, .. }) = cli.command {
+            assert_eq!(restore, Some("./my-backup".to_string()));
+        } else {
+            panic!("Expected Recover command");
+        }
+    }
+
+    #[test]
+    fn test_cli_secrets_add_key() {
+        let cli = Cli::try_parse_from(["iron", "secrets", "add-key", "ABCD1234"]).unwrap();
+        if let Some(Commands::Secrets { action: SecretsAction::AddKey { key_id } }) = cli.command {
+            assert_eq!(key_id, "ABCD1234");
+        } else {
+            panic!("Expected Secrets AddKey command");
+        }
+    }
+
+    #[test]
+    fn test_cli_secrets_export_key() {
+        let cli = Cli::try_parse_from(["iron", "secrets", "export-key"]).unwrap();
+        if let Some(Commands::Secrets { action: SecretsAction::ExportKey { output } }) = cli.command {
+            assert_eq!(output, "iron-secrets.key");
+        } else {
+            panic!("Expected Secrets ExportKey command");
+        }
+    }
+
+    #[test]
+    fn test_cli_secrets_export_key_custom_path() {
+        let cli = Cli::try_parse_from(["iron", "secrets", "export-key", "-o", "/tmp/my.key"]).unwrap();
+        if let Some(Commands::Secrets { action: SecretsAction::ExportKey { output } }) = cli.command {
+            assert_eq!(output, "/tmp/my.key");
+        } else {
+            panic!("Expected Secrets ExportKey command");
         }
     }
 

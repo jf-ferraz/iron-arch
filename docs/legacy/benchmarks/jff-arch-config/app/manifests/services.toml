@@ -1,0 +1,37 @@
+version = 1
+
+[[services]]
+id = "gnome-keyring-secrets-session"
+type = "session-autostart"
+command = "gnome-keyring-daemon --start --components=secrets"
+enabled = true
+
+[[services]]
+id = "gnome-keyring-secrets-check"
+type = "health-check"
+command = "scripts/check-secrets-service.sh"
+enabled = true
+
+[[services]]
+id = "secrets-check-service"
+type = "systemd-user"
+unit = "jff-secrets-check.service"
+enabled = true
+
+[[services]]
+id = "secrets-check-timer"
+type = "systemd-user"
+unit = "jff-secrets-check.timer"
+enabled = true
+
+[[services]]
+id = "update-dry-run-service"
+type = "systemd-user"
+unit = "jff-update-dry-run.service"
+enabled = false
+
+[[services]]
+id = "update-dry-run-timer"
+type = "systemd-user"
+unit = "jff-update-dry-run.timer"
+enabled = false

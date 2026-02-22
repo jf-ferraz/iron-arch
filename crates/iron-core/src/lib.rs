@@ -23,6 +23,8 @@ pub mod resilience;
 pub mod services;
 pub mod snapshot;
 pub mod state;
+pub mod system_service;
+pub mod templates;
 pub mod validation;
 
 #[cfg(test)]
@@ -41,8 +43,8 @@ pub use error::{
 pub use host::{BootloaderType, ChassisType, HardwareSpec, Host, InstallParams, MonitorConfig};
 pub use module::{DotfileMapping, Module, ModuleKind, ModuleState};
 pub use packages::{
-    ArchNewsItem, InstalledPackage, NoopPackageManager, PackageManager, PackageUpdate, RiskLevel,
-    UpdatePreview, assess_risk,
+    ArchNewsItem, CleanCacheResult, InstalledPackage, NoopPackageManager, PackageManager,
+    PackageUpdate, RiskLevel, UpdatePreview, assess_risk,
 };
 pub use profile::{Profile, ProfileState};
 pub use snapshot::{
@@ -51,8 +53,8 @@ pub use snapshot::{
     detect_backend as detect_snapshot_backend,
 };
 pub use state::{
-    CompletedPackage, IronState, MaintenanceState, OperationRecord, OperationStatus, SavedPackage,
-    SavedUpdatePlan, UpdatePhase, UpdateProgress,
+    CompletedPackage, IronState, MaintenanceState, NewsAcknowledgment, OperationRecord,
+    OperationStatus, SavedPackage, SavedUpdatePlan, UpdatePhase, UpdateProgress,
 };
 pub use validation::{
     MAX_ID_LENGTH, ValidationResult, ValidationWarning, WarningCode, check_dotfile_conflicts,
@@ -63,6 +65,9 @@ pub use validation::{
 // Filesystem abstraction for testing
 pub use fs_trait::{FileSystem, FsResult, MockFileSystem, RealFileSystem};
 
+// System service abstraction
+pub use system_service::{NoopSystemService, SystemService};
+
 // Resilience patterns
 pub use resilience::{
     CircuitBreaker, CircuitBreakerConfig, CircuitBreakerStats, CircuitOpenError, CircuitState,
@@ -71,5 +76,5 @@ pub use resilience::{
 
 // Structured logging (NFR-9, NFR-10)
 pub use logging::{
-    generate_correlation_id, init_logging, LogConfig, OperationSpan, DEFAULT_MAX_SIZE_BYTES,
+    DEFAULT_MAX_SIZE_BYTES, LogConfig, OperationSpan, generate_correlation_id, init_logging,
 };

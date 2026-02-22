@@ -325,11 +325,7 @@ impl PacmanMockBuilder {
             .map(|(name, current, new)| format!("{} {} -> {}", name, current, new))
             .collect::<Vec<_>>()
             .join("\n");
-        executor.add_response(
-            "checkupdates",
-            &[],
-            MockResponse::success(&updates_output),
-        );
+        executor.add_response("checkupdates", &[], MockResponse::success(&updates_output));
 
         // Configure AUR updates for both paru and yay
         let aur_output = self
@@ -351,7 +347,11 @@ impl PacmanMockBuilder {
                 .collect::<Vec<_>>()
                 .join("\n");
 
-            executor.add_response("pacman", &["-Ss", query], MockResponse::success(&search_output));
+            executor.add_response(
+                "pacman",
+                &["-Ss", query],
+                MockResponse::success(&search_output),
+            );
 
             // Also configure for AUR helpers
             for helper in &["paru", "yay", "pikaur", "trizen"] {
@@ -389,11 +389,7 @@ impl PacmanMockBuilder {
         // Configure upgrade commands
         for helper in &["pacman", "paru", "yay", "pikaur", "trizen"] {
             if self.upgrade_succeeds {
-                executor.add_response(
-                    helper,
-                    &["-Syu", "--noconfirm"],
-                    MockResponse::success(""),
-                );
+                executor.add_response(helper, &["-Syu", "--noconfirm"], MockResponse::success(""));
             } else {
                 executor.add_response(
                     helper,
@@ -409,11 +405,7 @@ impl PacmanMockBuilder {
             // Set other helpers as not found
             for other in &["paru", "yay", "pikaur", "trizen"] {
                 if *other != helper {
-                    executor.add_response(
-                        "which",
-                        &[*other],
-                        MockResponse::exit_error(1, ""),
-                    );
+                    executor.add_response("which", &[*other], MockResponse::exit_error(1, ""));
                 }
             }
         }
@@ -472,7 +464,9 @@ pub mod fixtures {
             )
             .with_package_info(
                 PackageInfoFixture::new("waybar", "0.10.0-1")
-                    .with_description("Highly customizable Wayland bar for Sway and Wlroots based compositors")
+                    .with_description(
+                        "Highly customizable Wayland bar for Sway and Wlroots based compositors",
+                    )
                     .with_size("2.50 MiB"),
             )
             .with_aur_helper("paru")
@@ -619,9 +613,7 @@ mod tests {
             .with_aur_updates(&[("paru-bin", "2.0.0-1", "2.0.1-1")])
             .build();
 
-        let output = executor
-            .execute("paru", &["-Qua"])
-            .expect("should execute");
+        let output = executor.execute("paru", &["-Qua"]).expect("should execute");
         assert!(output.contains("paru-bin 2.0.0-1 -> 2.0.1-1"));
     }
 
@@ -732,7 +724,9 @@ mod tests {
     #[test]
     fn test_package_info_response() {
         let executor = PacmanMockBuilder::new()
-            .with_package_info(PackageInfoFixture::new("vim", "9.0-1").with_description("Vi IMproved"))
+            .with_package_info(
+                PackageInfoFixture::new("vim", "9.0-1").with_description("Vi IMproved"),
+            )
             .build();
 
         let output = executor

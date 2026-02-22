@@ -35,6 +35,11 @@ pub fn execute(ctx: &AppContext, action: ModuleAction) -> Result<()> {
         ModuleAction::Show { id } => show(ctx, &id),
         ModuleAction::Enable { id, force } => enable(ctx, &id, force),
         ModuleAction::Disable { id, yes } => disable(ctx, &id, yes),
+        ModuleAction::Create {
+            id,
+            description,
+            kind,
+        } => create(ctx, &id, description.as_deref(), &kind),
     }
 }
 
@@ -294,6 +299,67 @@ fn disable(ctx: &AppContext, id: &str, yes: bool) -> Result<()> {
     module_service.disable(id)?;
 
     output.success(&format!("Module '{}' disabled", id));
+
+    Ok(())
+}
+
+/// Create a new module scaffold (C-004)
+fn create(ctx: &AppContext, id: &str, description: Option<&str>, kind: &str) -> Result<()> {
+    let output = &ctx.output;
+
+    // Validate ID: lowercase alphanumeric + hyphens
+    if !id
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        || id.is_empty()
+        || id.starts_with('-')
+    {
+        output.error("Invalid module ID");
+        output.info("IDs must be lowercase alphanumeric with hyphens (e.g. 'my-module')");
+        return Ok(());
+    }
+
+    let module_dir = ctx.root.join("modules").join(id);
+    if module_dir.exists() {
+        output.error(&format!("Module '{}' already exists", id));
+        return Ok(());
+    }
+
+    output.header(&format!("Creating Module: {}", id));
+
+    // Create directory structure
+    std::fs::create_dir_all(module_dir.join("config"))?;
+
+    // Create module.toml
+    let desc = description.unwrap_or("A new iron module");
+    let toml_content = format!(
+        r#"# Module: {id}
+id = "{id}"
+name = "{name}"
+description = "{desc}"
+kind = "{kind}"
+
+packages = []
+aur_packages = []
+conflicts = []
+depends = []
+
+# Dotfiles mapping
+# [[dotfiles]]
+# source = "config/{id}"
+# target = "~/.config/{id}"
+# link = true
+"#,
+        id = id,
+        name = id.replace('-', " "),
+        desc = desc,
+        kind = kind,
+    );
+
+    std::fs::write(module_dir.join("module.toml"), toml_content)?;
+
+    output.success(&format!("Created module scaffold at modules/{}", id));
+    output.info("Edit modules/{}/module.toml to configure packages and dotfiles");
 
     Ok(())
 }

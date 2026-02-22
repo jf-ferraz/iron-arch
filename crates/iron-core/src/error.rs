@@ -225,6 +225,10 @@ pub enum GitError {
     /// Git command failed
     #[error("Git command failed: {message}")]
     CommandFailed { message: String },
+
+    /// IO error running git (command not found, permission denied, etc.)
+    #[error("Git IO error: {message}")]
+    IoError { message: String },
 }
 
 /// Filesystem operation errors

@@ -1,0 +1,24 @@
+{
+  "timestamp": "2026-01-07T17:07:04.514257583+00:00",
+  "timestamp_display": "2026-01-07 17:07",
+  "hostname": "don-desktop",
+  "active_host_file": "don-desktop.yaml",
+  "enabled_modules": [
+    "bdots-hypr",
+    "package-mods/main-apps",
+    "editors/helix-catppuccin-mocha",
+    "gaming/gaming-packages",
+    "gaming/controller-support",
+    "cli-tools/cli-apps",
+    "login-managers/sddm-enable",
+    "package-mods/content-creation",
+    "dev/development",
+    "bdots-niri",
+    "gaming/sunshine",
+    "zen-catppuccin"
+  ],
+  "backup_type": "auto-sync",
+  "dcli_version": "0.1.0",
+  "package_count": 377,
+  "validation_passed": true
+}

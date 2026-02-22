@@ -19,7 +19,10 @@ impl TestFixture {
     pub fn new() -> Self {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let iron_root = temp_dir.path().to_path_buf();
-        Self { temp_dir, iron_root }
+        Self {
+            temp_dir,
+            iron_root,
+        }
     }
 
     /// Create fixture with initialized iron state

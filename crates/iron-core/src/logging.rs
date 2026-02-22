@@ -28,7 +28,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 /// Default maximum log file size (10MB).
 pub const DEFAULT_MAX_SIZE_BYTES: u64 = 10 * 1024 * 1024;
@@ -310,7 +310,11 @@ mod tests {
 
         // Should be a UUID-like format or timestamp-based
         // Format: iron-{timestamp}-{random}
-        assert!(id.starts_with("iron-"), "ID should start with 'iron-': {}", id);
+        assert!(
+            id.starts_with("iron-"),
+            "ID should start with 'iron-': {}",
+            id
+        );
         assert!(id.len() >= 20, "ID should be at least 20 chars: {}", id);
     }
 

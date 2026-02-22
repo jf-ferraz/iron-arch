@@ -36,8 +36,8 @@ use std::sync::Arc;
 
 // Re-export types from iron-core for backward compatibility
 pub use iron_core::{
-    ArchNewsItem, InstalledPackage, PackageManager, PackageUpdate, RiskLevel, UpdatePreview,
-    assess_risk,
+    ArchNewsItem, CleanCacheResult, InstalledPackage, PackageManager, PackageUpdate, RiskLevel,
+    UpdatePreview, assess_risk,
 };
 
 /// AUR helper type
@@ -74,13 +74,12 @@ pub struct DefaultPackageManager {
 }
 
 impl DefaultPackageManager {
-    /// Create a new package manager
+    /// Create a new package manager with a default resilient executor.
+    ///
+    /// The circuit breaker opens after 3 consecutive failures and stays open
+    /// for 60 seconds, preventing hangs from a broken pacman environment.
     pub fn new() -> Self {
-        Self {
-            aur_helper: detect_aur_helper(),
-            dry_run: false,
-            executor: None,
-        }
+        Self::with_resilience()
     }
 
     /// Create a package manager with specific options
@@ -459,6 +458,53 @@ impl PackageManager for DefaultPackageManager {
 
         Ok(preview_result)
     }
+
+    fn fetch_news(&self) -> IronResult<Vec<ArchNewsItem>> {
+        fetch_arch_news()
+    }
+
+    /// F-005: List orphaned packages (installed as deps, no longer required by anything)
+    fn get_orphans(&self) -> IronResult<Vec<String>> {
+        let stdout = self.run_pacman(&["-Qtdq"]).unwrap_or_default();
+        Ok(stdout
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(|s| s.to_string())
+            .collect())
+    }
+
+    /// F-005: Clean the package cache, keeping `keep` most recent versions per package
+    fn clean_cache(&self, keep: u32) -> IronResult<CleanCacheResult> {
+        if self.dry_run {
+            return Ok(CleanCacheResult {
+                removed_count: 0,
+                output: format!("[DRY RUN] Would run: paccache -rk{}", keep),
+            });
+        }
+
+        let output = Command::new("sudo")
+            .args(["paccache", "-r", &format!("-k{}", keep)])
+            .output()
+            .map_err(|e| PackageError::PacmanError {
+                message: format!("Failed to run paccache: {}", e),
+            })?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+        if output.status.success() {
+            let removed = stdout.lines().filter(|l| l.contains("removing")).count();
+            Ok(CleanCacheResult {
+                removed_count: removed,
+                output: stdout,
+            })
+        } else {
+            Err(PackageError::PacmanError {
+                message: format!("paccache failed: {}", stderr),
+            }
+            .into())
+        }
+    }
 }
 
 /// Detect available AUR helper
@@ -609,6 +655,7 @@ pub fn parse_updates_output(output: &str, is_aur: bool) -> Vec<PackageUpdate> {
                     } else {
                         String::new()
                     },
+                    ..Default::default()
                 })
             } else {
                 None
@@ -754,15 +801,16 @@ pub fn parse_package_info(output: &str) -> std::collections::HashMap<String, Str
 pub fn parse_size(size_str: &str) -> u64 {
     let parts: Vec<&str> = size_str.split_whitespace().collect();
     if parts.len() >= 2
-        && let Ok(size) = parts[0].parse::<f64>() {
-            return match parts[1] {
-                "B" => size as u64,
-                "KiB" => (size * 1024.0) as u64,
-                "MiB" => (size * 1024.0 * 1024.0) as u64,
-                "GiB" => (size * 1024.0 * 1024.0 * 1024.0) as u64,
-                _ => size as u64,
-            };
-        }
+        && let Ok(size) = parts[0].parse::<f64>()
+    {
+        return match parts[1] {
+            "B" => size as u64,
+            "KiB" => (size * 1024.0) as u64,
+            "MiB" => (size * 1024.0 * 1024.0) as u64,
+            "GiB" => (size * 1024.0 * 1024.0 * 1024.0) as u64,
+            _ => size as u64,
+        };
+    }
     0
 }
 
@@ -856,6 +904,7 @@ mod tests {
             is_aur: false,
             is_flagged: false,
             repository: "core".to_string(),
+            ..Default::default()
         }];
 
         let (risk, reasons) = assess_risk(&updates, &[]);
@@ -872,6 +921,7 @@ mod tests {
             is_aur: false,
             is_flagged: false,
             repository: "core".to_string(),
+            ..Default::default()
         }];
 
         let (risk, reasons) = assess_risk(&updates, &[]);
@@ -904,6 +954,7 @@ mod tests {
             is_aur: true,
             is_flagged: true,
             repository: "aur".to_string(),
+            ..Default::default()
         }];
 
         let (risk, reasons) = assess_risk(&updates, &[]);
@@ -920,6 +971,7 @@ mod tests {
             is_aur: false,
             is_flagged: false,
             repository: "extra".to_string(),
+            ..Default::default()
         }];
 
         let (risk, _) = assess_risk(&updates, &[]);
@@ -1810,10 +1862,10 @@ Validated By    : Signature"#;
     }
 
     #[test]
-    fn test_package_manager_without_executor() {
-        // Test backward compatibility - new() should work without executor
+    fn test_package_manager_new_has_resilient_executor() {
+        // new() always initializes with a circuit-breaker executor
         let pm = DefaultPackageManager::new();
-        assert!(pm.executor.is_none());
+        assert!(pm.executor.is_some());
     }
 
     #[test]
