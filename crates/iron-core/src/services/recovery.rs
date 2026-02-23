@@ -252,7 +252,11 @@ impl<S: SnapshotManager> RecoveryService for DefaultRecoveryService<S> {
                     self.state_manager.record_operation(
                         "import_packages",
                         OperationStatus::Failed,
-                        Some(format!("Failed to install {} packages: {}", official.len(), e)),
+                        Some(format!(
+                            "Failed to install {} packages: {}",
+                            official.len(),
+                            e
+                        )),
                     )?;
                 }
             }

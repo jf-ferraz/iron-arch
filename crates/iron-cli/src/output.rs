@@ -3,8 +3,10 @@
 //! Provides consistent output formatting across all commands.
 
 use crate::cli::OutputFormat;
+use iron_core::envelope::IronEnvelope;
 use serde::Serialize;
 use std::fmt::Display;
+use std::time::Instant;
 
 /// Output context for formatting
 pub struct Output {
@@ -227,6 +229,39 @@ impl Output {
         }
     }
 
+    /// Wrap data in a standard envelope and output as JSON.
+    /// Only produces output when format is JSON.
+    pub fn json_envelope<T: Serialize>(&self, command: &str, data: T, start_time: Instant) {
+        if !self.is_json() {
+            return;
+        }
+        let duration_ms = start_time.elapsed().as_millis() as u64;
+        let envelope = IronEnvelope::success(command, data, Some(duration_ms));
+        if let Ok(json) = serde_json::to_string_pretty(&envelope) {
+            println!("{}", json);
+        }
+    }
+
+    /// Wrap an error in a standard envelope and output as JSON.
+    /// Only produces output when format is JSON.
+    #[allow(dead_code)] // Used in future error-path migration
+    pub fn json_error_envelope(
+        &self,
+        command: &str,
+        code: &str,
+        message: &str,
+        start_time: Instant,
+    ) {
+        if !self.is_json() {
+            return;
+        }
+        let duration_ms = start_time.elapsed().as_millis() as u64;
+        let envelope = IronEnvelope::<()>::error(command, code, message, Some(duration_ms));
+        if let Ok(json) = serde_json::to_string_pretty(&envelope) {
+            eprintln!("{}", json);
+        }
+    }
+
     /// Print a table row
     #[allow(dead_code)] // Will be used for CLI table output in Phase 6
     pub fn table_row(&self, cols: &[(&str, usize)]) {
@@ -266,6 +301,21 @@ impl Output {
         }
     }
 
+    /// Check if no-color mode is active
+    #[allow(dead_code)]
+    pub fn is_no_color(&self) -> bool {
+        self.no_color
+    }
+
+    /// Apply ANSI color to text, respecting no-color mode
+    pub fn colored(&self, text: &str, ansi_code: &str) -> String {
+        if self.no_color {
+            text.to_string()
+        } else {
+            format!("{}{}\x1b[0m", ansi_code, text)
+        }
+    }
+
     /// Check if JSON output
     pub fn is_json(&self) -> bool {
         matches!(self.format, OutputFormat::Json)
@@ -299,8 +349,7 @@ impl Output {
 
                 let summary_text = parts.join(" · ");
                 let has_errors = items.iter().any(|(label, count)| {
-                    *count > 0
-                        && (label.contains("error") || label.contains("fail"))
+                    *count > 0 && (label.contains("error") || label.contains("fail"))
                 });
 
                 if self.no_color {
@@ -315,12 +364,7 @@ impl Output {
                 let map: serde_json::Value = serde_json::Value::Object(
                     items
                         .iter()
-                        .map(|(k, v)| {
-                            (
-                                k.replace(' ', "_"),
-                                serde_json::Value::Number((*v).into()),
-                            )
-                        })
+                        .map(|(k, v)| (k.replace(' ', "_"), serde_json::Value::Number((*v).into())))
                         .collect(),
                 );
                 println!(r#"{{"summary":{}}}"#, map);
@@ -329,10 +373,227 @@ impl Output {
         }
     }
 
+    // ==========================================================================
+    // F2-009: Tree-style output renderer
+    // ==========================================================================
+
+    /// Print a tree root item
+    #[allow(dead_code)]
+    pub fn tree_root(&self, label: &str) {
+        if self.quiet {
+            return;
+        }
+        if let OutputFormat::Text = self.format {
+            println!("{}", label);
+        }
+    }
+
+    /// Print a tree branch (not last child)
+    #[allow(dead_code)]
+    pub fn tree_branch(&self, label: &str, depth: usize) {
+        if self.quiet {
+            return;
+        }
+        if let OutputFormat::Text = self.format {
+            let indent = "│   ".repeat(depth.saturating_sub(1));
+            let connector = if depth == 0 { "" } else { "├── " };
+            println!("{}{}{}", indent, connector, label);
+        }
+    }
+
+    /// Print the last child in a tree level
+    #[allow(dead_code)]
+    pub fn tree_last(&self, label: &str, depth: usize) {
+        if self.quiet {
+            return;
+        }
+        if let OutputFormat::Text = self.format {
+            let indent = "│   ".repeat(depth.saturating_sub(1));
+            let connector = if depth == 0 { "" } else { "└── " };
+            println!("{}{}{}", indent, connector, label);
+        }
+    }
+
+    // ==========================================================================
+    // F2-010: Operation summary blocks
+    // ==========================================================================
+
+    /// Print a boxed summary block with title and items
+    pub fn summary_block(&self, title: &str, items: &[(&str, &str)], duration: Option<f64>) {
+        if self.quiet {
+            return;
+        }
+        match self.format {
+            OutputFormat::Text => {
+                let width = 50;
+                if self.no_color {
+                    println!("+-{}-+", "-".repeat(width));
+                    println!("| {:<width$} |", title);
+                    println!("+-{}-+", "-".repeat(width));
+                    for (key, value) in items {
+                        println!("| {:<20} {:<width$} |", key, value, width = width - 21);
+                    }
+                    if let Some(dur) = duration {
+                        println!("| {:<width$} |", format!("Duration: {:.1}s", dur));
+                    }
+                    println!("+-{}-+", "-".repeat(width));
+                } else {
+                    println!("┌─{}─┐", "─".repeat(width));
+                    println!("│ \x1b[1m{:<width$}\x1b[0m │", title);
+                    println!("├─{}─┤", "─".repeat(width));
+                    for (key, value) in items {
+                        println!(
+                            "│ \x1b[90m{:<20}\x1b[0m {:<width$} │",
+                            key,
+                            value,
+                            width = width - 21
+                        );
+                    }
+                    if let Some(dur) = duration {
+                        println!(
+                            "│ {:<width$} │",
+                            format!("\x1b[90mDuration:\x1b[0m {:.1}s", dur)
+                        );
+                    }
+                    println!("└─{}─┘", "─".repeat(width));
+                }
+            }
+            OutputFormat::Json => {
+                let mut map = serde_json::Map::new();
+                map.insert("title".into(), serde_json::Value::String(title.into()));
+                for (key, value) in items {
+                    map.insert(
+                        key.to_string(),
+                        serde_json::Value::String(value.to_string()),
+                    );
+                }
+                if let Some(dur) = duration {
+                    map.insert(
+                        "duration_secs".into(),
+                        serde_json::Value::Number(
+                            serde_json::Number::from_f64(dur).unwrap_or_else(|| 0.into()),
+                        ),
+                    );
+                }
+                if let Ok(json) = serde_json::to_string_pretty(&map) {
+                    println!("{}", json);
+                }
+            }
+            OutputFormat::Minimal => {}
+        }
+    }
+
+    // ==========================================================================
+    // F2-011: Table output for list commands
+    // ==========================================================================
+
+    /// Print a table with headers and rows, auto-sizing columns
+    pub fn table(&self, headers: &[&str], rows: &[Vec<String>]) {
+        if self.quiet {
+            return;
+        }
+        match self.format {
+            OutputFormat::Text => {
+                // Calculate column widths
+                let mut widths: Vec<usize> = headers.iter().map(|h| h.len()).collect();
+                for row in rows {
+                    for (i, cell) in row.iter().enumerate() {
+                        if i < widths.len() {
+                            widths[i] = widths[i].max(cell.len());
+                        }
+                    }
+                }
+
+                // Print header
+                let header_line: String = headers
+                    .iter()
+                    .enumerate()
+                    .map(|(i, h)| format!("{:<width$}", h, width = widths[i] + 2))
+                    .collect();
+
+                if self.no_color {
+                    println!("  {}", header_line);
+                    let sep: String = widths.iter().map(|w| "-".repeat(w + 2)).collect();
+                    println!("  {}", sep);
+                } else {
+                    println!("  \x1b[1m{}\x1b[0m", header_line);
+                    let sep: String = widths.iter().map(|w| "─".repeat(w + 2)).collect();
+                    println!("  \x1b[90m{}\x1b[0m", sep);
+                }
+
+                // Print rows
+                for row in rows {
+                    let line: String = row
+                        .iter()
+                        .enumerate()
+                        .map(|(i, cell)| {
+                            let w = widths.get(i).copied().unwrap_or(cell.len());
+                            format!("{:<width$}", cell, width = w + 2)
+                        })
+                        .collect();
+                    println!("  {}", line);
+                }
+            }
+            OutputFormat::Json => {
+                let json_rows: Vec<serde_json::Value> = rows
+                    .iter()
+                    .map(|row| {
+                        let mut map = serde_json::Map::new();
+                        for (i, cell) in row.iter().enumerate() {
+                            let key = headers.get(i).unwrap_or(&"col");
+                            map.insert(key.to_string(), serde_json::Value::String(cell.clone()));
+                        }
+                        serde_json::Value::Object(map)
+                    })
+                    .collect();
+                if let Ok(json) = serde_json::to_string_pretty(&json_rows) {
+                    println!("{}", json);
+                }
+            }
+            OutputFormat::Minimal => {
+                for row in rows {
+                    if let Some(first) = row.first() {
+                        println!("{}", first);
+                    }
+                }
+            }
+        }
+    }
+
+    // ==========================================================================
+    // F2-014: Error messages with suggestions
+    // ==========================================================================
+
+    /// Print an error message with a suggestion for recovery
+    #[allow(dead_code)]
+    pub fn error_with_suggestion(&self, msg: &str, suggestion: &str) {
+        self.error(msg);
+        if !self.quiet {
+            match self.format {
+                OutputFormat::Text => {
+                    if self.no_color {
+                        println!("  Hint: {}", suggestion);
+                    } else {
+                        println!("  \x1b[90mHint:\x1b[0m {}", suggestion);
+                    }
+                }
+                OutputFormat::Json => {
+                    eprintln!(
+                        r#"{{"status":"error","message":"{}","suggestion":"{}"}}"#,
+                        msg, suggestion
+                    );
+                }
+                OutputFormat::Minimal => {}
+            }
+        }
+    }
+
     /// Print an explain line showing the command being executed (F0-006)
     ///
     /// Only outputs when `--explain` is active. Shows the underlying system
     /// command so users can learn what Iron does under the hood.
+    /// Used by `iron apply --explain` and `iron update --explain` (F2-013).
+    #[allow(dead_code)]
     pub fn explain_cmd(&self, cmd: &str) {
         if !self.explain || self.quiet {
             return;
@@ -350,6 +611,16 @@ impl Output {
             }
             OutputFormat::Minimal => {}
         }
+    }
+}
+
+/// Truncate a string to max chars, appending "..." if truncated. UTF-8 safe.
+pub fn truncate_str(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        let truncated: String = s.chars().take(max.saturating_sub(3)).collect();
+        format!("{}...", truncated)
     }
 }
 

@@ -361,10 +361,7 @@ impl WizardState {
                 && let Err(e) = host_service.create_from_current(&self.host_id, &self.host_id)
             {
                 // Non-fatal: log but continue (host TOML is advisory, not blocking)
-                self.error = Some(format!(
-                    "Warning: Could not create host config: {:?}",
-                    e
-                ));
+                self.error = Some(format!("Warning: Could not create host config: {:?}", e));
             }
         }
 

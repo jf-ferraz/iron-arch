@@ -1,0 +1,8 @@
+#!/bin/sh
+
+SESSIONS_DIR="$HOME/.config/kitty/sessions"
+ROFI_THEME="$HOME/.config/bspwm/config/rofi-themes/TermSelector.rasi"
+
+session=$(ls "$SESSIONS_DIR"/*.session 2>/dev/null | xargs -n1 basename | sed 's/\.session$//' | rofi -dmenu -p "Kitty Session" -theme "$ROFI_THEME")
+
+[ -n "$session" ] && kitty --session "$SESSIONS_DIR/${session}.session"

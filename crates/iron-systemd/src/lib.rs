@@ -163,6 +163,11 @@ impl DefaultServiceManager {
         Self::with_executor(scope, Arc::new(RealCommandExecutor::with_defaults()))
     }
 
+    /// Check if this manager operates in user scope
+    pub fn is_user_scope(&self) -> bool {
+        self.scope == ServiceScope::User
+    }
+
     /// Run systemctl command using executor if available, otherwise direct execution
     fn run_systemctl(&self, args: &[&str]) -> IronResult<String> {
         let mut cmd_args = vec![];
@@ -392,6 +397,19 @@ impl iron_core::SystemService for SystemdServiceAdapter {
 
     fn stop_service(&self, name: &str) -> IronResult<()> {
         self.inner.stop(name)
+    }
+
+    fn is_enabled(&self, name: &str) -> IronResult<bool> {
+        // Use systemctl is-enabled — scope-aware via inner's scope
+        let mut cmd = Command::new("systemctl");
+        if self.inner.is_user_scope() {
+            cmd.arg("--user");
+        }
+        cmd.args(["is-enabled", name]);
+        match cmd.output() {
+            Ok(o) => Ok(o.status.success()),
+            Err(_) => Ok(false),
+        }
     }
 }
 

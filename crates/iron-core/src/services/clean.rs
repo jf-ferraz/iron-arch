@@ -693,14 +693,8 @@ impl DefaultCleanupService {
                     let stderr = String::from_utf8_lossy(&result.stderr).to_string();
 
                     if result.status.success() {
-                        let removed =
-                            stdout.lines().filter(|l| l.contains("removing")).count();
-                        CleanupResult::success(
-                            CleanupCategory::PackageCache,
-                            removed,
-                            0,
-                            stdout,
-                        )
+                        let removed = stdout.lines().filter(|l| l.contains("removing")).count();
+                        CleanupResult::success(CleanupCategory::PackageCache, removed, 0, stdout)
                     } else {
                         CleanupResult::failure(
                             CleanupCategory::PackageCache,
@@ -1201,20 +1195,14 @@ impl CleanupService for DefaultCleanupService {
         }
 
         // F-003: Record cleanup operation in audit log
-        if !dry_run
-            && let Some(ref sm) = self.state_manager
-        {
+        if !dry_run && let Some(ref sm) = self.state_manager {
             let cat_names: Vec<&str> = categories.iter().map(|c| c.name()).collect();
             let details = format!(
                 "categories: [{}], reclaimed: {}",
                 cat_names.join(", "),
                 summary.space_formatted()
             );
-            let _ = sm.record_operation(
-                "cleanup",
-                crate::OperationStatus::Success,
-                Some(details),
-            );
+            let _ = sm.record_operation("cleanup", crate::OperationStatus::Success, Some(details));
         }
 
         summary
@@ -1302,11 +1290,12 @@ fn count_old_files(path: &Path, max_age: Duration) -> (usize, u64) {
                     walk(&entry_path, now, max_age, count, size);
                 } else if let Ok(metadata) = entry.metadata()
                     && let Ok(modified) = metadata.modified()
-                        && let Ok(age) = now.duration_since(modified)
-                            && age > max_age {
-                                *count += 1;
-                                *size += metadata.len();
-                            }
+                    && let Ok(age) = now.duration_since(modified)
+                    && age > max_age
+                {
+                    *count += 1;
+                    *size += metadata.len();
+                }
             }
         }
     }
@@ -1334,11 +1323,12 @@ fn count_log_files(path: &Path, max_age: Duration) -> (usize, u64) {
                         || name.ends_with(".log.old")
                         || name.contains(".log."))
                         && let Ok(modified) = metadata.modified()
-                            && let Ok(age) = now.duration_since(modified)
-                                && age > max_age {
-                                    *count += 1;
-                                    *size += metadata.len();
-                                }
+                        && let Ok(age) = now.duration_since(modified)
+                        && age > max_age
+                    {
+                        *count += 1;
+                        *size += metadata.len();
+                    }
                 }
             }
         }
@@ -1361,11 +1351,12 @@ fn remove_old_files(path: &Path, max_age: Duration) -> usize {
                     walk(&entry_path, now, max_age, removed);
                 } else if let Ok(metadata) = entry.metadata()
                     && let Ok(modified) = metadata.modified()
-                        && let Ok(age) = now.duration_since(modified)
-                            && age > max_age
-                                && fs::remove_file(&entry_path).is_ok() {
-                                    *removed += 1;
-                                }
+                    && let Ok(age) = now.duration_since(modified)
+                    && age > max_age
+                    && fs::remove_file(&entry_path).is_ok()
+                {
+                    *removed += 1;
+                }
             }
         }
     }
@@ -1391,11 +1382,12 @@ fn remove_log_files(path: &Path, max_age: Duration) -> usize {
                         || name.ends_with(".log.old")
                         || name.contains(".log."))
                         && let Ok(modified) = metadata.modified()
-                            && let Ok(age) = now.duration_since(modified)
-                                && age > max_age
-                                    && fs::remove_file(&entry_path).is_ok() {
-                                        *removed += 1;
-                                    }
+                        && let Ok(age) = now.duration_since(modified)
+                        && age > max_age
+                        && fs::remove_file(&entry_path).is_ok()
+                    {
+                        *removed += 1;
+                    }
                 }
             }
         }

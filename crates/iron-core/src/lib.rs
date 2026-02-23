@@ -10,8 +10,10 @@
 //! - Configuration validation
 //! - Snapshot management
 
+pub mod actual_state;
 pub mod availability;
 pub mod bundle;
+pub mod envelope;
 pub mod error;
 pub mod fs_trait;
 pub mod host;
@@ -35,6 +37,10 @@ pub mod test_helpers;
 pub mod snapshot_fixtures;
 
 // Re-exports for convenience
+pub use actual_state::{
+    ActualFileState, ActualServiceState, ActualState, FileStateType, ManagedFileSpec,
+    ManagedServiceSpec,
+};
 pub use bundle::{Bundle, BundleState, BundleType};
 pub use error::{
     ConfigError, FsError, GitError, IronError, IronResult, PackageError, Recoverable, ServiceError,

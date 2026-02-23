@@ -163,10 +163,7 @@ fn render_wizard_host_setup(frame: &mut Frame, area: Rect, app: &App) {
         if let Some(ref chassis) = hw.chassis {
             text.push(Line::from(vec![
                 Span::styled("  Chassis  ", Style::default().fg(theme::SUBTEXT)),
-                Span::styled(
-                    format!("{:?}", chassis),
-                    Style::default().fg(theme::TEXT),
-                ),
+                Span::styled(format!("{:?}", chassis), Style::default().fg(theme::TEXT)),
             ]));
         }
         if !hw.monitors.is_empty() {

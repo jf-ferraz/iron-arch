@@ -1,9 +1,0 @@
-[workspace]
-members = [
-  "crates/core-domain",
-  "crates/infra-fs",
-  "crates/infra-systemd",
-  "crates/app-cli",
-  "crates/app-tui",
-]
-resolver = "2"

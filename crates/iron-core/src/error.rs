@@ -55,6 +55,45 @@ pub enum IronError {
     Io(#[from] std::io::Error),
 }
 
+impl IronError {
+    /// F2-014: Return a human-friendly suggestion for common errors.
+    pub fn suggestion(&self) -> Option<&str> {
+        match self {
+            IronError::State(StateError::NoActiveHost) => {
+                Some("Run 'iron init' to configure your host.")
+            }
+            IronError::State(StateError::HostNotFound { .. }) => {
+                Some("Run 'iron host list' to see available hosts.")
+            }
+            IronError::State(StateError::BundleNotFound { .. }) => {
+                Some("Run 'iron bundle list' to see available bundles.")
+            }
+            IronError::State(StateError::ModuleNotFound { .. }) => {
+                Some("Run 'iron module list' to see available modules.")
+            }
+            IronError::State(StateError::ProfileNotFound { .. }) => {
+                Some("Run 'iron profile list' to see available profiles.")
+            }
+            IronError::State(StateError::ModuleAlreadyEnabled { .. }) => {
+                Some("Module is already enabled. No action needed.")
+            }
+            IronError::State(StateError::Corrupted { .. }) => {
+                Some("Run 'iron doctor' to diagnose, or 'iron recover --export' to backup.")
+            }
+            IronError::Package(PackageError::NoAurHelper) => Some(
+                "Install paru or yay: 'git clone https://aur.archlinux.org/paru.git && cd paru && makepkg -si'",
+            ),
+            IronError::Git(GitError::SecretsLocked) => {
+                Some("Run 'iron secrets unlock' to decrypt secrets.")
+            }
+            IronError::Git(GitError::UncommittedChanges) => {
+                Some("Commit or stash changes: 'iron sync push -m \"save\"'")
+            }
+            _ => None,
+        }
+    }
+}
+
 /// Configuration-specific errors
 #[derive(Debug, Error)]
 pub enum ConfigError {

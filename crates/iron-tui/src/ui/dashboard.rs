@@ -36,8 +36,8 @@ fn get_disk_display() -> (String, Color) {
             let result = unsafe { libc::statvfs(path.as_ptr(), stat.as_mut_ptr()) };
             if result == 0 {
                 let stat = unsafe { stat.assume_init() };
-                let total = stat.f_blocks as u64 * stat.f_frsize as u64;
-                let free = stat.f_bavail as u64 * stat.f_frsize as u64;
+                let total = stat.f_blocks * stat.f_frsize;
+                let free = stat.f_bavail * stat.f_frsize;
                 if total > 0 {
                     let pct = ((total - free) as f64 / total as f64 * 100.0) as u64;
                     let free_gb = free as f64 / 1_073_741_824.0;
@@ -79,7 +79,7 @@ pub fn render_dashboard(frame: &mut Frame, area: Rect, app: &App) {
         .constraints([
             Constraint::Length(10), // System Status (health checks)
             Constraint::Length(8),  // Quick Stats (F0-002: +sync +disk)
-            Constraint::Min(8),    // Quick Actions
+            Constraint::Min(8),     // Quick Actions
         ])
         .split(main_columns[0]);
 
@@ -89,7 +89,7 @@ pub fn render_dashboard(frame: &mut Frame, area: Rect, app: &App) {
         .constraints([
             Constraint::Length(10), // Active Configuration
             Constraint::Length(8),  // Recent Operations
-            Constraint::Min(5),    // Alerts & Notifications
+            Constraint::Min(5),     // Alerts & Notifications
         ])
         .split(main_columns[1]);
 
@@ -144,13 +144,56 @@ fn render_system_status(frame: &mut Frame, area: Rect, app: &App) {
             };
             content.push(Line::from(vec![
                 Span::styled(format!("  {} ", icon), Style::default().fg(color).bold()),
-                Span::styled(
-                    format!("{:<12}", name),
-                    Style::default().fg(theme::SUBTEXT),
-                ),
+                Span::styled(format!("{:<12}", name), Style::default().fg(theme::SUBTEXT)),
                 Span::styled(message.as_str(), Style::default().fg(color)),
             ]));
         }
+    }
+
+    // F1-018: Drift indicator
+    match app.drift_count {
+        Some(0) => {
+            content.push(Line::from(vec![
+                Span::styled("  [OK] ", Style::default().fg(theme::GREEN).bold()),
+                Span::styled(
+                    format!("{:<12}", "Drift"),
+                    Style::default().fg(theme::SUBTEXT),
+                ),
+                Span::styled("Clean ✓", Style::default().fg(theme::GREEN)),
+            ]));
+        }
+        Some(n) => {
+            content.push(Line::from(vec![
+                Span::styled("  [!!] ", Style::default().fg(theme::YELLOW).bold()),
+                Span::styled(
+                    format!("{:<12}", "Drift"),
+                    Style::default().fg(theme::SUBTEXT),
+                ),
+                Span::styled(
+                    format!("{} drift(s) ⚠  [D] details", n),
+                    Style::default().fg(theme::YELLOW),
+                ),
+            ]));
+        }
+        None => {} // Not yet computed
+    }
+
+    // F2-018: Security level indicator
+    if let Some(level) = &app.security_level {
+        let (badge, color) = match level {
+            iron_core::services::security::SecurityLevel::Basic => ("[!!]", theme::RED),
+            iron_core::services::security::SecurityLevel::Standard => ("[OK]", theme::YELLOW),
+            iron_core::services::security::SecurityLevel::Advanced => ("[OK]", theme::GREEN),
+            iron_core::services::security::SecurityLevel::Paranoid => ("[**]", theme::BLUE),
+        };
+        content.push(Line::from(vec![
+            Span::styled(format!("  {} ", badge), Style::default().fg(color).bold()),
+            Span::styled(
+                format!("{:<12}", "Security"),
+                Style::default().fg(theme::SUBTEXT),
+            ),
+            Span::styled(level.label(), Style::default().fg(color)),
+        ]));
     }
 
     frame.render_widget(Paragraph::new(content), inner);
@@ -222,7 +265,9 @@ fn render_quick_stats(frame: &mut Frame, area: Rect, app: &App) {
                 Some(info) => match info.status {
                     SyncStatus::UpToDate => ("✓ Up to date".to_string(), theme::GREEN),
                     SyncStatus::Ahead => (format!("↑ {} ahead", info.commits_ahead), theme::YELLOW),
-                    SyncStatus::Behind => (format!("↓ {} behind", info.commits_behind), theme::YELLOW),
+                    SyncStatus::Behind => {
+                        (format!("↓ {} behind", info.commits_behind), theme::YELLOW)
+                    }
                     SyncStatus::Diverged => (
                         format!("⚠ {}↑ {}↓", info.commits_ahead, info.commits_behind),
                         theme::RED,
@@ -311,10 +356,7 @@ fn render_active_config(frame: &mut Frame, area: Rect, app: &App) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let host = app
-        .current_host
-        .as_deref()
-        .unwrap_or("not set");
+    let host = app.current_host.as_deref().unwrap_or("not set");
 
     let bundle = app
         .active_bundle
@@ -615,7 +657,9 @@ pub fn render_divergence_popup(frame: &mut Frame, area: Rect, app: &App) {
         let is_selected = i == app.divergence_selected;
         let prefix = if is_selected { "  ▸ " } else { "    " };
         let style = if is_selected {
-            Style::default().fg(theme::MAUVE).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(theme::MAUVE)
+                .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(theme::TEXT)
         };
@@ -634,17 +678,42 @@ pub fn render_divergence_popup(frame: &mut Frame, area: Rect, app: &App) {
         Style::default().fg(theme::OVERLAY),
     )));
     lines.push(Line::from(vec![
-        Span::styled("  [r]", Style::default().fg(theme::MAUVE).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "  [r]",
+            Style::default()
+                .fg(theme::MAUVE)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::styled(" Restore  ", Style::default().fg(theme::SUBTEXT)),
-        Span::styled("[a]", Style::default().fg(theme::MAUVE).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "[a]",
+            Style::default()
+                .fg(theme::MAUVE)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::styled(" Accept  ", Style::default().fg(theme::SUBTEXT)),
-        Span::styled("[d]", Style::default().fg(theme::MAUVE).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "[d]",
+            Style::default()
+                .fg(theme::MAUVE)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::styled(" Diff", Style::default().fg(theme::SUBTEXT)),
     ]));
     lines.push(Line::from(vec![
-        Span::styled("  [j/k]", Style::default().fg(theme::MAUVE).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "  [j/k]",
+            Style::default()
+                .fg(theme::MAUVE)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::styled(" Navigate  ", Style::default().fg(theme::SUBTEXT)),
-        Span::styled("[Esc]", Style::default().fg(theme::MAUVE).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "[Esc]",
+            Style::default()
+                .fg(theme::MAUVE)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::styled(" Close", Style::default().fg(theme::SUBTEXT)),
     ]));
 
@@ -723,14 +792,12 @@ mod tests {
     fn test_render_dashboard_with_pending_updates() {
         let mut terminal = create_test_terminal();
         let mut app = App::default();
-        app.pending_updates = vec![
-            iron_core::PackageUpdate {
-                name: "firefox".to_string(),
-                current_version: "120.0".to_string(),
-                new_version: "121.0".to_string(),
-                ..Default::default()
-            },
-        ];
+        app.pending_updates = vec![iron_core::PackageUpdate {
+            name: "firefox".to_string(),
+            current_version: "120.0".to_string(),
+            new_version: "121.0".to_string(),
+            ..Default::default()
+        }];
 
         assert_eq!(app.pending_update_count(), 1);
 

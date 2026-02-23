@@ -5,8 +5,8 @@
 //! backend (e.g., `iron-git::DefaultSecretsManager` with circuit breaker)
 //! can be injected without creating a circular dependency.
 
-use crate::{IronResult, ServiceError};
 use crate::state::OperationStatus;
+use crate::{IronResult, ServiceError};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -1183,7 +1183,11 @@ mod tests {
         let service = DefaultSecretsService::new(temp_dir.path()).with_state_manager(sm.clone());
 
         // Directly call audit and verify via state manager
-        service.audit("test_op", OperationStatus::Success, Some("detail".to_string()));
+        service.audit(
+            "test_op",
+            OperationStatus::Success,
+            Some("detail".to_string()),
+        );
 
         let recent = sm.recent_audit(1);
         assert_eq!(recent.len(), 1);
@@ -1301,8 +1305,7 @@ mod tests {
             lock_called: Arc::new(AtomicBool::new(false)),
             is_unlocked_value: false,
         };
-        let service = DefaultSecretsService::new(temp_dir.path())
-            .with_backend(Box::new(backend));
+        let service = DefaultSecretsService::new(temp_dir.path()).with_backend(Box::new(backend));
         service.unlock(None).unwrap();
         assert!(unlock_flag.load(Ordering::SeqCst));
     }
@@ -1317,8 +1320,7 @@ mod tests {
             lock_called: Arc::clone(&lock_flag),
             is_unlocked_value: true,
         };
-        let service = DefaultSecretsService::new(temp_dir.path())
-            .with_backend(Box::new(backend));
+        let service = DefaultSecretsService::new(temp_dir.path()).with_backend(Box::new(backend));
         service.lock().unwrap();
         assert!(lock_flag.load(Ordering::SeqCst));
     }
@@ -1332,8 +1334,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         std::fs::create_dir_all(temp_dir.path().join(".git-crypt")).unwrap();
         let backend = MockBackend::new(true); // backend says unlocked
-        let service = DefaultSecretsService::new(temp_dir.path())
-            .with_backend(Box::new(backend));
+        let service = DefaultSecretsService::new(temp_dir.path()).with_backend(Box::new(backend));
 
         // Both layers should report Unlocked
         assert!(service.is_unlocked());
@@ -1346,8 +1347,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         std::fs::create_dir_all(temp_dir.path().join(".git-crypt")).unwrap();
         let backend = MockBackend::new(false); // backend says locked
-        let service = DefaultSecretsService::new(temp_dir.path())
-            .with_backend(Box::new(backend));
+        let service = DefaultSecretsService::new(temp_dir.path()).with_backend(Box::new(backend));
 
         assert!(!service.is_unlocked());
         let status = service.status().unwrap();
@@ -1359,8 +1359,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         std::fs::create_dir_all(temp_dir.path().join(".git-crypt")).unwrap();
         let backend = MockBackend::new(true);
-        let service = DefaultSecretsService::new(temp_dir.path())
-            .with_backend(Box::new(backend));
+        let service = DefaultSecretsService::new(temp_dir.path()).with_backend(Box::new(backend));
 
         let files = service.list_encrypted().unwrap();
         assert_eq!(files.len(), 1);
@@ -1377,8 +1376,7 @@ mod tests {
             lock_called: Arc::new(AtomicBool::new(false)),
             is_unlocked_value: false,
         };
-        let service = DefaultSecretsService::new(temp_dir.path())
-            .with_backend(Box::new(backend));
+        let service = DefaultSecretsService::new(temp_dir.path()).with_backend(Box::new(backend));
         service.unlock(None).unwrap();
         assert!(unlock_flag.load(Ordering::SeqCst));
     }
@@ -1393,8 +1391,7 @@ mod tests {
             lock_called: Arc::clone(&lock_flag),
             is_unlocked_value: true,
         };
-        let service = DefaultSecretsService::new(temp_dir.path())
-            .with_backend(Box::new(backend));
+        let service = DefaultSecretsService::new(temp_dir.path()).with_backend(Box::new(backend));
         service.lock().unwrap();
         assert!(lock_flag.load(Ordering::SeqCst));
     }

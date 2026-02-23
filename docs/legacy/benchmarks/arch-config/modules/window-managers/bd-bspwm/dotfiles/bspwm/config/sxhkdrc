@@ -1,0 +1,246 @@
+#  ███████╗██╗  ██╗██╗  ██╗██╗  ██╗██████╗ ██████╗  ██████╗
+#  ██╔════╝╚██╗██╔╝██║  ██║██║ ██╔╝██╔══██╗██╔══██╗██╔════╝
+#  ███████╗ ╚███╔╝ ███████║█████╔╝ ██║  ██║██████╔╝██║
+#  ╚════██║ ██╔██╗ ██╔══██║██╔═██╗ ██║  ██║██╔══██╗██║
+#  ███████║██╔╝ ██╗██║  ██║██║  ██╗██████╔╝██║  ██║╚██████╗
+#  ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝ ╚═╝  ╚═╝ ╚═════╝
+
+# Show help
+alt + h
+    OpenApps --KeyHelp
+
+############################
+# ----- Applications ----- #
+############################
+
+# ----- Main Apps ----- #
+
+# Open Terminal (Normal & Floating)
+super + {_,ctrl + }Return
+    OpenApps --{terminal,floating}
+
+# Open kitty with session selector
+super + shift + Return
+    KittySessionPicker
+
+# Open kitty with felix split pane
+super + alt + Return
+    kitty --session ~/.config/kitty/sessions/felix.session
+
+# App launcher
+super + @space
+    OpenApps --menu
+
+# Theme Selector
+alt + @space
+    RiceSelector
+
+# ----- Your Apps ----- #
+
+# Apps (browser, editor, filemanager)
+super + {b,d,f,g,z,s,o}
+    {qutebrowser,vesktop,nemo,Telegram,zeditor,steam,flatpak run com.obsproject.Studio}
+
+# Terminal apps (yazi, htop,)
+super + {y,h}
+    OpenApps --{yazi,htop}
+
+# Media apps (Pavucontrol)
+super + a
+    pavucontrol
+
+# ----- Rofi Applets ----- #
+
+# Wallpaper selector
+super + alt + w
+    WallSelect
+
+# Network Manager
+super + shift + n
+    OpenApps --netmanager
+
+# # Bluetooth
+# super + shift + b
+#     OpenApps --bluetooth
+
+# Clipboard
+super + alt + c
+    OpenApps --clipboard
+
+# Screenshot
+super + shift + s
+    OpenApps --screenshot
+
+# Lock screen
+super + shift + l
+    ScreenLocker
+
+# PowerMenu
+super + shift + x
+    OpenApps --powermenu
+
+# Rofi style
+super + alt + l
+    RofiLauncher --choose-style
+
+# Keyboard Layout Applet
+super + alt + k
+    OpenApps --keyboard
+
+# Emoji Picker
+super + alt + e
+    OpenApps --emoji
+
+# RofiPass applet
+super + alt + x
+    OpenApps --pass
+
+# ----- Environment Apps ----- #
+
+# Scratchpad
+super + alt + o
+    OpenApps --scratch
+
+# Power off, Reboot, Log out, Lockscreen, kill an app
+ctrl + super + alt + {p,r,q,l,k,s}
+    {systemctl poweroff, systemctl reboot,bspc quit,ScreenLocker,xkill,SoftReload}
+
+# Hide/Show Bar (Polybar and/or eww)
+super + alt + {h,u}
+    HideBar {-h,-u}
+
+# Change transparency on focused window
+ctrl + alt + {equals,minus,t}
+    picom-trans {-c -3,-c +3,-c -d}
+
+# Manage brightness
+XF86MonBrightness{Up,Down}
+    sh Brightness {up,down}
+
+# Volume control
+XF86Audio{RaiseVolume,LowerVolume,Mute}
+    Volume{ --inc, --dec, --toggle}
+
+# Music Control
+XF86Audio{Next,Prev,Play,Stop}
+    MediaControl {--next,--previous,--toggle,--stop}
+
+#####################
+# ----- Bspwm ----- #
+#####################
+
+# Reload BSPWM
+super + alt + r
+    bspc wm -r
+
+# Close/Kill node
+super + {_,shift + }q
+    bspc node -{c,k}
+
+# Reload sxhkd Keybinds
+super + Escape
+    pkill -USR1 -x sxhkd; dunstify -u low -i ~/.config/bspwm/config/assets/reload.svg 'sxhkd' 'The configuration file has been reloaded successfully!'
+
+# ----- Node states and flags ----- #
+
+# Set the node state
+super + {t,shift + t,w,f}
+    bspc node -t {tiled,pseudo_tiled,floating,fullscreen}
+
+# Set the node flags
+alt + {m,x,s,p}
+    bspc node -g {marked,locked,sticky,private}
+
+# Hide window
+alt + h
+    HideNode --hide
+
+# Show menu to restore hidden windows
+ctrl + alt + h
+    HideNode --menu
+
+# ----- Focus/Swap Nodes ----- #
+
+# Rotate desktop
+ctrl + Tab
+    bspc node @/ --rotate {90,-90}
+
+# Switch workspace (current monitor only)
+super + ctrl + {Left,Right}
+    $HOME/.config/bspwm/scripts/cycle_workspaces {prev,next}
+
+# Focus or send to the given desktop
+super + shift + {_,shift + ctrl + }{a,b,c,d,e,f,g,h,i,j}
+    bspc {desktop -f,node -d} '^{1,2,3,4,5,6,7,8,9,10}'
+
+# Send focused Node to workspace directionally
+super + shift + {Left,Right}
+    bspc node -d {prev,next} '--follow'
+
+# Node switcher
+alt + Tab
+    rofi \
+        -theme $HOME/.config/bspwm/config/rofi-themes/Windows.rasi \
+        -show window -window-thumbnail \
+        -window-hide-active-window true \
+        -kb-accept-entry "!Alt-Tab,Return" \
+        -kb-element-next "Alt-Tab"
+
+# Change focus of the Node or Swap Nodes
+super + {_,shift + }{Left,Down,Up,Right}
+    {$HOME/.config/bspwm/scripts/focus_with_mouse,bspc node -s} {west,south,north,east}
+
+# Focus the last node/desktop
+ctrl + shift {comma,period}
+    bspc {node,desktop} -f last
+
+# Preselect the direction (horizontal, vertical or cancel)
+super + ctrl {h,v,q}
+    bspc node -p {east,south,cancel}
+
+# ----- Move/Resize Nodes ----- #
+
+# balance desktop's nodes
+super + ctrl + b
+  bspc node @/ -B
+
+# increase/decrease Node
+super + {equal,minus}
+    { \
+       bspc node -z top_right 20 -20 ; bspc node -z bottom_left -20 20; \
+    ,  bspc node -z top_right -20 20 ; bspc node -z bottom_left 20 -20; \
+    }
+
+# increase/decrease FLOATING node size (zoom in/out)
+super + ctrl + {equals,minus}
+    { \
+	xdotool getactivewindow windowmove --relative -- -50 -25 ; xdo resize -w +100 -h +50; \
+	, xdotool getactivewindow windowmove --relative -- +50 +25 ; xdo resize -w -100 -h -50; \
+    }
+
+# Move floating window
+super + shift + ctrl {Left,Down,Up,Right}
+    bspc node -v {-20 0,0 20,0 -20,20 0}
+
+# ----- Multi operation functions ----- #
+
+# Close all nodes in current desktop
+super + ctrl + x
+    bspc query -N -d | xargs -I id -n 1 bspc node id -c
+
+# Close/Kill all unfocused local windows
+super + n ; {x,k}
+    bspc query -N -n '.!focused.!marked.local.window' | xargs -I id -n 1 bspc node id {-c,-k}
+
+# Kill all ghost windows
+super + shift + z
+    bspc query -N -n .window | while read wid; do xdotool windowactivate "$wid" 2>/dev/null || bspc node "$wid" -k; done
+
+# Bring all marked windows to the focused desktop
+super + n ; m
+    bspc query -N -n '.marked' | xargs -I id -n 1 bspc node id -d focused --follow
+
+# Bring everything from desktop X to the current desktop
+# Example usage: super + n followed by a (brings everything from desktop A)
+super + n ; {a,b,c,d,e,f,g,h,i,j}
+    bspc query -N -d '^{1,2,3,4,5,6,7,8,9,10}' -n '.window' | xargs -I id -n 1 bspc node id -d focused

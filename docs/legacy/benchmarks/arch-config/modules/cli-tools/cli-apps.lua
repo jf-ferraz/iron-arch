@@ -6,7 +6,6 @@ local packages = {
     "figlet",
     "zoxide",
     "cbonsai",
-    "cool-retro-term",
     "lolcat",
     "micro",
     "pipes.sh",

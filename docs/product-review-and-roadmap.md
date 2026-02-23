@@ -549,13 +549,13 @@ These four commands cover 80% of daily workflows. The existing granular commands
 ### Overview
 
 ```
-Phase 0: Foundation Fixes           [2 sprints]   — Close critical gaps, fix UX friction
-Phase 1: Core Experience            [3 sprints]   — Apply/diff/drift, template engine, host-as-truth
+Phase 0: Foundation Fixes           [2 sprints]   — ✅ COMPLETE (2026-02-22, 12/12 tasks)
+Phase 1: Core Experience            [4 sprints]   — Apply/diff/drift, template engine, host-as-truth
 Phase 2: Power User Features        [3 sprints]   — Dotfile import, rollback timeline, explain mode
 Phase 3: Ecosystem & Community      [2 sprints]   — Module registry, config sharing, community bundles
 ```
 
-**Total:** ~10 sprints (~20 weeks at 2-week sprints)
+**Total:** ~11 sprints (~22 weeks at 2-week sprints)
 
 Each phase is independently shippable. Users get value after Phase 0. Each subsequent phase adds multiplicative value.
 

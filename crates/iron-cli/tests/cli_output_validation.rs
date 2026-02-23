@@ -136,6 +136,15 @@ fn iron() -> Command {
     cmd
 }
 
+/// Get iron command with state directory isolated to a given path.
+/// F3-006: Prevents the real XDG state dir from interfering with tests.
+fn iron_at(root: &std::path::Path) -> Command {
+    let mut cmd = Command::cargo_bin("iron").unwrap();
+    cmd.arg("--no-color");
+    cmd.env("IRON_STATE_DIR", root);
+    cmd
+}
+
 /// Try to parse JSON from CLI output (handles potential preamble)
 fn try_parse_json(output: &str) -> Option<Value> {
     // Find JSON object or array
@@ -204,7 +213,7 @@ mod json_structure {
     fn status_json_produces_valid_json() {
         let dir = create_initialized_iron_dir();
 
-        let output = iron()
+        let output = iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("--format")
@@ -226,7 +235,7 @@ mod json_structure {
     fn status_json_contains_host_info() {
         let dir = create_initialized_iron_dir();
 
-        let output = iron()
+        let output = iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("--format")
@@ -249,7 +258,7 @@ mod json_structure {
         let dir = create_initialized_iron_dir();
         create_test_bundle(&dir, "hyprland");
 
-        let output = iron()
+        let output = iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("--format")
@@ -275,7 +284,7 @@ mod json_structure {
         create_test_bundle(&dir, "plasma");
         create_test_bundle(&dir, "gnome");
 
-        let output = iron()
+        let output = iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("--format")
@@ -297,7 +306,7 @@ mod json_structure {
         create_test_module(&dir, "nvim");
         create_test_module(&dir, "fish");
 
-        let output = iron()
+        let output = iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("--format")
@@ -326,7 +335,7 @@ mod json_structure {
         create_test_profile(&dir, "dev");
         create_test_profile(&dir, "minimal");
 
-        let output = iron()
+        let output = iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("--format")
@@ -353,7 +362,7 @@ mod json_structure {
     fn doctor_json_produces_output() {
         let dir = create_initialized_iron_dir();
 
-        let output = iron()
+        let output = iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("--format")
@@ -372,7 +381,7 @@ mod json_structure {
     fn doctor_json_has_required_structure() {
         let dir = create_initialized_iron_dir();
 
-        let output = iron()
+        let output = iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("--format")
@@ -385,13 +394,20 @@ mod json_structure {
         let json: Value =
             serde_json::from_str(&stdout).expect("Doctor output should be valid JSON");
 
-        // Verify top-level structure
-        assert!(json.get("checks").is_some(), "Missing 'checks' array");
-        assert!(json.get("overall").is_some(), "Missing 'overall' status");
-        assert!(json.get("timestamp").is_some(), "Missing 'timestamp'");
+        // Verify envelope structure
+        assert!(json.get("ok").is_some(), "Missing envelope 'ok' field");
+        assert!(json.get("data").is_some(), "Missing envelope 'data' field");
+        assert!(json.get("meta").is_some(), "Missing envelope 'meta' field");
+
+        let data = &json["data"];
+
+        // Verify data-level structure
+        assert!(data.get("checks").is_some(), "Missing 'checks' array");
+        assert!(data.get("overall").is_some(), "Missing 'overall' status");
+        assert!(data.get("timestamp").is_some(), "Missing 'timestamp'");
 
         // Verify checks array structure
-        let checks = json["checks"]
+        let checks = data["checks"]
             .as_array()
             .expect("'checks' should be an array");
         assert!(!checks.is_empty(), "Should have at least one health check");
@@ -412,7 +428,7 @@ mod json_structure {
         }
 
         // Verify overall status is valid
-        let overall = json["overall"]
+        let overall = data["overall"]
             .as_str()
             .expect("'overall' should be a string");
         assert!(
@@ -427,7 +443,7 @@ mod json_structure {
     fn doctor_json_contains_all_fr10_checks() {
         let dir = create_initialized_iron_dir();
 
-        let output = iron()
+        let output = iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("--format")
@@ -440,7 +456,8 @@ mod json_structure {
         let json: Value =
             serde_json::from_str(&stdout).expect("Doctor output should be valid JSON");
 
-        let checks = json["checks"]
+        let data = &json["data"];
+        let checks = data["checks"]
             .as_array()
             .expect("'checks' should be an array");
         let check_names: Vec<&str> = checks.iter().filter_map(|c| c["name"].as_str()).collect();
@@ -511,7 +528,7 @@ mod json_structure {
     fn host_list_json_produces_output() {
         let dir = create_initialized_iron_dir();
 
-        let output = iron()
+        let output = iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("--format")
@@ -541,7 +558,7 @@ mod text_format {
     fn status_text_contains_host() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("status")
@@ -556,7 +573,7 @@ mod text_format {
         create_test_bundle(&dir, "hyprland");
         create_test_bundle(&dir, "plasma");
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("bundle")
@@ -573,7 +590,7 @@ mod text_format {
         create_test_module(&dir, "nvim");
         create_test_module(&dir, "fish");
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("module")
@@ -590,7 +607,7 @@ mod text_format {
         create_test_profile(&dir, "dev");
         create_test_profile(&dir, "minimal");
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("profile")
@@ -605,7 +622,7 @@ mod text_format {
     fn doctor_text_runs_health_check() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("doctor")
@@ -624,7 +641,7 @@ mod text_format {
         let dir = create_initialized_iron_dir();
 
         // No bundles created
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("bundle")
@@ -639,7 +656,7 @@ mod text_format {
         let dir = create_initialized_iron_dir();
 
         // No modules created
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("module")
@@ -661,7 +678,7 @@ mod output_modes {
     fn verbose_flag_accepted() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("--verbose")
@@ -674,7 +691,7 @@ mod output_modes {
     fn quiet_flag_accepted() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("--quiet")
@@ -688,7 +705,7 @@ mod output_modes {
         let dir = create_initialized_iron_dir();
         create_test_bundle(&dir, "hyprland");
 
-        let output = iron()
+        let output = iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("--verbose")
@@ -705,7 +722,7 @@ mod output_modes {
     fn quiet_still_works() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("--quiet")
@@ -720,7 +737,7 @@ mod output_modes {
         let dir = create_initialized_iron_dir();
         create_test_bundle(&dir, "hyprland");
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("--format")
@@ -743,7 +760,7 @@ mod error_format {
     fn uninitialized_error_message() {
         let dir = create_test_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("status")
@@ -760,7 +777,7 @@ mod error_format {
     fn invalid_command_error() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("invalid-command-xyz")
@@ -772,7 +789,7 @@ mod error_format {
     fn bundle_show_nonexistent() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("bundle")
@@ -786,7 +803,7 @@ mod error_format {
     fn module_show_nonexistent() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("module")
@@ -802,7 +819,7 @@ mod error_format {
         let long_name = "x".repeat(1000);
 
         // Long names should error gracefully, not panic
-        let result = iron()
+        let result = iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("bundle")
@@ -822,7 +839,7 @@ mod error_format {
     fn missing_arg_shows_usage() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("bundle")
@@ -850,7 +867,7 @@ mod consistency {
         let dir = create_initialized_iron_dir();
         create_test_bundle(&dir, "hyprland");
 
-        let output1 = iron()
+        let output1 = iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("bundle")
@@ -858,7 +875,7 @@ mod consistency {
             .assert()
             .success();
 
-        let output2 = iron()
+        let output2 = iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("bundle")
@@ -877,7 +894,7 @@ mod consistency {
         let dir = create_initialized_iron_dir();
         create_test_bundle(&dir, "hyprland");
 
-        let text_output = iron()
+        let text_output = iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("bundle")
@@ -885,7 +902,7 @@ mod consistency {
             .assert()
             .success();
 
-        let json_output = iron()
+        let json_output = iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("--format")
@@ -907,7 +924,7 @@ mod consistency {
     fn no_color_removes_ansi() {
         let dir = create_initialized_iron_dir();
 
-        let output = iron()
+        let output = iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("status")

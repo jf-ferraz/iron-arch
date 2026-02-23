@@ -20,7 +20,7 @@
 
 use crate::bundle::{Bundle, BundleType};
 use crate::fs_trait::MockFileSystem;
-use crate::module::{DotfileMapping, Module, ModuleKind};
+use crate::module::{DotfileMapping, HookBehavior, Module, ModuleKind};
 use crate::profile::Profile;
 use std::path::{Path, PathBuf};
 
@@ -173,6 +173,10 @@ pub struct TestModule {
     pub depends: Vec<String>,
     pub pre_install: Option<String>,
     pub post_install: Option<String>,
+    pub pre_uninstall: Option<String>,
+    pub hook_behavior: HookBehavior,
+    pub dotfiles_sync: bool,
+    pub dotfiles_sync_target: Option<String>,
     /// Actual file contents to create (source_path, content)
     pub file_contents: Vec<(String, String)>,
 }
@@ -193,6 +197,10 @@ impl TestModule {
             depends: Vec::new(),
             pre_install: None,
             post_install: None,
+            pre_uninstall: None,
+            hook_behavior: HookBehavior::default(),
+            dotfiles_sync: false,
+            dotfiles_sync_target: None,
             file_contents: Vec::new(),
         }
     }
@@ -263,6 +271,42 @@ impl TestModule {
         self
     }
 
+    /// Set hook behavior
+    pub fn with_hook_behavior(mut self, behavior: HookBehavior) -> Self {
+        self.hook_behavior = behavior;
+        self
+    }
+
+    /// Set pre_install hook
+    pub fn with_pre_install(mut self, cmd: impl Into<String>) -> Self {
+        self.pre_install = Some(cmd.into());
+        self
+    }
+
+    /// Set post_install hook
+    pub fn with_post_install(mut self, cmd: impl Into<String>) -> Self {
+        self.post_install = Some(cmd.into());
+        self
+    }
+
+    /// Set pre_uninstall hook
+    pub fn with_pre_uninstall(mut self, cmd: impl Into<String>) -> Self {
+        self.pre_uninstall = Some(cmd.into());
+        self
+    }
+
+    /// Enable dotfiles_sync
+    pub fn with_dotfiles_sync(mut self, sync: bool) -> Self {
+        self.dotfiles_sync = sync;
+        self
+    }
+
+    /// Set dotfiles_sync_target
+    pub fn with_dotfiles_sync_target(mut self, target: impl Into<String>) -> Self {
+        self.dotfiles_sync_target = Some(target.into());
+        self
+    }
+
     /// Add actual file content (source file within module directory)
     pub fn with_file(mut self, path: impl Into<String>, content: impl Into<String>) -> Self {
         self.file_contents.push((path.into(), content.into()));
@@ -283,10 +327,14 @@ impl TestModule {
             depends: self.depends.clone(),
             pre_install: self.pre_install.clone(),
             post_install: self.post_install.clone(),
-            pre_uninstall: None,
+            pre_uninstall: self.pre_uninstall.clone(),
             status_check: None,
             priority: None,
             requires_root: false,
+            security_points: 0,
+            hook_behavior: self.hook_behavior,
+            dotfiles_sync: self.dotfiles_sync,
+            dotfiles_sync_target: self.dotfiles_sync_target.clone(),
         }
     }
 }

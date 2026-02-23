@@ -172,8 +172,7 @@ fn test_scan_report_serializes_to_json() {
     assert!(json.contains("summary"));
 
     // Round-trip
-    let deserialized: iron_core::services::scan::ScanReport =
-        serde_json::from_str(&json).unwrap();
+    let deserialized: iron_core::services::scan::ScanReport = serde_json::from_str(&json).unwrap();
     assert_eq!(
         deserialized.existing_configs.len(),
         report.existing_configs.len()

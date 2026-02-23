@@ -5,7 +5,7 @@
     "themeLinks": [],
     "eagerPatches": false,
     "enabledThemes": [
-        "noctalia.theme.css"
+        "dank-discord.css"
     ],
     "enableReactDevtools": false,
     "frameless": false,
@@ -568,6 +568,6 @@
         "authenticated": false,
         "url": "https://api.vencord.dev/",
         "settingsSync": false,
-        "settingsSyncVersion": 1768682410366
+        "settingsSyncVersion": 1771520525695
     }
 }

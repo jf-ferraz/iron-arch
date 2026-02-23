@@ -80,9 +80,7 @@ pub fn render_host_selection(frame: &mut Frame, area: Rect, app: &App) {
         })
         .collect();
 
-    let list = List::new(items)
-        .block(block)
-        .highlight_symbol("▸ ");
+    let list = List::new(items).block(block).highlight_symbol("▸ ");
     let mut state = ListState::default();
     state.select(Some(app.selected_index));
     frame.render_stateful_widget(list, area, &mut state);

@@ -42,10 +42,7 @@ pub fn render_modules(frame: &mut Frame, area: Rect, app: &App) {
             let is_active = app.is_module_active(&module.id);
             let status = if is_active { "✓" } else { "○" };
             let desc = module.description.as_deref().unwrap_or("");
-            let content = format!(
-                "{} {} [{:?}] - {}",
-                status, module.id, module.kind, desc
-            );
+            let content = format!("{} {} [{:?}] - {}", status, module.id, module.kind, desc);
 
             let style = if i == app.selected_index {
                 theme::selected()

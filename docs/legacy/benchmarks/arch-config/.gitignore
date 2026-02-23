@@ -1,0 +1,42 @@
+# Host-specific configuration (each machine has its own)
+config.yaml
+
+# Allow files
+!modules/dotfiles/dotfiles/felix/config.yaml
+
+# Auto-generated state files
+state/
+state/*.yaml
+system-packages.yaml
+state/installed.yaml
+state/hooks-executed.yaml
+modules/declared-packages.yaml
+
+# Backup files
+*.backup.*
+
+# Temporary files
+*.tmp
+*.swp
+*~
+
+# Old JSON files (after YAML migration)
+# Exclude package.json, settings.json and other needed configs
+!dotfiles/**/settings.json
+!packages/modules/bdots-hypr/themes-hypr/**/settings.json
+!packages/modules/bdots-hypr/dotfiles/**/settings.json
+!**/package.json
+
+# Large app caches - exclude from dotfiles
+**/vesktop/sessionData/
+**/vesktop/Cache*/
+**/vesktop/GPUCache/
+**/vesktop/Code Cache/
+**/vesktop/Singleton*
+**/zen/*/storage/
+**/zen/*/cache*/
+**/zen/*/Cache*/
+**/zen/**/datareporting/
+**/zen/**/crashes/
+**/obsidian/**/cache/
+**/obsidian/**/GPUCache/

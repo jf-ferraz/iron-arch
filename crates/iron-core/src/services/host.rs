@@ -291,10 +291,7 @@ impl HostService for DefaultHostService {
             {
                 let path = entry.path();
                 // F-001: Flat file convention (hosts/<id>.toml) — preferred
-                if path
-                    .extension()
-                    .map(|e| e == "toml")
-                    .unwrap_or(false)
+                if path.extension().map(|e| e == "toml").unwrap_or(false)
                     && let Some(id) = path.file_stem().and_then(|s| s.to_str())
                     && seen_ids.insert(id.to_string())
                     && let Ok(host) = self.load_host(id)
@@ -334,6 +331,10 @@ impl HostService for DefaultHostService {
             install_params: None,
             installed_bundles: vec![],
             active_bundle: None,
+            bundle: None,
+            profile: None,
+            extra_modules: vec![],
+            variables: std::collections::HashMap::new(),
         };
 
         self.save_host(&host)?;
@@ -346,6 +347,23 @@ impl HostService for DefaultHostService {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    /// Helper to create a minimal test host with F1-001 fields defaulted
+    fn test_host(id: &str, name: &str) -> Host {
+        Host {
+            id: id.to_string(),
+            name: name.to_string(),
+            description: None,
+            hardware: HardwareSpec::default(),
+            install_params: None,
+            installed_bundles: vec![],
+            active_bundle: None,
+            bundle: None,
+            profile: None,
+            extra_modules: vec![],
+            variables: std::collections::HashMap::new(),
+        }
+    }
 
     fn create_test_service() -> (DefaultHostService, TempDir) {
         let temp_dir = TempDir::new().unwrap();
@@ -364,16 +382,7 @@ mod tests {
     #[test]
     fn test_host_save_load() {
         let (service, _temp) = create_test_service();
-
-        let host = Host {
-            id: "test-host".to_string(),
-            name: "Test Host".to_string(),
-            description: None,
-            hardware: HardwareSpec::default(),
-            install_params: None,
-            installed_bundles: vec![],
-            active_bundle: None,
-        };
+        let host = test_host("test-host", "Test Host");
 
         service.save_host(&host).unwrap();
         let loaded = service.load_host("test-host").unwrap();
@@ -385,26 +394,8 @@ mod tests {
     #[test]
     fn test_list_hosts() {
         let (service, _temp) = create_test_service();
-
-        let host1 = Host {
-            id: "host1".to_string(),
-            name: "Host 1".to_string(),
-            description: None,
-            hardware: HardwareSpec::default(),
-            install_params: None,
-            installed_bundles: vec![],
-            active_bundle: None,
-        };
-
-        let host2 = Host {
-            id: "host2".to_string(),
-            name: "Host 2".to_string(),
-            description: None,
-            hardware: HardwareSpec::default(),
-            install_params: None,
-            installed_bundles: vec![],
-            active_bundle: None,
-        };
+        let host1 = test_host("host1", "Host 1");
+        let host2 = test_host("host2", "Host 2");
 
         service.save_host(&host1).unwrap();
         service.save_host(&host2).unwrap();
@@ -416,16 +407,7 @@ mod tests {
     #[test]
     fn test_find_by_hostname() {
         let (service, _temp) = create_test_service();
-
-        let host = Host {
-            id: "myhost".to_string(),
-            name: "My Host".to_string(),
-            description: None,
-            hardware: HardwareSpec::default(),
-            install_params: None,
-            installed_bundles: vec![],
-            active_bundle: None,
-        };
+        let host = test_host("myhost", "My Host");
 
         service.save_host(&host).unwrap();
 
@@ -472,16 +454,7 @@ mod tests {
     #[test]
     fn test_find_by_name() {
         let (service, _temp) = create_test_service();
-
-        let host = Host {
-            id: "myhost".to_string(),
-            name: "My Host".to_string(),
-            description: None,
-            hardware: HardwareSpec::default(),
-            install_params: None,
-            installed_bundles: vec![],
-            active_bundle: None,
-        };
+        let host = test_host("myhost", "My Host");
 
         service.save_host(&host).unwrap();
 
@@ -495,15 +468,10 @@ mod tests {
     fn test_host_with_description() {
         let (service, _temp) = create_test_service();
 
-        let host = Host {
-            id: "test-host".to_string(),
-            name: "Test Host".to_string(),
-            description: Some("A test host description".to_string()),
-            hardware: HardwareSpec::default(),
-            install_params: None,
-            installed_bundles: vec!["hyprland".to_string()],
-            active_bundle: Some("hyprland".to_string()),
-        };
+        let mut host = test_host("test-host", "Test Host");
+        host.description = Some("A test host description".to_string());
+        host.installed_bundles = vec!["hyprland".to_string()];
+        host.active_bundle = Some("hyprland".to_string());
 
         service.save_host(&host).unwrap();
         let loaded = service.load_host("test-host").unwrap();
@@ -527,29 +495,15 @@ mod tests {
     #[test]
     fn test_overwrite_host() {
         let (service, _temp) = create_test_service();
-
-        let host = Host {
-            id: "test-host".to_string(),
-            name: "Test Host".to_string(),
-            description: None,
-            hardware: HardwareSpec::default(),
-            install_params: None,
-            installed_bundles: vec![],
-            active_bundle: None,
-        };
+        let host = test_host("test-host", "Test Host");
 
         service.save_host(&host).unwrap();
 
         // Overwrite with updated data
-        let updated_host = Host {
-            id: "test-host".to_string(),
-            name: "Updated Host".to_string(),
-            description: Some("Now with description".to_string()),
-            hardware: HardwareSpec::default(),
-            install_params: None,
-            installed_bundles: vec!["bundle1".to_string()],
-            active_bundle: Some("bundle1".to_string()),
-        };
+        let mut updated_host = test_host("test-host", "Updated Host");
+        updated_host.description = Some("Now with description".to_string());
+        updated_host.installed_bundles = vec!["bundle1".to_string()];
+        updated_host.active_bundle = Some("bundle1".to_string());
 
         service.save_host(&updated_host).unwrap();
         let loaded = service.load_host("test-host").unwrap();
@@ -584,15 +538,9 @@ mod tests {
             chassis: Some(ChassisType::Desktop),
         };
 
-        let host = Host {
-            id: "powerful-desktop".to_string(),
-            name: "Powerful Desktop".to_string(),
-            description: Some("Gaming and development workstation".to_string()),
-            hardware,
-            install_params: None,
-            installed_bundles: vec![],
-            active_bundle: None,
-        };
+        let mut host = test_host("powerful-desktop", "Powerful Desktop");
+        host.description = Some("Gaming and development workstation".to_string());
+        host.hardware = hardware;
 
         service.save_host(&host).unwrap();
         let loaded = service.load_host("powerful-desktop").unwrap();

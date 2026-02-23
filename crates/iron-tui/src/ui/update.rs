@@ -492,32 +492,32 @@ pub fn render_sync(frame: &mut Frame, area: Rect, app: &App) {
         // Show merge conflicts if any (S1-P8-001)
         if !app.sync_conflicts.is_empty() {
             lines.push(Line::from(""));
-            lines.push(Line::from(vec![
-                Span::styled(
-                    format!("  ⚠ {} conflicted file{}", app.sync_conflicts.len(),
-                        if app.sync_conflicts.len() == 1 { "" } else { "s" }),
-                    Style::default().fg(theme::RED).bold(),
+            lines.push(Line::from(vec![Span::styled(
+                format!(
+                    "  ⚠ {} conflicted file{}",
+                    app.sync_conflicts.len(),
+                    if app.sync_conflicts.len() == 1 {
+                        ""
+                    } else {
+                        "s"
+                    }
                 ),
-            ]));
+                Style::default().fg(theme::RED).bold(),
+            )]));
             for (i, conflict) in app.sync_conflicts.iter().take(5).enumerate() {
                 lines.push(Line::from(vec![
                     Span::styled(
                         format!("    {}. ", i + 1),
                         Style::default().fg(theme::OVERLAY),
                     ),
-                    Span::styled(
-                        conflict.as_str(),
-                        Style::default().fg(theme::PEACH),
-                    ),
+                    Span::styled(conflict.as_str(), Style::default().fg(theme::PEACH)),
                 ]));
             }
             if app.sync_conflicts.len() > 5 {
-                lines.push(Line::from(vec![
-                    Span::styled(
-                        format!("    ... and {} more", app.sync_conflicts.len() - 5),
-                        Style::default().fg(theme::OVERLAY),
-                    ),
-                ]));
+                lines.push(Line::from(vec![Span::styled(
+                    format!("    ... and {} more", app.sync_conflicts.len() - 5),
+                    Style::default().fg(theme::OVERLAY),
+                )]));
             }
             lines.push(Line::from(""));
             lines.push(Line::from(vec![

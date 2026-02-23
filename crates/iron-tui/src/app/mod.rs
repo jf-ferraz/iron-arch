@@ -223,6 +223,18 @@ pub struct App {
     pub show_divergence_popup: bool,
     /// Selected index within the divergence popup
     pub divergence_selected: usize,
+
+    // ── F1-010/F1-018: Apply & Drift state ──────────────────────
+    /// F1-018: Drift count for dashboard badge (None = not yet computed)
+    pub drift_count: Option<usize>,
+    /// F1-010: Apply plan action count for display
+    pub apply_plan_count: Option<usize>,
+    // ── F2-007: Snapshot state ─────────────────────────────────
+    /// Cached snapshot list for TUI display
+    pub snapshot_list: Vec<iron_core::services::snapshot_service::SnapshotRecord>,
+    // ── F2-018: Security state ──────────────────────────────────
+    /// Security level for dashboard badge
+    pub security_level: Option<iron_core::services::security::SecurityLevel>,
 }
 
 /// Available views
@@ -278,6 +290,12 @@ pub enum View {
     SystemScan,
     /// Host selection for multi-machine setups (S1-P2-001)
     HostSelection,
+    /// F1-010: Apply system state view
+    Apply,
+    /// F1-018: Drift detection detail view
+    DriftDetail,
+    /// F2-007: Snapshot timeline view
+    Snapshots,
 }
 
 /// Actions that require confirmation
@@ -421,6 +439,10 @@ impl App {
             diverged_modules: Vec::new(),
             show_divergence_popup: false,
             divergence_selected: 0,
+            drift_count: None,
+            apply_plan_count: None,
+            snapshot_list: Vec::new(),
+            security_level: None,
         }
     }
 
@@ -440,17 +462,16 @@ impl App {
         }
         // Auto-refresh recovery state when entering Recovery view
         if matches!(view, View::Recovery)
-            && let Some(ref sm) = self.state_manager {
-                // Populate last_backup from the most recent backup operation in audit log
-                let ops = sm.recent_audit(50);
-                self.last_backup = ops
-                    .iter()
-                    .filter(|op| {
-                        op.operation == "create_backup" || op.operation == "recovery_export"
-                    })
-                    .map(|op| op.timestamp)
-                    .next();
-            }
+            && let Some(ref sm) = self.state_manager
+        {
+            // Populate last_backup from the most recent backup operation in audit log
+            let ops = sm.recent_audit(50);
+            self.last_backup = ops
+                .iter()
+                .filter(|op| op.operation == "create_backup" || op.operation == "recovery_export")
+                .map(|op| op.timestamp)
+                .next();
+        }
         // Auto-refresh sync status when entering Sync view (hardening D-005)
         if matches!(view, View::Sync) {
             self.refresh_sync_status();
@@ -483,10 +504,7 @@ impl App {
             },
             // F-002: Enhanced confirm for aggressive cleanup categories
             ConfirmAction::RunCleanup => {
-                let has_aggressive = self
-                    .cleanup_categories
-                    .iter()
-                    .any(|c| c.is_aggressive());
+                let has_aggressive = self.cleanup_categories.iter().any(|c| c.is_aggressive());
                 if has_aggressive {
                     ConfirmStyle::EnhancedWarning
                 } else {
@@ -572,15 +590,17 @@ impl App {
     pub fn tick(&mut self) {
         // Clear expired status message
         if let Some(ref msg) = self.status_message
-            && msg.is_expired() {
-                self.status_message = None;
-            }
+            && msg.is_expired()
+        {
+            self.status_message = None;
+        }
 
         // Clear expired error message
         if let Some(ref msg) = self.error_message
-            && msg.is_expired() {
-                self.error_message = None;
-            }
+            && msg.is_expired()
+        {
+            self.error_message = None;
+        }
 
         // D-009: Poll background sync result
         self.poll_sync_result();
@@ -740,16 +760,17 @@ impl App {
 
             // Acknowledge via state manager
             if let Some(ref state_manager) = self.state_manager
-                && state_manager.acknowledge_news(&url).is_ok() {
-                    // Remove from preflight result
-                    if let Some(ref mut result) = self.preflight_result {
-                        result.unacknowledged_news.retain(|n| n.url != url);
-                        // Update news_blocks_update flag
-                        result.news_blocks_update =
-                            result.unacknowledged_news.iter().any(|n| n.requires_manual);
-                    }
-                    return Some(url);
+                && state_manager.acknowledge_news(&url).is_ok()
+            {
+                // Remove from preflight result
+                if let Some(ref mut result) = self.preflight_result {
+                    result.unacknowledged_news.retain(|n| n.url != url);
+                    // Update news_blocks_update flag
+                    result.news_blocks_update =
+                        result.unacknowledged_news.iter().any(|n| n.requires_manual);
                 }
+                return Some(url);
+            }
         }
         None
     }
@@ -769,14 +790,15 @@ impl App {
         let url_refs: Vec<&str> = urls.iter().map(|s| s.as_str()).collect();
 
         if let Some(ref state_manager) = self.state_manager
-            && state_manager.acknowledge_all_news(&url_refs).is_ok() {
-                let count = urls.len();
-                if let Some(ref mut result) = self.preflight_result {
-                    result.unacknowledged_news.clear();
-                    result.news_blocks_update = false;
-                }
-                return count;
+            && state_manager.acknowledge_all_news(&url_refs).is_ok()
+        {
+            let count = urls.len();
+            if let Some(ref mut result) = self.preflight_result {
+                result.unacknowledged_news.clear();
+                result.news_blocks_update = false;
             }
+            return count;
+        }
         0
     }
 

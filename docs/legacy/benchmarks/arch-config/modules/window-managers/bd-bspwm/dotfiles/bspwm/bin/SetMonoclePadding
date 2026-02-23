@@ -1,0 +1,67 @@
+#!/bin/sh
+# =============================================================
+# Script Name: SetMonoclePadding
+# Description: Sets monocle padding based on monitor resolution percentages
+# Usage: SetMonoclePadding [monitor_name]
+#        If no monitor specified, applies to all monitors
+#
+# Configuration: Edit the percentage values below to adjust padding
+#   - LEFT_RIGHT_PADDING_PERCENT: Percentage for left/right padding (default: 13%)
+#   - TOP_BOTTOM_PADDING_PERCENT: Percentage for top/bottom padding (default: 0.5%)
+# =============================================================
+
+# Configuration - Adjust these percentages as needed
+LEFT_RIGHT_PADDING_PERCENT=13    # Percentage of monitor width for left/right padding
+TOP_BOTTOM_PADDING_PERCENT=0.5   # Percentage of monitor height for top/bottom padding
+
+# Function to get monitor resolution
+get_monitor_resolution() {
+    local monitor="$1"
+    xrandr | grep "^$monitor " | grep -oP '\d+x\d+' | head -1
+}
+
+# Function to apply padding to a specific monitor
+apply_padding_to_monitor() {
+    local monitor="$1"
+    local resolution
+    local width
+    local height
+    local left_right_padding
+    local top_bottom_padding
+
+    resolution=$(get_monitor_resolution "$monitor")
+    
+    if [ -z "$resolution" ]; then
+        echo "Warning: Could not get resolution for monitor $monitor" >&2
+        return 1
+    fi
+
+    # Parse width and height
+    width=$(echo "$resolution" | cut -d'x' -f1)
+    height=$(echo "$resolution" | cut -d'x' -f2)
+
+    # Calculate padding in pixels based on percentages
+    left_right_padding=$(echo "scale=0; $width * $LEFT_RIGHT_PADDING_PERCENT / 100" | bc -l 2>/dev/null || echo "$(( width * LEFT_RIGHT_PADDING_PERCENT / 100 ))")
+    top_bottom_padding=$(echo "scale=0; $height * $TOP_BOTTOM_PADDING_PERCENT / 100" | bc -l 2>/dev/null || echo "$(( height * TOP_BOTTOM_PADDING_PERCENT / 100 ))")
+
+    # Apply the padding settings
+    bspc config -m "$monitor" top_monocle_padding "$top_bottom_padding"
+    bspc config -m "$monitor" bottom_monocle_padding "$top_bottom_padding"
+    bspc config -m "$monitor" right_monocle_padding "$left_right_padding"
+    bspc config -m "$monitor" left_monocle_padding "$left_right_padding"
+
+    echo "Applied monocle padding to $monitor (${width}x${height}):"
+    echo "  Left/Right: ${left_right_padding}px (${LEFT_RIGHT_PADDING_PERCENT}%)"
+    echo "  Top/Bottom: ${top_bottom_padding}px (${TOP_BOTTOM_PADDING_PERCENT}%)"
+}
+
+# Main logic
+if [ -n "$1" ]; then
+    # Apply to specific monitor
+    apply_padding_to_monitor "$1"
+else
+    # Apply to all connected monitors
+    xrandr | awk '$2 == "connected" {print $1}' | while read -r monitor; do
+        apply_padding_to_monitor "$monitor"
+    done
+fi

@@ -112,12 +112,11 @@ fn build_report_lines(report: &ScanReport) -> Vec<Line<'_>> {
         Span::raw("    Conflicts:           "),
         Span::styled(
             format!("{}", summary.conflicts_found),
-            Style::default()
-                .fg(if summary.conflicts_found > 0 {
-                    theme::PINK
-                } else {
-                    theme::GREEN
-                }),
+            Style::default().fg(if summary.conflicts_found > 0 {
+                theme::PINK
+            } else {
+                theme::GREEN
+            }),
         ),
     ]));
     lines.push(Line::from(vec![
@@ -145,7 +144,10 @@ fn build_report_lines(report: &ScanReport) -> Vec<Line<'_>> {
                 Span::raw("    "),
                 Span::styled(&cfg.app_name, Style::default().fg(theme::TEXT).bold()),
                 managed_tag,
-                Span::styled(format!("  {}", cfg.path.display()), Style::default().fg(theme::SUBTEXT)),
+                Span::styled(
+                    format!("  {}", cfg.path.display()),
+                    Style::default().fg(theme::SUBTEXT),
+                ),
             ]));
         }
         lines.push(Line::from(""));
@@ -180,10 +182,7 @@ fn build_report_lines(report: &ScanReport) -> Vec<Line<'_>> {
         for (i, rec) in report.recommendations.iter().enumerate() {
             lines.push(Line::from(vec![
                 Span::raw("    "),
-                Span::styled(
-                    format!("{}. ", i + 1),
-                    Style::default().fg(theme::TEAL),
-                ),
+                Span::styled(format!("{}. ", i + 1), Style::default().fg(theme::TEAL)),
                 Span::styled(rec.as_str(), Style::default().fg(theme::TEXT)),
             ]));
         }
@@ -216,7 +215,10 @@ fn build_report_lines(report: &ScanReport) -> Vec<Line<'_>> {
     ]));
     lines.push(Line::from(vec![
         Span::styled("    [m]  ", Style::default().fg(theme::MAUVE).bold()),
-        Span::styled(" Browse and enable modules", Style::default().fg(theme::TEXT)),
+        Span::styled(
+            " Browse and enable modules",
+            Style::default().fg(theme::TEXT),
+        ),
     ]));
     lines.push(Line::from(vec![
         Span::styled("    [b]  ", Style::default().fg(theme::MAUVE).bold()),
@@ -224,7 +226,10 @@ fn build_report_lines(report: &ScanReport) -> Vec<Line<'_>> {
     ]));
     lines.push(Line::from(vec![
         Span::styled("    [u]  ", Style::default().fg(theme::MAUVE).bold()),
-        Span::styled(" Check for system updates", Style::default().fg(theme::TEXT)),
+        Span::styled(
+            " Check for system updates",
+            Style::default().fg(theme::TEXT),
+        ),
     ]));
     lines.push(Line::from(""));
 

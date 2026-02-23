@@ -1,0 +1,14 @@
+
+new_tab
+layout splits
+enabled_layouts splits,stack
+set_layout_state {"pairs": {"one": {"one": 1, "two": 4}, "two": {"one": 2, "two": 3}}, "opts": {"default_axis_is_horizontal": true}, "class": "Splits", "all_windows": {"active_group_idx": 2, "active_group_history": [2, 3, 1, 4], "window_groups": [{"id": 1, "window_ids": [1]}, {"id": 4, "window_ids": [4]}, {"id": 2, "window_ids": [2]}, {"id": 3, "window_ids": [3]}]}}
+cd ../../..
+
+launch 'kitty-unserialize-data={"id": 1, "cmd_at_shell_startup": "felix dcli/"}'
+launch 'kitty-unserialize-data={"id": 4}' helix /home/don/dcli/README.md
+launch 'kitty-unserialize-data={"id": 2}'
+focus
+launch 'kitty-unserialize-data={"id": 3}'
+
+focus_tab 0

@@ -9,7 +9,6 @@ use crate::{GitError, IronResult, RealCommandExecutor};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::Arc;
 
 /// Git sync status
@@ -151,8 +150,7 @@ impl DefaultSyncService {
 
     /// Check if this is a git repository
     fn is_repo(&self) -> bool {
-        self.repo_root.join(".git").exists()
-            || self.git(&["rev-parse", "--git-dir"]).is_ok()
+        self.repo_root.join(".git").exists() || self.git(&["rev-parse", "--git-dir"]).is_ok()
     }
 
     /// Get current branch name
@@ -227,10 +225,7 @@ impl DefaultSyncService {
 
             // For files under bundles/<id>/config/, link to ~/.<rest>
             // For files under modules/<id>/config/, link to ~/.<rest>
-            let target = if let Some(rest) = rel_path
-                .split_once("/config/")
-                .map(|(_, rest)| rest)
-            {
+            let target = if let Some(rest) = rel_path.split_once("/config/").map(|(_, rest)| rest) {
                 dirs::home_dir().map(|h| h.join(format!(".{}", rest)))
             } else {
                 None
@@ -330,21 +325,20 @@ impl SyncService for DefaultSyncService {
         }
 
         // F0-010: Lock secrets before push if they are unlocked (abort on failure)
-        if let Some(ref secrets) = self.secrets_service {
-            if let Ok(status) = secrets.status() {
-                if matches!(status, crate::services::secrets::SecretsStatus::Unlocked) {
-                    tracing::info!("Auto-locking secrets before push");
-                    if let Err(e) = secrets.lock() {
-                        return Err(GitError::CommandFailed {
-                            message: format!(
-                                "Failed to lock secrets before push: {}. \
-                                 Aborting push to prevent leaking decrypted secrets.",
-                                e
-                            ),
-                        }
-                        .into());
-                    }
+        if let Some(ref secrets) = self.secrets_service
+            && let Ok(status) = secrets.status()
+            && matches!(status, crate::services::secrets::SecretsStatus::Unlocked)
+        {
+            tracing::info!("Auto-locking secrets before push");
+            if let Err(e) = secrets.lock() {
+                return Err(GitError::CommandFailed {
+                    message: format!(
+                        "Failed to lock secrets before push: {}. \
+                         Aborting push to prevent leaking decrypted secrets.",
+                        e
+                    ),
                 }
+                .into());
             }
         }
 
@@ -394,7 +388,9 @@ impl SyncService for DefaultSyncService {
         self.git(&["add", "-u"])?;
 
         // Also stage new files in iron-managed directories
-        for dir in &["bundles", "modules", "profiles", "hosts", "secrets", "scripts"] {
+        for dir in &[
+            "bundles", "modules", "profiles", "hosts", "secrets", "scripts",
+        ] {
             let path = self.repo_root.join(dir);
             if path.exists() {
                 self.git(&["add", dir]).ok();
@@ -461,6 +457,7 @@ impl SyncService for DefaultSyncService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::Command;
     use tempfile::TempDir;
 
     fn create_test_service() -> (DefaultSyncService, TempDir) {
@@ -940,8 +937,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let state_manager = StateManager::new(temp_dir.path().to_path_buf()).unwrap();
         let executor = Arc::new(RealCommandExecutor::with_defaults());
-        let service =
-            DefaultSyncService::with_executor(temp_dir.path(), state_manager, executor);
+        let service = DefaultSyncService::with_executor(temp_dir.path(), state_manager, executor);
         (service, temp_dir)
     }
 

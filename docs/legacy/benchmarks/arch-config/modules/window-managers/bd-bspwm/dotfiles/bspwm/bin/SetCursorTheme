@@ -1,0 +1,40 @@
+#!/bin/sh
+# =============================================================
+# Script Name: SetCursorTheme
+# Description: Forces cursor theme for all applications including
+#              stubborn Electron/Chromium apps like Discord and Zen
+# =============================================================
+
+CURSOR_THEME="Bibata-Modern-Ice"
+CURSOR_SIZE="24"
+
+# Set X cursor theme using xsetroot
+xsetroot -cursor_name left_ptr -xcf "/usr/share/icons/$CURSOR_THEME/cursors/left_ptr" "$CURSOR_SIZE" 2>/dev/null || xsetroot -cursor_name left_ptr
+
+# Update GTK cursor settings via gsettings if available
+if command -v gsettings >/dev/null 2>&1; then
+    gsettings set org.gnome.desktop.interface cursor-theme "$CURSOR_THEME" 2>/dev/null
+    gsettings set org.gnome.desktop.interface cursor-size "$CURSOR_SIZE" 2>/dev/null
+fi
+
+# Update xsettingsd
+if [ -f "$HOME/.config/bspwm/config/xsettingsd" ]; then
+    sed -i "s/Gtk\/CursorThemeName .*/Gtk\/CursorThemeName \"$CURSOR_THEME\"/" "$HOME/.config/bspwm/config/xsettingsd"
+fi
+
+# Restart xsettingsd to apply changes
+if pidof -q xsettingsd; then
+    pkill -1 xsettingsd 2>/dev/null || true
+fi
+
+# Set default cursor in .icons
+if [ -d "$HOME/.icons/default" ]; then
+    cat > "$HOME/.icons/default/index.theme" << EOF
+[Icon Theme]
+Name=Default
+Comment=Default Cursor Theme
+Inherits=$CURSOR_THEME
+EOF
+fi
+
+echo "Cursor theme set to: $CURSOR_THEME"

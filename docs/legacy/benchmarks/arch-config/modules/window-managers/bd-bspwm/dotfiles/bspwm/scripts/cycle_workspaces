@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+
+# Cycle through workspaces on the current monitor only
+# Usage: cycle_workspaces {prev,next}
+
+direction="$1"
+
+# Get the current monitor
+current_monitor=$(bspc query -M -m)
+
+# Get all workspaces on the current monitor
+workspaces=($(bspc query -D -m "$current_monitor" --names))
+
+# Get the current workspace name
+current_workspace=$(bspc query -D -d --names)
+
+# Find the index of the current workspace
+current_index=-1
+for i in "${!workspaces[@]}"; do
+    if [[ "${workspaces[$i]}" == "$current_workspace" ]]; then
+        current_index=$i
+        break
+    fi
+done
+
+# If current workspace not found, exit
+if [[ $current_index -eq -1 ]]; then
+    exit 0
+fi
+
+# Calculate the next/prev index
+num_workspaces=${#workspaces[@]}
+if [[ "$direction" == "next" ]]; then
+    next_index=$(( (current_index + 1) % num_workspaces ))
+elif [[ "$direction" == "prev" ]]; then
+    next_index=$(( (current_index - 1 + num_workspaces) % num_workspaces ))
+else
+    exit 0
+fi
+
+# Switch to the target workspace
+bspc desktop "${workspaces[$next_index]}" -f

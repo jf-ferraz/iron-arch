@@ -7,6 +7,7 @@
 //! - Atomic file operations
 //! - Directory traversal utilities
 //! - Path expansion (home dir, env vars)
+//! - Template variable substitution (F1-019)
 
 use chrono::Local;
 use iron_core::{FsError, IronResult};
@@ -617,9 +618,94 @@ pub mod traverse {
     }
 }
 
+/// F1-019: Simple {{variable}} template engine for dotfile rendering
+pub mod template {
+    use std::collections::{HashMap, HashSet};
+
+    /// Render template content by substituting `{{variable}}` placeholders.
+    ///
+    /// - Whitespace inside braces is trimmed: `{{ key }}` works
+    /// - Unknown variables are left unchanged (a warning is logged)
+    /// - Empty string values are valid (renders empty)
+    pub fn render(content: &str, vars: &HashMap<String, String>) -> String {
+        let mut result = String::with_capacity(content.len());
+        let mut chars = content.chars().peekable();
+
+        while let Some(ch) = chars.next() {
+            if ch == '{' && chars.peek() == Some(&'{') {
+                chars.next(); // consume second '{'
+                let mut var_name = String::new();
+                let mut found_close = false;
+
+                while let Some(inner) = chars.next() {
+                    if inner == '}' {
+                        if chars.peek() == Some(&'}') {
+                            chars.next(); // consume second '}'
+                            found_close = true;
+                            break;
+                        }
+                        var_name.push(inner);
+                    } else {
+                        var_name.push(inner);
+                    }
+                }
+
+                if found_close {
+                    let key = var_name.trim();
+                    if let Some(val) = vars.get(key) {
+                        result.push_str(val);
+                    } else {
+                        // Unknown variable — leave as-is
+                        result.push_str("{{");
+                        result.push_str(&var_name);
+                        result.push_str("}}");
+                    }
+                } else {
+                    // Unclosed — emit as-is
+                    result.push_str("{{");
+                    result.push_str(&var_name);
+                }
+            } else {
+                result.push(ch);
+            }
+        }
+
+        result
+    }
+
+    /// Check if content contains any template variables.
+    pub fn has_variables(content: &str) -> bool {
+        content.contains("{{")
+    }
+
+    /// Extract unique variable names from template content.
+    pub fn extract_variables(content: &str) -> Vec<String> {
+        let mut vars = HashSet::new();
+        let mut rest = content;
+
+        while let Some(start) = rest.find("{{") {
+            let after_open = &rest[start + 2..];
+            if let Some(end) = after_open.find("}}") {
+                let key = after_open[..end].trim().to_string();
+                if !key.is_empty() {
+                    vars.insert(key);
+                }
+                rest = &after_open[end + 2..];
+            } else {
+                break;
+            }
+        }
+
+        let mut result: Vec<String> = vars.into_iter().collect();
+        result.sort(); // deterministic order
+        result
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
     use tempfile::TempDir;
 
     #[test]
@@ -1965,5 +2051,92 @@ mod tests {
         let files = traverse::find_files(temp_dir.path(), &opts).unwrap();
         assert_eq!(files.len(), 1);
         assert!(files[0].to_string_lossy().contains("file.txt"));
+    }
+
+    // ==========================================================================
+    // F1-019: Template Engine Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_template_render_basic() {
+        let vars = HashMap::from([("name".into(), "kitty".into())]);
+        assert_eq!(
+            template::render("terminal = {{name}}", &vars),
+            "terminal = kitty"
+        );
+    }
+
+    #[test]
+    fn test_template_render_whitespace() {
+        let vars = HashMap::from([("x".into(), "1".into())]);
+        assert_eq!(template::render("{{ x }}", &vars), "1");
+    }
+
+    #[test]
+    fn test_template_render_unknown_preserved() {
+        let vars = HashMap::new();
+        assert_eq!(template::render("{{unknown}}", &vars), "{{unknown}}");
+    }
+
+    #[test]
+    fn test_template_render_empty_value() {
+        let vars = HashMap::from([("empty".into(), "".into())]);
+        assert_eq!(template::render("a{{empty}}b", &vars), "ab");
+    }
+
+    #[test]
+    fn test_template_render_multiple() {
+        let vars = HashMap::from([("a".into(), "X".into()), ("b".into(), "Y".into())]);
+        assert_eq!(template::render("{{a}} and {{b}}", &vars), "X and Y");
+    }
+
+    #[test]
+    fn test_template_render_repeated() {
+        let vars = HashMap::from([("x".into(), "V".into())]);
+        assert_eq!(template::render("{{x}}+{{x}}", &vars), "V+V");
+    }
+
+    #[test]
+    fn test_template_render_multiline() {
+        let vars = HashMap::from([
+            ("monitor".into(), "DP-1".into()),
+            ("terminal".into(), "kitty".into()),
+        ]);
+        let input = "monitor = {{monitor}}\n$terminal = {{terminal}}\n";
+        let expected = "monitor = DP-1\n$terminal = kitty\n";
+        assert_eq!(template::render(input, &vars), expected);
+    }
+
+    #[test]
+    fn test_template_render_no_variables() {
+        let vars = HashMap::from([("x".into(), "1".into())]);
+        assert_eq!(template::render("plain text", &vars), "plain text");
+    }
+
+    #[test]
+    fn test_template_has_variables() {
+        assert!(template::has_variables("{{foo}}"));
+        assert!(template::has_variables("prefix {{foo}} suffix"));
+        assert!(!template::has_variables("no variables here"));
+    }
+
+    #[test]
+    fn test_template_extract_variables() {
+        let vars = template::extract_variables("a={{x}} b={{y}} c={{x}}");
+        assert!(vars.contains(&"x".to_string()));
+        assert!(vars.contains(&"y".to_string()));
+        assert_eq!(vars.len(), 2); // deduplicated
+    }
+
+    #[test]
+    fn test_template_extract_empty() {
+        let vars = template::extract_variables("no templates here");
+        assert!(vars.is_empty());
+    }
+
+    #[test]
+    fn test_template_extract_with_whitespace() {
+        let vars = template::extract_variables("{{ key }}");
+        assert_eq!(vars, vec!["key"]);
     }
 }

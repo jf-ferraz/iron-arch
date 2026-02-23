@@ -21,6 +21,7 @@ local packages = {
     "tmux",
     "ollama",
     "fish",
+    "gnome-boxes",
 }
 
 return {

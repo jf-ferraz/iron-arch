@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+
+## Copyright (C) 2020-2025 Aditya Shakya <adi1090x@gmail.com>
+##
+## Script to toggle Do Not Disturb mode (pause notifications) on Archcraft.
+
+# Icons
+iDIR='/usr/share/archcraft/icons/dunst'
+notify_cmd='dunstify -u low -h string:x-dunst-stack-tag:obdnd'
+
+# Toggle DND
+toggle_dnd() {
+	if [[ $(dunstctl is-paused) == "false" ]]; then
+		# Send notification BEFORE pausing
+		${notify_cmd} -i "$iDIR/volume-mute.png" "Do Not Disturb Enabled" "Notifications are now paused"
+		sleep 0.5
+		dunstctl set-paused true
+	else
+		# Unpause FIRST, then send notification
+		dunstctl set-paused false
+		${notify_cmd} -i "$iDIR/volume-high.png" "Do Not Disturb Disabled" "Notifications are now active"
+	fi
+}
+
+# Execute
+if [[ -x $(which dunstctl) ]]; then
+	toggle_dnd
+else
+	echo "'dunstctl' is not installed."
+fi

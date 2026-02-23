@@ -1,0 +1,3 @@
+# Felix configuration
+# Use kitty-helix wrapper to open files in new panes with 'o' key
+default: kitty-helix

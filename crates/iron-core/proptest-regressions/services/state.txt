@@ -1,0 +1,16 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 50a585688e5ff0bbc971f349dd8199d3a7d01f86fd5bae25a0712cafc01f00c8 # shrinks to modules = {}
+cc a5ae5d00d99dd5430a92428e2d228eafbbfb0c46495f54be58101e0610386b06 # shrinks to host_id = "u-az--0-v94-", bundle_id = "q0e-li2r"
+cc 0954c8c7767bacbbdee0024deba9eaf335af99c7afd03a6c6bf990c4d7636299 # shrinks to module_id = "o5w-pfk1567----a"
+cc 9e6e2983f1582847b619a5b57384d8d0ed7c5cbe05ee141522344361fc3259c9 # shrinks to module_id = "x457py6w-"
+cc 269f06b33aafc89a7cc8b1317bad1feeecac9f637c9cb3eae01074bb55521ef7 # shrinks to host_id = "y2u--7-t-4f36---", bundle_id = "els"
+cc 0b8d792dc13b1c7c7747c09b60d8857757107494ae5de668ccfeebd635d3884d # shrinks to module_id = "a9n2i08m1m"
+cc d619251a92d4a854e300261110bd6b5ca10a0ccfddb141534a66da08e2d31dd9 # shrinks to host_id = "d5c7d1wn8"
+cc fcaba7ef509aeb107bb614b4363f7d26bbecbc5df1f56cbd3540caf8087ed421 # shrinks to host_id = "c-", bundle_id = "l-ubj-uu-0"
+cc 0a4068fd87baead7713964dcd4ff6e5c55f9d4b7316725d8ad9958f578ba5fc1 # shrinks to module_id = "hg-7-q-d1-h--"
+cc 4d6c4ecc1d788ebb6bfbfc31e6f0ab047689f4816130a064f08b00a1d05f7f64 # shrinks to host_id = "s84go5-5", bundle_id = "hm-5bc2t-1l-"

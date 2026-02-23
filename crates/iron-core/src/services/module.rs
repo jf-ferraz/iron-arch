@@ -425,6 +425,10 @@ mod tests {
             status_check: None,
             priority: None,
             requires_root: false,
+            security_points: 0,
+            hook_behavior: crate::module::HookBehavior::default(),
+            dotfiles_sync: false,
+            dotfiles_sync_target: None,
         };
 
         let config_path = module_dir.join("module.toml");
@@ -512,6 +516,10 @@ mod tests {
             status_check: None,
             priority: None,
             requires_root: false,
+            security_points: 0,
+            hook_behavior: crate::module::HookBehavior::default(),
+            dotfiles_sync: false,
+            dotfiles_sync_target: None,
         };
 
         let config_path = module_dir.join("module.toml");
@@ -584,6 +592,10 @@ mod tests {
             status_check: None,
             priority: None,
             requires_root: false,
+            security_points: 0,
+            hook_behavior: crate::module::HookBehavior::default(),
+            dotfiles_sync: false,
+            dotfiles_sync_target: None,
         };
 
         let config_path = module_dir.join("module.toml");
@@ -699,6 +711,10 @@ mod tests {
             status_check: None,
             priority: None,
             requires_root: false,
+            security_points: 0,
+            hook_behavior: crate::module::HookBehavior::default(),
+            dotfiles_sync: false,
+            dotfiles_sync_target: None,
         };
 
         let config_path = module_dir.join("module.toml");

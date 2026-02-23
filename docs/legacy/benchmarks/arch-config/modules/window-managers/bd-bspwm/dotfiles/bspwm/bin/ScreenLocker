@@ -1,0 +1,75 @@
+#!/bin/sh
+# =============================================================
+# Author: gh0stzk
+# Repo:   https://github.com/gh0stzk/dotfiles
+# Date:   23.04.2025
+#
+# Script Name: ScreenLocker
+# Description: Screen locker using betterlockscreen
+# Features:
+#   - Screenshot with blur effect
+#   - Themed lockscreen wallpapers
+#   - Multiple image format support (JPG/PNG/WEBP)
+#
+# Copyright (C) 2021-2025 gh0stzk <z0mbi3.zk@protonmail.com>
+# Licensed under GPL-3.0 license
+# =============================================================
+
+TEMP_IMAGE="/tmp/screenlock.jpg"
+
+# Lock screen with betterlockscreen
+default_lockscreen () {
+    # Get current wallpaper from feh
+    CURRENT_WALL=$(awk -F"'" '/feh --no-fehbg --bg/ {print $2}' "$HOME/.fehbg" 2>/dev/null)
+    
+    # Fallback to current_wall symlink if fehbg doesn't exist
+    if [[ -z "$CURRENT_WALL" ]] && [[ -L "$HOME/.cache/current_wall" ]]; then
+        CURRENT_WALL=$(readlink "$HOME/.cache/current_wall")
+    fi
+    
+    if [[ -n "$CURRENT_WALL" ]] && [[ -f "$CURRENT_WALL" ]]; then
+        # Update betterlockscreen cache with the current wallpaper
+        betterlockscreen -u "$CURRENT_WALL"
+    else
+        # Fallback to screenshot if no wallpaper found
+        maim -d 0.3 -u "${TEMP_IMAGE}"
+        betterlockscreen -u "${TEMP_IMAGE}"
+    fi
+    
+    # Lock the screen
+    betterlockscreen --lock
+}
+
+rice_lockscreen () {
+    # Current Rice
+    read -r RICE < "$HOME"/.config/bspwm/.rice
+    # Wallpapers dir
+    image_dir="$HOME/.config/bspwm/rices/${RICE}/walls"
+
+    # Select random image
+    lock_image=$(find "$image_dir" -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.webp" \) | shuf -n 1)
+
+    if [[ -n "$lock_image" ]]; then
+        # Update betterlockscreen cache with the wallpaper
+        betterlockscreen -u "$lock_image"
+        
+        # Lock the screen
+        betterlockscreen --lock
+    else
+        # Fallback to default if no image found
+        default_lockscreen
+    fi
+}
+
+case $1 in
+    -r|--rice)
+        rice_lockscreen ;;
+    -h|--help)
+        echo -e "ScreenLocker [options]
+Note: If an option is not specified, the screen locks with a screenshot.
+
+Options:
+	[-r] [--rice]	Set the screen locker with a random wallpaper of the current theme.\n" ;;
+    *)
+        default_lockscreen ;;
+esac

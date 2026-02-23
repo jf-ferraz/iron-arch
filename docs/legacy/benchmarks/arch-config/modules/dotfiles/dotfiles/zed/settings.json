@@ -7,6 +7,29 @@
 // custom settings, run `zed: open default settings` from the
 // command palette (cmd-shift-p / ctrl-shift-p)
 {
+  "status_bar": {
+    "active_language_button": true
+  },
+  "project_panel": {
+    "button": true
+  },
+  "search": {
+    "button": false
+  },
+  "debugger": {
+    "button": false
+  },
+  "diagnostics": {
+    "button": false
+  },
+  "tab_bar": {
+    "show_tab_bar_buttons": false
+  },
+  "tabs": {
+    "close_position": "right",
+    "git_status": false
+  },
+  "cursor_shape": "bar",
   "language_models": {
     "openai": {
       "api_url": "http://localhost:11434/v1",
@@ -20,9 +43,19 @@
     }
   },
   "title_bar": {
+    "show_user_picture": false,
+    "show_user_menu": false,
     "show_sign_in": false
   },
   "agent_servers": {
+    "opencode": {
+      "type": "extension",
+      "favorite_models": [
+        "opencode/kimi-k2.5-free"
+      ],
+      "default_config_options": {},
+      "favorite_config_option_values": {}
+    },
     "codex": {
       "favorite_models": [
         "gpt-5.2-codex/xhigh"
@@ -130,8 +163,8 @@
   "ui_font_size": 16,
   "buffer_font_size": 15,
   "theme": {
-    "mode": "system",
-    "light": "One Light",
-    "dark": "Noctalia Dark",
+    "mode": "dark",
+    "light": "Noctalia Light Transparent",
+    "dark": "One Dark Pro",
   },
 }

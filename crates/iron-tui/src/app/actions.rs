@@ -98,9 +98,10 @@ impl App {
 
         // Load last scan report from state (S1-P1.5-005)
         if self.scan_report.is_none()
-            && let Some(ref sm) = self.state_manager {
-                self.scan_report = sm.load_scan_report();
-            }
+            && let Some(ref sm) = self.state_manager
+        {
+            self.scan_report = sm.load_scan_report();
+        }
 
         // Populate dashboard health checks
         self.refresh_health_checks();
@@ -507,8 +508,7 @@ impl App {
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|_| std::path::PathBuf::from("/home"));
 
-        let scan_service =
-            DefaultScanService::new(&home_dir, self.package_manager.clone());
+        let scan_service = DefaultScanService::new(&home_dir, self.package_manager.clone());
 
         match scan_service.scan(&self.bundles, &self.modules) {
             Ok(report) => {
@@ -641,13 +641,14 @@ impl App {
     pub fn run_system_update(&mut self) {
         // Gate on preflight results: block if critical issues
         if let Some(ref preflight) = self.preflight_result
-            && !preflight.blockers.is_empty() {
-                self.set_error(format!(
-                    "Pre-flight checks failed: {}. Resolve before updating.",
-                    preflight.blockers.join(", ")
-                ));
-                return;
-            }
+            && !preflight.blockers.is_empty()
+        {
+            self.set_error(format!(
+                "Pre-flight checks failed: {}. Resolve before updating.",
+                preflight.blockers.join(", ")
+            ));
+            return;
+        }
 
         self.set_info("Running system update...");
 
@@ -765,8 +766,8 @@ impl App {
 
         self.set_info("Scanning cleanup categories...");
 
-        let service = DefaultCleanupService::new()
-            .with_package_manager(self.package_manager.clone());
+        let service =
+            DefaultCleanupService::new().with_package_manager(self.package_manager.clone());
         self.cleanup_previews = service.preview(&self.cleanup_categories);
 
         let total_space = self.cleanup_total_space();
@@ -790,8 +791,8 @@ impl App {
 
         self.set_info("Executing cleanup...");
 
-        let service = DefaultCleanupService::new()
-            .with_package_manager(self.package_manager.clone());
+        let service =
+            DefaultCleanupService::new().with_package_manager(self.package_manager.clone());
 
         let summary = service.execute(&self.cleanup_categories, true);
 
@@ -1509,10 +1510,8 @@ impl App {
             5 => "DevTools",
             _ => "AppConfig",
         };
-        let toml_content = toml_content.replace(
-            "kind = \"utility\"",
-            &format!("kind = \"{}\"", kind_str),
-        );
+        let toml_content =
+            toml_content.replace("kind = \"utility\"", &format!("kind = \"{}\"", kind_str));
 
         // D-012: Replace empty dotfiles = [] with user-defined mappings
         let toml_content = if self.module_creator_dotfiles.is_empty() {
@@ -1582,6 +1581,10 @@ mod tests {
             status_check: None,
             priority: None,
             requires_root: false,
+            security_points: 0,
+            hook_behavior: iron_core::module::HookBehavior::default(),
+            dotfiles_sync: false,
+            dotfiles_sync_target: None,
         }
     }
 
@@ -2274,7 +2277,10 @@ depends = []
             .join("profiles")
             .join("test-profile")
             .join("profile.toml");
-        assert!(profile_path.exists(), "profile.toml should be written to disk");
+        assert!(
+            profile_path.exists(),
+            "profile.toml should be written to disk"
+        );
 
         let content = std::fs::read_to_string(&profile_path).unwrap();
         assert!(content.contains("test-profile"));
@@ -2318,7 +2324,10 @@ depends = []
             .join("modules")
             .join("test-module")
             .join("module.toml");
-        assert!(module_path.exists(), "module.toml should be written to disk");
+        assert!(
+            module_path.exists(),
+            "module.toml should be written to disk"
+        );
 
         let content = std::fs::read_to_string(&module_path).unwrap();
         assert!(content.contains("test-module"));
@@ -2372,6 +2381,10 @@ depends = []
             status_check: None,
             priority: None,
             requires_root: false,
+            security_points: 0,
+            hook_behavior: iron_core::module::HookBehavior::default(),
+            dotfiles_sync: false,
+            dotfiles_sync_target: None,
         }];
         // Module not in active list → should not be diverged
         app.active_modules = vec![];
@@ -2399,6 +2412,10 @@ depends = []
             status_check: None,
             priority: None,
             requires_root: false,
+            security_points: 0,
+            hook_behavior: iron_core::module::HookBehavior::default(),
+            dotfiles_sync: false,
+            dotfiles_sync_target: None,
         }];
         app.active_modules = vec!["empty-mod".to_string()];
 
@@ -2542,6 +2559,10 @@ depends = []
             install_params: None,
             installed_bundles: vec![],
             active_bundle: None,
+            bundle: None,
+            profile: None,
+            extra_modules: vec![],
+            variables: std::collections::HashMap::new(),
         }];
 
         // When current_host is None and exactly 1 host found, auto-select logic fires

@@ -178,6 +178,31 @@ pub struct IronState {
     /// Last scan report for scan history / re-scan (S1-P1.5-005)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_scan_report: Option<ScanReport>,
+
+    /// Packages installed by Iron (via apply/module enable).
+    /// Only packages in this list are candidates for removal by --prune.
+    #[serde(default)]
+    pub managed_packages: Vec<String>,
+
+    /// Services enabled by Iron (via apply).
+    /// Only services in this list are candidates for disabling by --prune.
+    #[serde(default)]
+    pub managed_services: Vec<String>,
+
+    /// Dotfile target paths created by Iron (via apply).
+    /// Only dotfiles in this list are candidates for removal by --prune.
+    #[serde(default)]
+    pub managed_dotfiles: Vec<String>,
+
+    /// Timestamp of last successful apply execution.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_apply: Option<DateTime<Utc>>,
+
+    /// Tracks which "Once" hooks have been executed per module.
+    /// Key: module_id, Value: list of hook types that have run
+    /// (e.g., ["post_install"])
+    #[serde(default)]
+    pub hooks_executed: HashMap<String, Vec<String>>,
 }
 
 /// Record of an operation
@@ -187,6 +212,14 @@ pub struct OperationRecord {
     pub timestamp: DateTime<Utc>,
     pub status: OperationStatus,
     pub details: Option<String>,
+
+    /// Duration of the operation in seconds
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_secs: Option<f64>,
+
+    /// Number of actions in the operation
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action_count: Option<usize>,
 }
 
 /// Operation status
@@ -320,6 +353,8 @@ impl IronState {
             timestamp: Utc::now(),
             status,
             details,
+            duration_secs: None,
+            action_count: None,
         });
 
         // Keep only last 100 operations
@@ -426,6 +461,8 @@ mod tests {
             timestamp: Utc::now(),
             status: OperationStatus::Success,
             details: Some("Test details".to_string()),
+            duration_secs: None,
+            action_count: None,
         };
 
         assert_eq!(record.operation, "test_op");
@@ -439,6 +476,8 @@ mod tests {
             timestamp: Utc::now(),
             status: OperationStatus::Partial,
             details: None,
+            duration_secs: None,
+            action_count: None,
         };
 
         assert!(record.details.is_none());
@@ -451,6 +490,8 @@ mod tests {
             timestamp: Utc::now(),
             status: OperationStatus::Skipped,
             details: Some("Cloned".to_string()),
+            duration_secs: None,
+            action_count: None,
         };
 
         let cloned = record.clone();
@@ -464,6 +505,8 @@ mod tests {
             timestamp: Utc::now(),
             status: OperationStatus::Success,
             details: None,
+            duration_secs: None,
+            action_count: None,
         };
 
         let json = serde_json::to_string(&record).unwrap();

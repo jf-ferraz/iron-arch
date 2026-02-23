@@ -4,8 +4,6 @@ local packages = {
     "mangohud",
     "gamemode",
     "protonup-qt",
-    "sunshine",
-    "joyshockmapper-git",
 }
 
 return {

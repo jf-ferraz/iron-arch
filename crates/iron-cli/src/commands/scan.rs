@@ -6,11 +6,10 @@
 use crate::context::{AppContext, require_init};
 use crate::output::StatusBadge;
 use anyhow::Result;
-use iron_core::services::scan::{
-    ConflictSeverity, DefaultScanService, ScanReport, ScanService,
-};
+use iron_core::services::scan::{ConflictSeverity, DefaultScanService, ScanReport, ScanService};
 use iron_core::services::{BundleService, ModuleService};
 use std::sync::Arc;
+use std::time::Instant;
 
 /// Map a `ConflictSeverity` to a CLI `StatusBadge`.
 fn badge_for(severity: ConflictSeverity) -> StatusBadge {
@@ -23,6 +22,7 @@ fn badge_for(severity: ConflictSeverity) -> StatusBadge {
 
 /// Execute the scan command.
 pub fn execute(ctx: &AppContext) -> Result<()> {
+    let start = Instant::now();
     require_init(ctx)?;
 
     let output = &ctx.output;
@@ -43,7 +43,7 @@ pub fn execute(ctx: &AppContext) -> Result<()> {
 
     // Render output
     if output.is_json() {
-        output.json(&report);
+        output.json_envelope("scan", &report, start);
     } else {
         output.header("System Scan Results");
 

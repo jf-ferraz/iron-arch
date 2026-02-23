@@ -487,6 +487,10 @@ mod tests {
             status_check: None,
             priority: None,
             requires_root: false,
+            security_points: 0,
+            hook_behavior: iron_core::module::HookBehavior::default(),
+            dotfiles_sync: false,
+            dotfiles_sync_target: None,
         }];
         app.selected_index = 0;
 

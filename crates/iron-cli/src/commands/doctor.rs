@@ -10,6 +10,7 @@ use iron_core::detect_snapshot_backend;
 use iron_core::services::doctor::{
     CheckStatus, DefaultDoctorService, DoctorConfig, DoctorService, HealthCheck, HealthReport,
 };
+use std::time::Instant;
 
 /// Map a `CheckStatus` to a CLI `StatusBadge`.
 fn badge_for(status: CheckStatus) -> StatusBadge {
@@ -60,15 +61,14 @@ fn print_check(ctx: &AppContext, check: &HealthCheck) {
 
 /// Execute doctor command
 pub fn execute(ctx: &AppContext) -> Result<()> {
+    let start = Instant::now();
     require_init(ctx)?;
 
     let output = &ctx.output;
 
     // Build DoctorConfig from AppContext
     let host_id = ctx.current_host();
-    let active_bundle = host_id
-        .as_ref()
-        .and_then(|h| ctx.state.active_bundle(h));
+    let active_bundle = host_id.as_ref().and_then(|h| ctx.state.active_bundle(h));
 
     let config = DoctorConfig {
         root: ctx.root.clone(),
@@ -83,7 +83,7 @@ pub fn execute(ctx: &AppContext) -> Result<()> {
     // --- Render output ---
 
     if output.is_json() {
-        output.json(&report);
+        output.json_envelope("doctor", &report, start);
     } else {
         output.header("Iron Health Check");
 

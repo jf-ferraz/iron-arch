@@ -48,6 +48,9 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App) {
         View::ModuleCreator => ("New Module", "[n]"),
         View::SystemScan => ("System Scan", "[~]"),
         View::HostSelection => ("Host Selection", "[H]"),
+        View::Apply => ("Apply", "[a]"),
+        View::DriftDetail => ("Drift Detection", "[D]"),
+        View::Snapshots => ("Snapshots", "[t]"),
     };
 
     // Build header content
@@ -250,6 +253,14 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
             ("[c]", "Create new"),
             ("[Esc]", "Back"),
         ],
+        View::Apply => vec![("[Enter]", "Apply"), ("[Esc]", "Cancel")],
+        View::DriftDetail => vec![("[Esc]", "Back")],
+        View::Snapshots => vec![
+            ("[j/k]", "Select"),
+            ("[r]", "Restore"),
+            ("[d]", "Delete"),
+            ("[Esc]", "Back"),
+        ],
     };
 
     let mut spans: Vec<Span> = vec![Span::raw("  ")];
@@ -410,14 +421,19 @@ fn get_view_keybindings(view: View) -> Vec<(&'static str, &'static str)> {
             ("Enter", "Preview / Create"),
             ("Esc", "Cancel / Previous step"),
         ],
-        View::SystemScan => vec![
-            ("r", "Re-scan system"),
-            ("↑/↓", "Scroll results"),
-        ],
+        View::SystemScan => vec![("r", "Re-scan system"), ("↑/↓", "Scroll results")],
         View::HostSelection => vec![
             ("j/k", "Move up/down"),
             ("Enter", "Select host"),
             ("c", "Create new host"),
+        ],
+        View::Apply => vec![("Enter", "Apply plan"), ("Esc", "Cancel")],
+        View::DriftDetail => vec![("Esc", "Back to Dashboard")],
+        View::Snapshots => vec![
+            ("j/k", "Move up/down"),
+            ("r", "Restore selected"),
+            ("d", "Delete selected"),
+            ("Esc", "Back to Dashboard"),
         ],
     }
 }
@@ -937,6 +953,9 @@ mod tests {
                 View::ModuleCreator => "New Module",
                 View::SystemScan => "System Scan",
                 View::HostSelection => "Host Selection",
+                View::Apply => "Apply",
+                View::DriftDetail => "Drift Detection",
+                View::Snapshots => "Snapshots",
             };
             assert_eq!(name, expected_name);
         }

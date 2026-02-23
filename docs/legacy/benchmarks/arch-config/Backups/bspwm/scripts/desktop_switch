@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+
+# Non-cycling desktop switching for bspwm
+# Stops at the first/last desktop instead of wrapping around
+
+direction="$1"
+
+# Get current desktop and monitor
+current_desktop=$(bspc query -D -d focused --names)
+current_monitor=$(bspc query -M -m focused --names)
+
+# Get all desktops on current monitor in order
+desktops=($(bspc query -D -m focused --names))
+
+# Find current desktop index
+current_index=-1
+for i in "${!desktops[@]}"; do
+    if [[ "${desktops[$i]}" == "$current_desktop" ]]; then
+        current_index=$i
+        break
+    fi
+done
+
+# Calculate target index based on direction
+if [[ "$direction" == "prev" ]]; then
+    target_index=$((current_index - 1))
+    # Stop at first desktop (don't cycle)
+    if [[ $target_index -lt 0 ]]; then
+        exit 0
+    fi
+elif [[ "$direction" == "next" ]]; then
+    target_index=$((current_index + 1))
+    # Stop at last desktop (don't cycle)
+    if [[ $target_index -ge ${#desktops[@]} ]]; then
+        exit 0
+    fi
+fi
+
+# Switch to target desktop
+target_desktop="${desktops[$target_index]}"
+bspc desktop -f "$target_desktop"

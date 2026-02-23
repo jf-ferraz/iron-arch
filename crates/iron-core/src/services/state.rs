@@ -90,8 +90,10 @@ pub struct AuditEntry {
 /// State Manager - handles all state operations
 #[derive(Clone)]
 pub struct StateManager {
-    /// Root directory for Iron
+    /// Config root directory (e.g., ~/.config/iron)
     root: PathBuf,
+    /// State directory (e.g., ~/.local/state/iron)
+    state_root: PathBuf,
     /// In-memory state
     state: Arc<Mutex<IronState>>,
     /// Audit log entries
@@ -99,9 +101,64 @@ pub struct StateManager {
 }
 
 impl StateManager {
-    /// Create a new state manager
+    /// Resolve the state directory path.
+    ///
+    /// Priority:
+    /// 1. `$IRON_STATE_DIR` environment variable (for testing / custom setups)
+    /// 2. `$XDG_STATE_HOME/iron` (XDG standard)
+    /// 3. `~/.local/state/iron` (XDG default fallback)
+    ///
+    /// Note: does NOT create the directory. Callers that need to write
+    /// state files should ensure the directory exists first.
+    pub fn state_dir() -> PathBuf {
+        if let Ok(dir) = std::env::var("IRON_STATE_DIR") {
+            PathBuf::from(dir)
+        } else if let Ok(xdg) = std::env::var("XDG_STATE_HOME") {
+            PathBuf::from(xdg).join("iron")
+        } else {
+            dirs::home_dir()
+                .unwrap_or_else(|| PathBuf::from("/tmp"))
+                .join(".local/state/iron")
+        }
+    }
+
+    /// Create a new state manager.
+    ///
+    /// The `root` parameter is the config root (e.g., `~/.config/iron`).
+    /// State files are stored in the XDG state directory (resolved via
+    /// `state_dir()`). For backward compatibility during migration, if
+    /// the config root has a `state.json`, it is used as the effective
+    /// state root (pre-migration mode). Once `migrate_if_needed()` moves
+    /// state files to the XDG dir, this fallback stops triggering.
     pub fn new(root: PathBuf) -> IronResult<Self> {
-        let state_path = root.join(STATE_FILE);
+        let resolved_state_dir = Self::state_dir();
+
+        // State root resolution order:
+        // 1. If $IRON_STATE_DIR is explicitly set, always use it
+        //    (for testing and custom deployments)
+        // 2. If config root has state.json, use config root
+        //    (pre-migration backward compat -- F3-007 will move it)
+        // 3. If config root has MIGRATED.txt (breadcrumb from F3-007
+        //    migration) AND the XDG state dir has state.json, use it
+        // 4. Otherwise, use config root (fresh installation, tests)
+        //
+        // The MIGRATED.txt check prevents tests from accidentally
+        // picking up a real user's XDG state directory. Only after
+        // migrate_if_needed() has explicitly moved state files will
+        // the XDG dir be used.
+        let state_root = if std::env::var("IRON_STATE_DIR").is_ok() {
+            let _ = fs::create_dir_all(&resolved_state_dir);
+            resolved_state_dir
+        } else if root.join(STATE_FILE).exists() {
+            root.clone()
+        } else if root.join("MIGRATED.txt").exists() && resolved_state_dir.join(STATE_FILE).exists()
+        {
+            resolved_state_dir
+        } else {
+            root.clone()
+        };
+
+        let state_path = state_root.join(STATE_FILE);
         let state = if state_path.exists() {
             let content = fs::read_to_string(&state_path).map_err(|_| StateError::Corrupted {
                 path: state_path.clone(),
@@ -112,18 +169,19 @@ impl StateManager {
             IronState::default()
         };
 
-        let audit_log = Self::load_audit_log(&root);
+        let audit_log = Self::load_audit_log(&state_root);
 
         Ok(Self {
             root,
+            state_root,
             state: Arc::new(Mutex::new(state)),
             audit_log: Arc::new(Mutex::new(audit_log)),
         })
     }
 
     /// Load audit log from disk
-    fn load_audit_log(root: &Path) -> Vec<AuditEntry> {
-        let log_path = root.join(AUDIT_LOG_FILE);
+    fn load_audit_log(state_root: &Path) -> Vec<AuditEntry> {
+        let log_path = state_root.join(AUDIT_LOG_FILE);
         if log_path.exists()
             && let Ok(content) = fs::read_to_string(&log_path)
             && let Ok(entries) = serde_json::from_str(&content)
@@ -133,14 +191,24 @@ impl StateManager {
         Vec::new()
     }
 
-    /// Get the Iron root directory
+    /// Get the Iron config root directory
     pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// Get the state directory this manager is using.
+    pub fn state_root(&self) -> &Path {
+        &self.state_root
+    }
+
+    /// Get the config root (iron root) this manager was created with.
+    pub fn config_root(&self) -> &Path {
         &self.root
     }
 
     /// Get state path
     pub fn state_path(&self) -> PathBuf {
-        self.root.join(STATE_FILE)
+        self.state_root.join(STATE_FILE)
     }
 
     /// Lock state for reading
@@ -266,10 +334,7 @@ impl StateManager {
     // ==========================================================================
 
     /// Save a scan report to state for history / re-scan
-    pub fn save_scan_report(
-        &self,
-        report: &crate::services::scan::ScanReport,
-    ) -> IronResult<()> {
+    pub fn save_scan_report(&self, report: &crate::services::scan::ScanReport) -> IronResult<()> {
         {
             let mut state = self.state.lock().unwrap();
             state.last_scan_report = Some(report.clone());
@@ -418,7 +483,7 @@ impl StateManager {
 
     /// Get the lock file path
     fn lock_path(&self) -> PathBuf {
-        self.root.join(LOCK_FILE)
+        self.state_root.join(LOCK_FILE)
     }
 
     /// Acquire an exclusive lock on the state file
@@ -586,7 +651,7 @@ impl StateManager {
 
     /// Persist audit log to disk
     fn persist_audit_log(&self) -> IronResult<()> {
-        let log_path = self.root.join(AUDIT_LOG_FILE);
+        let log_path = self.state_root.join(AUDIT_LOG_FILE);
         let log = self.audit_log.lock().unwrap();
         let content = serde_json::to_string_pretty(&*log).unwrap_or_default();
         fs::write(&log_path, content).ok();
@@ -675,6 +740,86 @@ impl StateManager {
         )
     }
 
+    // ==========================================================================
+    // F3-021: Managed Resource Tracking
+    // ==========================================================================
+
+    /// Record packages as managed by Iron. Deduplicates.
+    pub fn record_managed_packages(&self, packages: &[String]) -> IronResult<()> {
+        self.with_locked_state(|state| {
+            for pkg in packages {
+                if !state.managed_packages.contains(pkg) {
+                    state.managed_packages.push(pkg.clone());
+                }
+            }
+        })
+    }
+
+    /// Remove packages from managed tracking.
+    pub fn unrecord_managed_packages(&self, packages: &[String]) -> IronResult<()> {
+        self.with_locked_state(|state| {
+            state.managed_packages.retain(|p| !packages.contains(p));
+        })
+    }
+
+    /// Record a service as managed by Iron.
+    pub fn record_managed_service(&self, name: &str) -> IronResult<()> {
+        let name_owned = name.to_string();
+        self.with_locked_state(|state| {
+            if !state.managed_services.contains(&name_owned) {
+                state.managed_services.push(name_owned);
+            }
+        })
+    }
+
+    /// Remove a service from managed tracking.
+    pub fn unrecord_managed_service(&self, name: &str) -> IronResult<()> {
+        let name_owned = name.to_string();
+        self.with_locked_state(|state| {
+            state.managed_services.retain(|s| s != &name_owned);
+        })
+    }
+
+    /// Record a dotfile target as managed by Iron.
+    pub fn record_managed_dotfile(&self, target: &str) -> IronResult<()> {
+        let target_owned = target.to_string();
+        self.with_locked_state(|state| {
+            if !state.managed_dotfiles.contains(&target_owned) {
+                state.managed_dotfiles.push(target_owned);
+            }
+        })
+    }
+
+    /// Remove a dotfile target from managed tracking.
+    pub fn unrecord_managed_dotfile(&self, target: &str) -> IronResult<()> {
+        let target_owned = target.to_string();
+        self.with_locked_state(|state| {
+            state.managed_dotfiles.retain(|d| d != &target_owned);
+        })
+    }
+
+    /// Get current managed packages list.
+    pub fn managed_packages(&self) -> Vec<String> {
+        self.state().managed_packages.clone()
+    }
+
+    /// Get current managed services list.
+    pub fn managed_services(&self) -> Vec<String> {
+        self.state().managed_services.clone()
+    }
+
+    /// Get current managed dotfiles list.
+    pub fn managed_dotfiles(&self) -> Vec<String> {
+        self.state().managed_dotfiles.clone()
+    }
+
+    /// Update last_apply timestamp to now.
+    pub fn update_last_apply(&self) -> IronResult<()> {
+        self.with_locked_state(|state| {
+            state.last_apply = Some(Utc::now());
+        })
+    }
+
     /// Mark news as recently fetched
     pub fn mark_news_fetched(&self) -> IronResult<()> {
         {
@@ -693,6 +838,174 @@ impl StateManager {
     pub fn acknowledged_news_count(&self) -> usize {
         self.state().news_acknowledgment.acknowledged_count()
     }
+
+    // ==========================================================================
+    // F3-015: Hook Execution Tracking
+    // ==========================================================================
+
+    /// Record that a hook has been executed for a module.
+    pub fn record_hook_executed(&self, module_id: &str, hook_type: &str) -> IronResult<()> {
+        let module_id = module_id.to_string();
+        let hook_type = hook_type.to_string();
+        self.with_locked_state(|state| {
+            let hooks = state.hooks_executed.entry(module_id).or_default();
+            if !hooks.contains(&hook_type) {
+                hooks.push(hook_type);
+            }
+        })
+    }
+
+    /// Check if a hook has been executed for a module.
+    pub fn is_hook_executed(&self, module_id: &str, hook_type: &str) -> bool {
+        let state = self.state();
+        state
+            .hooks_executed
+            .get(module_id)
+            .map(|hooks| hooks.iter().any(|h| h == hook_type))
+            .unwrap_or(false)
+    }
+
+    /// Clear all hook tracking for a module (called on module disable).
+    pub fn clear_hooks_for_module(&self, module_id: &str) -> IronResult<()> {
+        let module_id = module_id.to_string();
+        self.with_locked_state(|state| {
+            state.hooks_executed.remove(&module_id);
+        })
+    }
+
+    // ==========================================================================
+    // F3-007: Legacy State Migration
+    // ==========================================================================
+
+    /// Check for legacy state files in the config root and migrate
+    /// them to the XDG state directory.
+    ///
+    /// Uses copy-then-delete for safety. On any failure, original
+    /// files are left intact and a warning is logged.
+    ///
+    /// # No-op conditions
+    /// - New state directory already has state.json
+    /// - Legacy location has no state.json
+    /// - MIGRATED.txt marker already exists in legacy location
+    /// - Config root and state root are the same directory
+    pub fn migrate_if_needed(config_root: &Path) -> IronResult<MigrationResult> {
+        Self::migrate_to(config_root, &Self::state_dir())
+    }
+
+    /// Internal migration logic that accepts an explicit target dir.
+    /// Public API delegates to this via `migrate_if_needed()`.
+    fn migrate_to(config_root: &Path, state_dir: &Path) -> IronResult<MigrationResult> {
+        let state_dir = state_dir.to_path_buf();
+
+        // If they resolve to the same path, no migration needed
+        if config_root == state_dir {
+            return Ok(MigrationResult::NoMigrationNeeded);
+        }
+
+        let new_state_path = state_dir.join(STATE_FILE);
+        let legacy_state_path = config_root.join(STATE_FILE);
+        let migrated_marker = config_root.join("MIGRATED.txt");
+
+        // No-op: new location already has state
+        if new_state_path.exists() {
+            return Ok(MigrationResult::NoMigrationNeeded);
+        }
+
+        // No-op: already migrated previously
+        if migrated_marker.exists() {
+            return Ok(MigrationResult::AlreadyMigrated);
+        }
+
+        // No-op: legacy location has no state
+        if !legacy_state_path.exists() {
+            return Ok(MigrationResult::NoMigrationNeeded);
+        }
+
+        // Ensure state directory exists
+        let _ = fs::create_dir_all(&state_dir);
+
+        // Copy state.json first (not move — copy for safety)
+        if let Err(e) = fs::copy(&legacy_state_path, &new_state_path) {
+            // Copy failed — leave originals intact
+            return Err(crate::IronError::OperationFailed {
+                message: format!("State migration failed (originals intact): {}", e),
+            });
+        }
+
+        // Verify copy succeeded
+        if !new_state_path.exists() {
+            return Ok(MigrationResult::NoMigrationNeeded);
+        }
+
+        // Migrate additional files (best-effort)
+        Self::migrate_file(config_root, &state_dir, AUDIT_LOG_FILE);
+        Self::migrate_file(config_root, &state_dir, LOCK_FILE);
+        Self::migrate_dir(config_root, &state_dir, ".snapshots", "snapshots");
+
+        // Remove originals after successful copy
+        let _ = fs::remove_file(&legacy_state_path);
+        let _ = fs::remove_file(config_root.join(AUDIT_LOG_FILE));
+        let _ = fs::remove_file(config_root.join(LOCK_FILE));
+
+        // Leave breadcrumb marker
+        let _ = fs::write(
+            &migrated_marker,
+            format!(
+                "State migrated to {} on {}",
+                state_dir.display(),
+                Utc::now()
+            ),
+        );
+
+        Ok(MigrationResult::Migrated {
+            from: config_root.to_path_buf(),
+            to: state_dir,
+        })
+    }
+
+    /// Copy a single file from legacy to new location (best-effort).
+    fn migrate_file(from_dir: &Path, to_dir: &Path, filename: &str) {
+        let src = from_dir.join(filename);
+        let dst = to_dir.join(filename);
+        if src.exists() && !dst.exists() {
+            let _ = fs::copy(&src, &dst);
+        }
+    }
+
+    /// Copy a directory from legacy to new location (best-effort).
+    fn migrate_dir(from_dir: &Path, to_dir: &Path, old_name: &str, new_name: &str) {
+        let src = from_dir.join(old_name);
+        let dst = to_dir.join(new_name);
+        if src.is_dir() && !dst.exists() {
+            let _ = Self::copy_dir_recursive(&src, &dst);
+        }
+    }
+
+    /// Recursively copy a directory tree.
+    fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
+        fs::create_dir_all(dst)?;
+        for entry in fs::read_dir(src)? {
+            let entry = entry?;
+            let dest_path = dst.join(entry.file_name());
+            if entry.file_type()?.is_dir() {
+                Self::copy_dir_recursive(&entry.path(), &dest_path)?;
+            } else {
+                fs::copy(entry.path(), dest_path)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Result of a state migration attempt.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MigrationResult {
+    /// No legacy state files found, nothing to migrate
+    NoMigrationNeeded,
+    /// State files were migrated successfully
+    Migrated { from: PathBuf, to: PathBuf },
+    /// Migration was already performed previously
+    AlreadyMigrated,
 }
 
 #[cfg(test)]
@@ -1466,6 +1779,312 @@ mod tests {
         }
     }
 
+    // ==========================================================================
+    // F3-021: Managed Resource Tracking Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_record_managed_packages() {
+        let (manager, _temp) = create_test_manager();
+
+        manager
+            .record_managed_packages(&["neovim".to_string(), "fish".to_string()])
+            .unwrap();
+
+        let pkgs = manager.managed_packages();
+        assert_eq!(pkgs.len(), 2);
+        assert!(pkgs.contains(&"neovim".to_string()));
+        assert!(pkgs.contains(&"fish".to_string()));
+    }
+
+    #[test]
+    fn test_record_managed_packages_deduplicates() {
+        let (manager, _temp) = create_test_manager();
+
+        manager
+            .record_managed_packages(&["neovim".to_string()])
+            .unwrap();
+        manager
+            .record_managed_packages(&["neovim".to_string(), "git".to_string()])
+            .unwrap();
+
+        let pkgs = manager.managed_packages();
+        assert_eq!(pkgs.len(), 2);
+        assert_eq!(
+            pkgs.iter().filter(|p| *p == "neovim").count(),
+            1,
+            "neovim should appear exactly once"
+        );
+    }
+
+    #[test]
+    fn test_unrecord_managed_packages() {
+        let (manager, _temp) = create_test_manager();
+
+        manager
+            .record_managed_packages(&["a".to_string(), "b".to_string(), "c".to_string()])
+            .unwrap();
+        manager
+            .unrecord_managed_packages(&["b".to_string()])
+            .unwrap();
+
+        let pkgs = manager.managed_packages();
+        assert_eq!(pkgs.len(), 2);
+        assert!(!pkgs.contains(&"b".to_string()));
+    }
+
+    #[test]
+    fn test_record_managed_service() {
+        let (manager, _temp) = create_test_manager();
+
+        manager.record_managed_service("bluetooth.service").unwrap();
+        manager
+            .record_managed_service("NetworkManager.service")
+            .unwrap();
+
+        let svcs = manager.managed_services();
+        assert_eq!(svcs.len(), 2);
+        assert!(svcs.contains(&"bluetooth.service".to_string()));
+    }
+
+    #[test]
+    fn test_record_managed_service_deduplicates() {
+        let (manager, _temp) = create_test_manager();
+
+        manager.record_managed_service("sshd.service").unwrap();
+        manager.record_managed_service("sshd.service").unwrap();
+
+        let svcs = manager.managed_services();
+        assert_eq!(svcs.len(), 1);
+    }
+
+    #[test]
+    fn test_unrecord_managed_service() {
+        let (manager, _temp) = create_test_manager();
+
+        manager.record_managed_service("a.service").unwrap();
+        manager.record_managed_service("b.service").unwrap();
+        manager.unrecord_managed_service("a.service").unwrap();
+
+        let svcs = manager.managed_services();
+        assert_eq!(svcs.len(), 1);
+        assert_eq!(svcs[0], "b.service");
+    }
+
+    #[test]
+    fn test_record_managed_dotfile() {
+        let (manager, _temp) = create_test_manager();
+
+        manager
+            .record_managed_dotfile("/home/user/.config/nvim")
+            .unwrap();
+
+        let dots = manager.managed_dotfiles();
+        assert_eq!(dots.len(), 1);
+        assert_eq!(dots[0], "/home/user/.config/nvim");
+    }
+
+    #[test]
+    fn test_unrecord_managed_dotfile() {
+        let (manager, _temp) = create_test_manager();
+
+        manager
+            .record_managed_dotfile("/home/user/.config/nvim")
+            .unwrap();
+        manager
+            .record_managed_dotfile("/home/user/.config/fish")
+            .unwrap();
+        manager
+            .unrecord_managed_dotfile("/home/user/.config/nvim")
+            .unwrap();
+
+        let dots = manager.managed_dotfiles();
+        assert_eq!(dots.len(), 1);
+        assert_eq!(dots[0], "/home/user/.config/fish");
+    }
+
+    #[test]
+    fn test_update_last_apply() {
+        let (manager, _temp) = create_test_manager();
+
+        assert!(manager.state().last_apply.is_none());
+
+        manager.update_last_apply().unwrap();
+
+        let last_apply = manager.state().last_apply;
+        assert!(last_apply.is_some());
+    }
+
+    #[test]
+    fn test_managed_tracking_persists_across_reload() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().to_path_buf();
+
+        {
+            let manager = StateManager::new(path.clone()).unwrap();
+            manager
+                .record_managed_packages(&["pkg1".to_string()])
+                .unwrap();
+            manager.record_managed_service("svc1.service").unwrap();
+            manager
+                .record_managed_dotfile("/home/user/.config/test")
+                .unwrap();
+            manager.update_last_apply().unwrap();
+        }
+
+        // Reload and verify
+        let manager = StateManager::new(path).unwrap();
+        assert_eq!(manager.managed_packages(), vec!["pkg1".to_string()]);
+        assert_eq!(manager.managed_services(), vec!["svc1.service".to_string()]);
+        assert_eq!(
+            manager.managed_dotfiles(),
+            vec!["/home/user/.config/test".to_string()]
+        );
+        assert!(manager.state().last_apply.is_some());
+    }
+
+    #[test]
+    fn test_managed_backward_compat_empty_state() {
+        let temp_dir = TempDir::new().unwrap();
+        // Write an older state.json without managed_* fields
+        std::fs::write(
+            temp_dir.path().join("state.json"),
+            r#"{
+                "current_host": "legacy",
+                "active_bundles": {},
+                "active_profiles": {},
+                "active_modules": [],
+                "last_operations": [],
+                "maintenance": {
+                    "last_update": null,
+                    "last_clean": null,
+                    "last_doctor": null,
+                    "last_snapshot": null,
+                    "last_sync": null
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let manager = StateManager::new(temp_dir.path().to_path_buf()).unwrap();
+
+        // New fields should default to empty via #[serde(default)]
+        assert!(manager.managed_packages().is_empty());
+        assert!(manager.managed_services().is_empty());
+        assert!(manager.managed_dotfiles().is_empty());
+        assert!(manager.state().last_apply.is_none());
+    }
+
+    // ==========================================================================
+    // Additional managed resource tracking tests
+    // ==========================================================================
+
+    #[test]
+    fn test_unrecord_nonexistent_package_is_noop() {
+        let (manager, _temp) = create_test_manager();
+
+        // Unrecording a package that was never recorded should not error
+        manager
+            .unrecord_managed_packages(&["nonexistent".to_string()])
+            .unwrap();
+        assert!(manager.managed_packages().is_empty());
+    }
+
+    #[test]
+    fn test_unrecord_nonexistent_service_is_noop() {
+        let (manager, _temp) = create_test_manager();
+        manager.unrecord_managed_service("nonexistent").unwrap();
+        assert!(manager.managed_services().is_empty());
+    }
+
+    #[test]
+    fn test_unrecord_nonexistent_dotfile_is_noop() {
+        let (manager, _temp) = create_test_manager();
+        manager
+            .unrecord_managed_dotfile("/nonexistent/path")
+            .unwrap();
+        assert!(manager.managed_dotfiles().is_empty());
+    }
+
+    #[test]
+    fn test_record_empty_packages_is_noop() {
+        let (manager, _temp) = create_test_manager();
+        manager.record_managed_packages(&[]).unwrap();
+        assert!(manager.managed_packages().is_empty());
+    }
+
+    #[test]
+    fn test_unrecord_empty_packages_is_noop() {
+        let (manager, _temp) = create_test_manager();
+        manager.record_managed_packages(&["a".to_string()]).unwrap();
+        manager.unrecord_managed_packages(&[]).unwrap();
+        assert_eq!(manager.managed_packages().len(), 1);
+    }
+
+    #[test]
+    fn test_managed_dotfile_deduplicates() {
+        let (manager, _temp) = create_test_manager();
+        manager
+            .record_managed_dotfile("/home/user/.config/test")
+            .unwrap();
+        manager
+            .record_managed_dotfile("/home/user/.config/test")
+            .unwrap();
+
+        let dots = manager.managed_dotfiles();
+        assert_eq!(dots.len(), 1, "Dotfile should be deduplicated");
+    }
+
+    #[test]
+    fn test_last_apply_timestamp_updates() {
+        let (manager, _temp) = create_test_manager();
+
+        // First update
+        manager.update_last_apply().unwrap();
+        let first = manager.state().last_apply.unwrap();
+
+        // Small sleep to ensure different timestamp
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        // Second update
+        manager.update_last_apply().unwrap();
+        let second = manager.state().last_apply.unwrap();
+
+        assert!(second >= first, "Second last_apply should be >= first");
+    }
+
+    #[test]
+    fn test_managed_resources_persist_after_multiple_operations() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().to_path_buf();
+
+        {
+            let manager = StateManager::new(path.clone()).unwrap();
+            manager
+                .record_managed_packages(&["a".to_string(), "b".to_string()])
+                .unwrap();
+            manager.record_managed_service("svc1").unwrap();
+            manager
+                .record_managed_dotfile("/home/user/.config/x")
+                .unwrap();
+
+            // Remove some
+            manager
+                .unrecord_managed_packages(&["a".to_string()])
+                .unwrap();
+        }
+
+        // Reload and verify the removals persisted
+        let manager = StateManager::new(path).unwrap();
+        let pkgs = manager.managed_packages();
+        assert_eq!(pkgs, vec!["b".to_string()]);
+        assert_eq!(manager.managed_services(), vec!["svc1".to_string()]);
+        assert_eq!(
+            manager.managed_dotfiles(),
+            vec!["/home/user/.config/x".to_string()]
+        );
+    }
+
     #[test]
     fn test_save_and_load_scan_report() {
         use crate::services::scan::{ScanReport, ScanSummary};
@@ -1495,6 +2114,151 @@ mod tests {
         let manager2 = StateManager::new(_temp.path().to_path_buf()).unwrap();
         let loaded2 = manager2.load_scan_report().unwrap();
         assert_eq!(loaded2.installed_packages.len(), 2);
+    }
+    // ==========================================================================
+    // F3-015: Hook Execution Tracking Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_record_hook_executed_and_is_hook_executed() {
+        let (manager, _temp) = create_test_manager();
+
+        // Initially no hooks are recorded
+        assert!(!manager.is_hook_executed("nvim", "post_install"));
+
+        // Record a hook execution
+        manager
+            .record_hook_executed("nvim", "post_install")
+            .unwrap();
+
+        // Now it should be recorded
+        assert!(manager.is_hook_executed("nvim", "post_install"));
+
+        // Different hook type for same module should not be recorded
+        assert!(!manager.is_hook_executed("nvim", "pre_install"));
+
+        // Different module should not be affected
+        assert!(!manager.is_hook_executed("kitty", "post_install"));
+    }
+
+    #[test]
+    fn test_record_hook_executed_idempotent() {
+        let (manager, _temp) = create_test_manager();
+
+        manager
+            .record_hook_executed("nvim", "post_install")
+            .unwrap();
+        manager
+            .record_hook_executed("nvim", "post_install")
+            .unwrap();
+
+        // Should not duplicate
+        let state = manager.state();
+        let hooks = state.hooks_executed.get("nvim").unwrap();
+        assert_eq!(hooks.len(), 1);
+    }
+
+    #[test]
+    fn test_record_multiple_hooks_for_same_module() {
+        let (manager, _temp) = create_test_manager();
+
+        manager.record_hook_executed("nvim", "pre_install").unwrap();
+        manager
+            .record_hook_executed("nvim", "post_install")
+            .unwrap();
+
+        assert!(manager.is_hook_executed("nvim", "pre_install"));
+        assert!(manager.is_hook_executed("nvim", "post_install"));
+
+        let state = manager.state();
+        let hooks = state.hooks_executed.get("nvim").unwrap();
+        assert_eq!(hooks.len(), 2);
+    }
+
+    #[test]
+    fn test_clear_hooks_for_module() {
+        let (manager, _temp) = create_test_manager();
+
+        manager
+            .record_hook_executed("nvim", "post_install")
+            .unwrap();
+        manager
+            .record_hook_executed("kitty", "pre_install")
+            .unwrap();
+
+        assert!(manager.is_hook_executed("nvim", "post_install"));
+        assert!(manager.is_hook_executed("kitty", "pre_install"));
+
+        // Clear only nvim hooks
+        manager.clear_hooks_for_module("nvim").unwrap();
+
+        assert!(!manager.is_hook_executed("nvim", "post_install"));
+        // kitty hooks should remain
+        assert!(manager.is_hook_executed("kitty", "pre_install"));
+    }
+
+    #[test]
+    fn test_clear_hooks_for_nonexistent_module_is_noop() {
+        let (manager, _temp) = create_test_manager();
+
+        // Should not error on clearing hooks for a module that has none
+        manager.clear_hooks_for_module("nonexistent").unwrap();
+    }
+
+    #[test]
+    fn test_hooks_executed_persists_across_reload() {
+        let temp_dir = TempDir::new().unwrap();
+        let path = temp_dir.path().to_path_buf();
+
+        {
+            let manager = StateManager::new(path.clone()).unwrap();
+            manager
+                .record_hook_executed("nvim", "post_install")
+                .unwrap();
+        }
+
+        // Reload and verify persistence
+        let manager = StateManager::new(path).unwrap();
+        assert!(manager.is_hook_executed("nvim", "post_install"));
+    }
+
+    #[test]
+    fn test_hooks_executed_backward_compat_missing_field() {
+        // Simulate an old state.json without hooks_executed field
+        let temp_dir = TempDir::new().unwrap();
+        let state_json = serde_json::json!({
+            "current_host": "test",
+            "active_bundles": {},
+            "active_profiles": {},
+            "active_modules": [],
+            "last_operations": [],
+            "maintenance": {
+                "last_update": null,
+                "last_clean": null,
+                "last_doctor": null,
+                "last_snapshot": null,
+                "last_sync": null
+            },
+            "managed_packages": [],
+            "managed_services": [],
+            "managed_dotfiles": []
+        });
+        std::fs::write(
+            temp_dir.path().join("state.json"),
+            serde_json::to_string_pretty(&state_json).unwrap(),
+        )
+        .unwrap();
+
+        let manager = StateManager::new(temp_dir.path().to_path_buf()).unwrap();
+
+        // hooks_executed should default to empty HashMap
+        assert!(!manager.is_hook_executed("any", "any_hook"));
+
+        // Should be able to record new hooks
+        manager
+            .record_hook_executed("nvim", "post_install")
+            .unwrap();
+        assert!(manager.is_hook_executed("nvim", "post_install"));
     }
 }
 
@@ -2035,5 +2799,151 @@ mod resilience_tests {
 
         // Should work without issues
         assert_eq!(manager.current_host(), Some("test".to_string()));
+    }
+}
+
+/// F3-007: State migration tests
+///
+/// Uses `migrate_to()` directly to avoid env var manipulation,
+/// which is unsafe in parallel test environments.
+#[cfg(test)]
+mod migration_tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    /// Helper: create a valid state JSON string
+    fn valid_state_json() -> String {
+        r#"{
+            "current_host": "migrated-host",
+            "active_bundles": {},
+            "active_profiles": {},
+            "active_modules": ["mod-a"],
+            "last_operations": [],
+            "maintenance": {
+                "last_update": null,
+                "last_clean": null,
+                "last_doctor": null,
+                "last_snapshot": null,
+                "last_sync": null
+            }
+        }"#
+        .to_string()
+    }
+
+    #[test]
+    fn test_migrate_noop_when_no_legacy_state() {
+        let config_root = TempDir::new().unwrap();
+        let state_dir = TempDir::new().unwrap();
+
+        let result = StateManager::migrate_to(config_root.path(), state_dir.path());
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), MigrationResult::NoMigrationNeeded);
+    }
+
+    #[test]
+    fn test_migrate_noop_when_new_location_has_state() {
+        let config_root = TempDir::new().unwrap();
+        let state_dir = TempDir::new().unwrap();
+
+        // Put state.json in both locations
+        fs::write(config_root.path().join(STATE_FILE), valid_state_json()).unwrap();
+        fs::write(state_dir.path().join(STATE_FILE), valid_state_json()).unwrap();
+
+        let result = StateManager::migrate_to(config_root.path(), state_dir.path());
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), MigrationResult::NoMigrationNeeded);
+    }
+
+    #[test]
+    fn test_migrate_noop_when_already_migrated() {
+        let config_root = TempDir::new().unwrap();
+        let state_dir = TempDir::new().unwrap();
+
+        // Legacy state exists but marker says already migrated
+        fs::write(config_root.path().join(STATE_FILE), valid_state_json()).unwrap();
+        fs::write(config_root.path().join("MIGRATED.txt"), "already done").unwrap();
+
+        let result = StateManager::migrate_to(config_root.path(), state_dir.path());
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), MigrationResult::AlreadyMigrated);
+    }
+
+    #[test]
+    fn test_migrate_copies_state_and_creates_marker() {
+        let config_root = TempDir::new().unwrap();
+        let state_dir = TempDir::new().unwrap();
+
+        // Write legacy state files
+        fs::write(config_root.path().join(STATE_FILE), valid_state_json()).unwrap();
+        fs::write(config_root.path().join(AUDIT_LOG_FILE), "[]").unwrap();
+        fs::write(config_root.path().join(LOCK_FILE), "").unwrap();
+
+        // Create .snapshots/ directory
+        let snap_dir = config_root.path().join(".snapshots");
+        fs::create_dir_all(&snap_dir).unwrap();
+        fs::write(snap_dir.join("snap1.json"), "{}").unwrap();
+
+        let result = StateManager::migrate_to(config_root.path(), state_dir.path());
+
+        assert!(result.is_ok());
+        match result.unwrap() {
+            MigrationResult::Migrated { from, to } => {
+                assert_eq!(from, config_root.path());
+                assert_eq!(to, state_dir.path());
+            }
+            other => panic!("Expected Migrated, got {:?}", other),
+        }
+
+        // Verify new location has state
+        assert!(state_dir.path().join(STATE_FILE).exists());
+        assert!(state_dir.path().join(AUDIT_LOG_FILE).exists());
+
+        // Verify snapshots were copied with new name
+        assert!(state_dir.path().join("snapshots/snap1.json").exists());
+
+        // Verify originals removed
+        assert!(!config_root.path().join(STATE_FILE).exists());
+        assert!(!config_root.path().join(AUDIT_LOG_FILE).exists());
+
+        // Verify breadcrumb left
+        assert!(config_root.path().join("MIGRATED.txt").exists());
+    }
+
+    #[test]
+    fn test_migrate_noop_when_same_directory() {
+        let config_root = TempDir::new().unwrap();
+
+        fs::write(config_root.path().join(STATE_FILE), valid_state_json()).unwrap();
+
+        let result = StateManager::migrate_to(config_root.path(), config_root.path());
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), MigrationResult::NoMigrationNeeded);
+
+        // State should still be in original location
+        assert!(config_root.path().join(STATE_FILE).exists());
+    }
+
+    #[test]
+    fn test_migrate_preserves_originals_on_partial_failure() {
+        let config_root = TempDir::new().unwrap();
+        // Use a path that's not writable to simulate failure
+        let state_dir = PathBuf::from("/nonexistent/impossible/path");
+
+        fs::write(config_root.path().join(STATE_FILE), valid_state_json()).unwrap();
+
+        let result = StateManager::migrate_to(config_root.path(), &state_dir);
+
+        // Should fail
+        assert!(result.is_err());
+
+        // Original state should be intact
+        assert!(config_root.path().join(STATE_FILE).exists());
+        // No marker should be created
+        assert!(!config_root.path().join("MIGRATED.txt").exists());
     }
 }

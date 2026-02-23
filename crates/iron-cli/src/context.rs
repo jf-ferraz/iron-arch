@@ -40,6 +40,20 @@ impl AppContext {
     ) -> Result<Self> {
         let root = expand_home(Path::new(root));
 
+        // F3-007: Migrate legacy state files before initializing StateManager
+        match StateManager::migrate_if_needed(&root) {
+            Ok(iron_core::services::state::MigrationResult::Migrated { ref from, ref to }) => {
+                if verbose {
+                    eprintln!("Migrated state from {} to {}", from.display(), to.display());
+                }
+            }
+            Ok(_) => {} // NoMigrationNeeded or AlreadyMigrated
+            Err(e) => {
+                // Migration failure is non-fatal — warn and continue
+                eprintln!("Warning: state migration: {}", e);
+            }
+        }
+
         let state =
             StateManager::new(root.clone()).context("Failed to initialize state manager")?;
 
@@ -124,9 +138,48 @@ impl AppContext {
             ))
     }
 
+    /// Get apply service (F1-005)
+    pub fn apply_service(&self) -> iron_core::services::apply::DefaultApplyService {
+        iron_core::services::apply::DefaultApplyService::new(
+            &self.root,
+            self.state.clone(),
+            std::sync::Arc::new(iron_pacman::DefaultPackageManager::new()),
+            std::sync::Arc::new(iron_systemd::SystemdServiceAdapter::user()),
+        )
+    }
+
+    /// Get drift service (F1-011)
+    pub fn drift_service(&self) -> iron_core::services::drift::DefaultDriftService {
+        iron_core::services::drift::DefaultDriftService::new(
+            &self.root,
+            self.state.clone(),
+            std::sync::Arc::new(iron_pacman::DefaultPackageManager::new()),
+            std::sync::Arc::new(iron_systemd::SystemdServiceAdapter::user()),
+        )
+    }
+
+    /// Get security service (F2-016)
+    pub fn security_service(&self) -> iron_core::services::security::DefaultSecurityService {
+        iron_core::services::security::DefaultSecurityService::new(&self.root, self.state.clone())
+    }
+
+    /// Get snapshot service (F2-001)
+    pub fn snapshot_service(
+        &self,
+    ) -> iron_core::services::snapshot_service::DefaultSnapshotService {
+        iron_core::services::snapshot_service::DefaultSnapshotService::new(
+            &self.root,
+            self.state.clone(),
+        )
+        .with_package_manager(std::sync::Arc::new(
+            iron_pacman::DefaultPackageManager::new(),
+        ))
+    }
+
     /// Check if Iron is initialized
     pub fn is_initialized(&self) -> bool {
-        self.root.join("state.json").exists() || self.state.current_host().is_some()
+        // F3-006: Check state directory instead of config root
+        self.state.state_root().join("state.json").exists() || self.state.current_host().is_some()
     }
 
     /// Get current host ID

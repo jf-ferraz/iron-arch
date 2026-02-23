@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+# Force monocle mode when only one window is on a desktop
+bspc subscribe node_add node_remove desktop_focus | while read -r event; do
+    # Count windows on focused desktop
+    window_count=$(bspc query -N -d focused | wc -l)
+    
+    if [ "$window_count" -eq 1 ]; then
+        # Single window - switch to monocle layout
+        bspc desktop -l monocle
+    elif [ "$window_count" -gt 1 ]; then
+        # Multiple windows - switch back to tiled
+        bspc desktop -l tiled
+    fi
+done

@@ -10,6 +10,7 @@ use iron_core::module::ModuleState;
 use iron_core::services::module::ModuleService;
 use serde::Serialize;
 use std::io::{self, Write};
+use std::time::Instant;
 
 #[derive(Serialize)]
 struct ModuleInfo {
@@ -24,6 +25,7 @@ struct ModuleInfo {
 
 /// Execute module command
 pub fn execute(ctx: &AppContext, action: ModuleAction) -> Result<()> {
+    let start = Instant::now();
     require_init(ctx)?;
 
     match action {
@@ -31,8 +33,8 @@ pub fn execute(ctx: &AppContext, action: ModuleAction) -> Result<()> {
             enabled,
             disabled,
             kind,
-        } => list(ctx, enabled, disabled, kind),
-        ModuleAction::Show { id } => show(ctx, &id),
+        } => list(ctx, enabled, disabled, kind, start),
+        ModuleAction::Show { id } => show(ctx, &id, start),
         ModuleAction::Enable { id, force } => enable(ctx, &id, force),
         ModuleAction::Disable { id, yes } => disable(ctx, &id, yes),
         ModuleAction::Create {
@@ -49,6 +51,7 @@ fn list(
     enabled_only: bool,
     disabled_only: bool,
     kind_filter: Option<String>,
+    start: Instant,
 ) -> Result<()> {
     let output = &ctx.output;
     let module_service = ctx.module_service();
@@ -110,7 +113,7 @@ fn list(
                 }
             })
             .collect();
-        output.json(&module_info);
+        output.json_envelope("module.list", &module_info, start);
         return Ok(());
     }
 
@@ -150,7 +153,7 @@ fn list(
 }
 
 /// Show module details
-fn show(ctx: &AppContext, id: &str) -> Result<()> {
+fn show(ctx: &AppContext, id: &str, start: Instant) -> Result<()> {
     let output = &ctx.output;
     let module_service = ctx.module_service();
 
@@ -167,7 +170,7 @@ fn show(ctx: &AppContext, id: &str) -> Result<()> {
             packages: module.packages.len() + module.aur_packages.len(),
             dotfiles: module.dotfiles.len(),
         };
-        output.json(&info);
+        output.json_envelope("module.show", &info, start);
         return Ok(());
     }
 
@@ -262,7 +265,10 @@ fn enable(ctx: &AppContext, id: &str, force: bool) -> Result<()> {
     output.success(&format!("Module '{}' enabled", id));
 
     output.summary(&[
-        ("packages", module.packages.len() + module.aur_packages.len()),
+        (
+            "packages",
+            module.packages.len() + module.aur_packages.len(),
+        ),
         ("configs linked", module.dotfiles.len()),
     ]);
 
@@ -305,9 +311,7 @@ fn disable(ctx: &AppContext, id: &str, yes: bool) -> Result<()> {
 
     output.success(&format!("Module '{}' disabled", id));
 
-    output.summary(&[
-        ("configs unlinked", module.dotfiles.len()),
-    ]);
+    output.summary(&[("configs unlinked", module.dotfiles.len())]);
 
     Ok(())
 }

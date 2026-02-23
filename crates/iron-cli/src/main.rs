@@ -6,6 +6,7 @@ mod cli;
 mod commands;
 mod context;
 mod output;
+pub mod progress;
 
 use anyhow::Result;
 use clap::{CommandFactory, Parser};
@@ -26,12 +27,19 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Create application context
-    let ctx = AppContext::new(&cli.root, cli.format, cli.verbose, cli.quiet, cli.no_color, cli.explain)?;
+    let ctx = AppContext::new(
+        &cli.root,
+        cli.format,
+        cli.verbose,
+        cli.quiet,
+        cli.no_color,
+        cli.explain,
+    )?;
 
     // Execute command
     match cli.command {
         Some(Commands::Init { id, name, force }) => commands::init::execute(&ctx, id, name, force),
-        Some(Commands::Status) => commands::status::execute(&ctx),
+        Some(Commands::Status { full, dry_run }) => commands::status::execute(&ctx, full, dry_run),
         Some(Commands::Update {
             dry_run,
             force,
@@ -56,6 +64,60 @@ fn main() -> Result<()> {
         Some(Commands::Host { action }) => commands::host::execute(&ctx, action),
         Some(Commands::Sync { action }) => commands::sync::execute(&ctx, action),
         Some(Commands::Secrets { action }) => commands::secrets::execute(&ctx, action),
+        Some(Commands::Apply {
+            dry_run,
+            module,
+            yes,
+            prune,
+            prune_packages,
+            prune_services,
+            prune_dotfiles,
+            force_hooks,
+        }) => commands::apply::execute(
+            &ctx,
+            dry_run,
+            module.as_deref(),
+            yes,
+            prune,
+            prune_packages,
+            prune_services,
+            prune_dotfiles,
+            force_hooks,
+        ),
+        Some(Commands::Diff {
+            adopt,
+            correct,
+            dry_run,
+            yes,
+        }) => commands::diff::execute(&ctx, adopt, correct, dry_run, yes),
+        Some(Commands::Snapshot { action }) => commands::snapshot::execute(&ctx, action),
+        Some(Commands::Rollback {
+            list,
+            module,
+            dry_run,
+            yes,
+        }) => commands::snapshot::execute_rollback(&ctx, list, module.as_deref(), dry_run, yes),
+        Some(Commands::Plan {
+            module,
+            dry_run,
+            prune,
+            prune_packages,
+            prune_services,
+            prune_dotfiles,
+        }) => commands::plan::execute(
+            &ctx,
+            module.as_deref(),
+            dry_run,
+            prune,
+            prune_packages,
+            prune_services,
+            prune_dotfiles,
+        ),
+        Some(Commands::History { ref action, limit }) => {
+            commands::history::execute(&ctx, action, limit)
+        }
+        Some(Commands::Security) => commands::security::execute(&ctx),
+        Some(Commands::Validate) => commands::validate::execute(&ctx),
         Some(Commands::Doctor) => commands::doctor::execute(&ctx),
         Some(Commands::Scan) => commands::scan::execute(&ctx),
         Some(Commands::Clean {
@@ -65,7 +127,19 @@ fn main() -> Result<()> {
             journal,
             logs,
             all,
-        }) => commands::clean::execute(&ctx, orphans, cache, symlinks, journal, logs, all),
+            dry_run,
+        }) => commands::clean::execute(
+            &ctx,
+            commands::clean::CleanOptions {
+                orphans,
+                cache,
+                symlinks,
+                journal,
+                logs,
+                all,
+                dry_run,
+            },
+        ),
         Some(Commands::Recover {
             export,
             import,

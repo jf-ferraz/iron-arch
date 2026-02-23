@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Auto-lock script - locks screen when monitors turn off from idle
+# Uses xprintidle to detect idle time and matches it against DPMS settings
+
+# Get DPMS timeout in milliseconds (convert from seconds)
+# DPMS timeout in seconds from xset q
+DPMS_STANDBY=$(xset q | grep "Standby:" | awk '{print $2}')
+DPMS_SUSPEND=$(xset q | grep "Suspend:" | awk '{print $2}')
+DPMS_OFF=$(xset q | grep "Off:" | awk '{print $2}' | head -1)
+
+# Use the shortest timeout (Off is typically the most restrictive)
+# If values are not numeric or empty, default to 600 seconds (10 minutes)
+if [[ ! "$DPMS_OFF" =~ ^[0-9]+$ ]]; then
+    DPMS_OFF=600
+fi
+
+# Convert to milliseconds
+IDLE_TIMEOUT=$((DPMS_OFF * 1000))
+
+# Minimum idle time before checking (5 minutes = 300000 ms)
+MIN_IDLE=300000
+
+# Check interval in seconds
+CHECK_INTERVAL=5
+
+while true; do
+    # Get current idle time in milliseconds
+    IDLE_TIME=$(xprintidle 2>/dev/null)
+    
+    if [[ -n "$IDLE_TIME" && "$IDLE_TIME" =~ ^[0-9]+$ ]]; then
+        # Lock if idle time exceeds the DPMS timeout
+        if [[ $IDLE_TIME -ge $IDLE_TIMEOUT ]]; then
+            # Check if already locked (betterlockscreen creates a lock file)
+            if ! pgrep -x "i3lock" > /dev/null; then
+                betterlockscreen --lock
+            fi
+        fi
+    fi
+    
+    sleep $CHECK_INTERVAL
+done

@@ -13,7 +13,7 @@ NC='\033[0m' # No Color
 
 # Get the arch-config directory
 ARCH_CONFIG_DIR="${ARCH_CONFIG_DIR:-/home/don/.config/arch-config}"
-SUNSHINE_MODULE="${ARCH_CONFIG_DIR}/modules/gaming/sunshine.yaml"
+SUNSHINE_MODULE="${ARCH_CONFIG_DIR}/modules/gaming/sunshine.lua"
 
 echo -e "${BLUE}Setting up Tailscale for Sunshine remote gaming...${NC}"
 echo ""
@@ -25,20 +25,13 @@ if ! command -v tailscale &> /dev/null; then
     exit 1
 fi
 
-# Start and enable Tailscale service
+# Start Tailscale service (enable is handled declaratively in the Lua module)
 echo -e "${BLUE}Starting Tailscale service...${NC}"
 if ! systemctl is-active --quiet tailscaled; then
     sudo systemctl start tailscaled
     echo -e "${GREEN}✓ Tailscale service started${NC}"
 else
     echo -e "${YELLOW}Tailscale service already running${NC}"
-fi
-
-if ! systemctl is-enabled --quiet tailscaled; then
-    sudo systemctl enable tailscaled
-    echo -e "${GREEN}✓ Tailscale service enabled on boot${NC}"
-else
-    echo -e "${YELLOW}Tailscale service already enabled${NC}"
 fi
 
 echo ""
@@ -75,16 +68,11 @@ fi
 echo -e "${GREEN}✓ Tailscale IP: ${TAILSCALE_IP}${NC}"
 echo ""
 
-# Update the sunshine.yaml file with the Tailscale IP
-echo -e "${BLUE}Updating sunshine.yaml with Tailscale IP...${NC}"
-if [ -f "$SUNSHINE_MODULE" ]; then
-    # Use sed to update the tailscale_ip field
-    sed -i "s|^tailscale_ip:.*|tailscale_ip: \"${TAILSCALE_IP}\"|" "$SUNSHINE_MODULE"
-    echo -e "${GREEN}✓ Tailscale IP saved to ${SUNSHINE_MODULE}${NC}"
-else
-    echo -e "${YELLOW}Warning: Could not find ${SUNSHINE_MODULE}${NC}"
-    echo "Tailscale IP: ${TAILSCALE_IP}"
-fi
+# Display the Tailscale IP
+echo -e "${BLUE}Tailscale IP for this host:${NC} ${GREEN}${TAILSCALE_IP}${NC}"
+echo ""
+echo -e "${YELLOW}Note:${NC} The tailscale_ip in the module metadata is a reference value."
+echo "The actual current IP is displayed above."
 
 echo ""
 echo -e "${GREEN}✓ Tailscale setup complete!${NC}"

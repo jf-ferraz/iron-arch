@@ -9,6 +9,7 @@ use iron_core::OperationSpan;
 use iron_core::services::update::{UpdateRisk, UpdateService};
 use serde::Serialize;
 use std::io::{self, Write};
+use std::time::Instant;
 use tracing::info;
 
 #[derive(Serialize)]
@@ -53,6 +54,7 @@ pub fn execute(
     clear_progress: bool,
     yes: bool,
 ) -> Result<()> {
+    let start = Instant::now();
     require_init(ctx)?;
 
     // Create operation span for log correlation (NFR-9)
@@ -71,7 +73,7 @@ pub fn execute(
 
     // Handle --status flag (FR-5.10)
     if status {
-        return show_progress_status(ctx, &update_service);
+        return show_progress_status(ctx, &update_service, start);
     }
 
     // Handle --clear-progress flag (FR-5.10)
@@ -254,7 +256,7 @@ pub fn execute(
                 .collect(),
             can_proceed,
         };
-        output.json(&preview);
+        output.json_envelope("update", &preview, start);
         if dry_run {
             return Ok(());
         }
@@ -295,6 +297,14 @@ pub fn execute(
     let create_snapshot = !no_snapshot && plan.snapshot_recommended;
     if create_snapshot {
         output.info("Creating system snapshot...");
+    }
+
+    // F2-008: Auto-snapshot (iron-level) before update
+    {
+        let snapshot_svc = ctx.snapshot_service();
+        use iron_core::services::snapshot_service::SnapshotService;
+        let _ = snapshot_svc.create_auto("pre-update");
+        let _ = snapshot_svc.prune_auto(iron_core::services::snapshot_service::DEFAULT_AUTO_KEEP);
     }
 
     output.info("Running system update with progress tracking...");
@@ -343,7 +353,11 @@ pub fn execute(
 }
 
 /// Show update progress status (FR-5.10)
-fn show_progress_status(ctx: &AppContext, update_service: &impl UpdateService) -> Result<()> {
+fn show_progress_status(
+    ctx: &AppContext,
+    update_service: &impl UpdateService,
+    start: Instant,
+) -> Result<()> {
     let output = &ctx.output;
 
     if let Some(progress) = update_service.get_progress() {
@@ -365,7 +379,7 @@ fn show_progress_status(ctx: &AppContext, update_service: &impl UpdateService) -
                 phase: phase.clone(),
                 snapshot_id: progress.snapshot_id.clone(),
             };
-            output.json(&status);
+            output.json_envelope("update.status", &status, start);
             return Ok(());
         }
 
@@ -424,7 +438,7 @@ fn show_progress_status(ctx: &AppContext, update_service: &impl UpdateService) -
                 phase: "None".to_string(),
                 snapshot_id: None,
             };
-            output.json(&status);
+            output.json_envelope("update.status", &status, start);
             return Ok(());
         }
 

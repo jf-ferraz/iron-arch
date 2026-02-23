@@ -388,9 +388,10 @@ impl BundleService for DefaultBundleService {
 
         // Check if already active
         if let Some(active_id) = self.state_manager.active_bundle(&host_id)
-            && active_id == id {
-                return Err(StateError::BundleAlreadyActive { id: id.to_string() }.into());
-            }
+            && active_id == id
+        {
+            return Err(StateError::BundleAlreadyActive { id: id.to_string() }.into());
+        }
 
         // Block activation if conflicts with currently active bundles
         let conflicts = self.check_conflicts(id)?;
@@ -465,12 +466,7 @@ impl BundleService for DefaultBundleService {
         // Deactivate first (unlink dotfiles, disable services, archive)
         // If not currently active, we still want to remove packages
         let host_id = self.current_host()?;
-        if self
-            .state_manager
-            .active_bundle(&host_id)
-            .as_deref()
-            == Some(id)
-        {
+        if self.state_manager.active_bundle(&host_id).as_deref() == Some(id) {
             self.deactivate(id)?;
         }
 
@@ -478,7 +474,12 @@ impl BundleService for DefaultBundleService {
         self.remove_packages(&bundle)?;
 
         // Clean up dormant archive if it exists
-        let dormant = self.bundles_dir.parent().unwrap_or(&self.bundles_dir).join("dormant").join(id);
+        let dormant = self
+            .bundles_dir
+            .parent()
+            .unwrap_or(&self.bundles_dir)
+            .join("dormant")
+            .join(id);
         if dormant.exists() {
             fs::remove_dir_all(&dormant).ok();
         }

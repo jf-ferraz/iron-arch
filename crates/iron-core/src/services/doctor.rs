@@ -3,10 +3,10 @@
 //! Provides a shared health-check service consumed by both TUI and CLI.
 //! Implements FR-10.1 through FR-10.8 health diagnostics.
 
+use crate::IronResult;
 use crate::availability::ServiceAvailability;
 use crate::services::host::HostService;
 use crate::snapshot::SnapshotBackend;
-use crate::IronResult;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -476,8 +476,7 @@ impl DefaultDoctorService {
                         && !link_target.exists()
                     {
                         broken += 1;
-                        broken_details
-                            .push(format!("broken: {}", target.display()));
+                        broken_details.push(format!("broken: {}", target.display()));
                     }
                 }
             }
@@ -531,7 +530,10 @@ impl DefaultDoctorService {
                 name: "security_modules".to_string(),
                 status: CheckStatus::Warn,
                 message: "No security modules found".to_string(),
-                details: vec!["Consider enabling security modules (ufw, kernel-hardening, fail2ban)".to_string()],
+                details: vec![
+                    "Consider enabling security modules (ufw, kernel-hardening, fail2ban)"
+                        .to_string(),
+                ],
             };
         }
 
@@ -582,8 +584,7 @@ impl DefaultDoctorService {
             .arg("status")
             .output()
             .map(|o| {
-                o.status.success()
-                    && String::from_utf8_lossy(&o.stdout).contains("Status: active")
+                o.status.success() && String::from_utf8_lossy(&o.stdout).contains("Status: active")
             })
             .unwrap_or(false);
 
@@ -661,8 +662,8 @@ impl DefaultDoctorService {
 
             if result == 0 {
                 let stat = unsafe { stat.assume_init() };
-                let total_bytes = stat.f_blocks as u64 * stat.f_frsize as u64;
-                let free_bytes = stat.f_bavail as u64 * stat.f_frsize as u64;
+                let total_bytes = stat.f_blocks * stat.f_frsize;
+                let free_bytes = stat.f_bavail * stat.f_frsize;
 
                 if total_bytes == 0 {
                     return HealthCheck {
@@ -951,7 +952,7 @@ mod tests {
         let svc = DefaultDoctorService::new(create_test_config(tmp.path()));
         let report = svc.check_all().unwrap();
 
-        assert_eq!(report.checks.len(), 12);
+        assert_eq!(report.checks.len(), 13);
         assert!(!report.timestamp.is_empty());
         // At least state_file and directories should pass
         assert!(

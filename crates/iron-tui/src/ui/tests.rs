@@ -58,6 +58,10 @@ fn create_test_module(id: &str, description: &str, packages: Vec<&str>) -> Modul
         status_check: None,
         priority: None,
         requires_root: false,
+        security_points: 0,
+        hook_behavior: iron_core::module::HookBehavior::default(),
+        dotfiles_sync: false,
+        dotfiles_sync_target: None,
     }
 }
 
@@ -1317,6 +1321,10 @@ fn test_render_host_selection_with_hosts() {
             install_params: None,
             installed_bundles: vec![],
             active_bundle: None,
+            bundle: None,
+            profile: None,
+            extra_modules: vec![],
+            variables: std::collections::HashMap::new(),
         },
         Host {
             id: "laptop".to_string(),
@@ -1326,6 +1334,10 @@ fn test_render_host_selection_with_hosts() {
             install_params: None,
             installed_bundles: vec![],
             active_bundle: None,
+            bundle: None,
+            profile: None,
+            extra_modules: vec![],
+            variables: std::collections::HashMap::new(),
         },
     ];
     app.current_host = Some("desktop".to_string());

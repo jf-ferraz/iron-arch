@@ -1,18 +1,23 @@
 //! Iron Status Command
 //!
 //! Shows system status overview.
+//! F3-004: Enhanced with package/service/dotfile counts, security level,
+//! --full flag for ActualState scan, --dry-run for testing.
 
 use crate::context::{AppContext, require_init};
 use crate::output::{Output, StatusBadge};
 use anyhow::Result;
 use iron_core::availability::{AvailabilityStatus, ServiceAvailability};
+use iron_core::services::apply::resolve_desired_state;
 use iron_core::services::bundle::BundleService;
 use iron_core::services::host::HostService;
 use iron_core::services::module::ModuleService;
 use iron_core::services::profile::ProfileService;
 use iron_core::services::secrets::SecretsService;
+use iron_core::services::security::SecurityService;
 use iron_core::services::sync::{SyncService, SyncStatus};
 use serde::Serialize;
+use std::time::Instant;
 
 /// Status data for JSON output
 #[derive(Serialize)]
@@ -21,9 +26,15 @@ struct StatusData {
     bundle: Option<BundleStatus>,
     profile: Option<ProfileStatus>,
     modules: ModulesStatus,
+    #[serde(default)]
+    packages: PackagesStatus,
+    #[serde(default)]
+    security: Option<SecurityStatus>,
     sync: SyncStatusData,
     secrets: SecretsStatusData,
     services: ServicesStatusData,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    drift: Option<DriftSummary>,
 }
 
 #[derive(Serialize)]
@@ -52,6 +63,31 @@ struct ModulesStatus {
     enabled: usize,
 }
 
+#[derive(Serialize, Default)]
+struct PackagesStatus {
+    declared: usize,
+    declared_aur: usize,
+    #[serde(default)]
+    services_declared: usize,
+    #[serde(default)]
+    dotfiles_declared: usize,
+    #[serde(default)]
+    managed_packages: usize,
+    #[serde(default)]
+    managed_services: usize,
+    #[serde(default)]
+    managed_dotfiles: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    last_apply: Option<String>,
+}
+
+#[derive(Serialize)]
+struct SecurityStatus {
+    level: String,
+    score: u32,
+    max_score: u32,
+}
+
 #[derive(Serialize)]
 struct SyncStatusData {
     status: String,
@@ -77,6 +113,15 @@ struct ServicesStatusData {
     sync: ServiceStatusData,
     snapshots: ServiceStatusData,
     aur: ServiceStatusData,
+}
+
+#[derive(Serialize)]
+struct DriftSummary {
+    total_drifts: usize,
+    packages_missing: usize,
+    packages_extra: usize,
+    configs_drifted: usize,
+    services_drifted: usize,
 }
 
 /// Format service status for display
@@ -116,7 +161,8 @@ fn availability_to_service_data(name: &str, status: &AvailabilityStatus) -> Serv
 }
 
 /// Execute status command
-pub fn execute(ctx: &AppContext) -> Result<()> {
+pub fn execute(ctx: &AppContext, full: bool, dry_run: bool) -> Result<()> {
+    let start = Instant::now();
     require_init(ctx)?;
 
     let output = &ctx.output;
@@ -141,6 +187,48 @@ pub fn execute(ctx: &AppContext) -> Result<()> {
     let all_modules = module_service.discover().unwrap_or_default();
     let enabled_modules = module_service.list_enabled().unwrap_or_default();
 
+    // Resolve desired state for package/service/dotfile counts
+    let desired = host
+        .as_ref()
+        .and_then(|h| resolve_desired_state(&ctx.root, h).ok());
+
+    // Managed resource counts from state tracking
+    let managed_pkg_count = ctx.state.managed_packages().len();
+    let managed_svc_count = ctx.state.managed_services().len();
+    let managed_dot_count = ctx.state.managed_dotfiles().len();
+    let last_apply_ts = ctx.state.state().last_apply.map(|ts| ts.to_rfc3339());
+
+    let packages_status = desired
+        .as_ref()
+        .map(|d| PackagesStatus {
+            declared: d.packages.len(),
+            declared_aur: d.aur_packages.len(),
+            services_declared: d.services.len(),
+            dotfiles_declared: d.dotfiles.len(),
+            managed_packages: managed_pkg_count,
+            managed_services: managed_svc_count,
+            managed_dotfiles: managed_dot_count,
+            last_apply: last_apply_ts.clone(),
+        })
+        .unwrap_or_else(|| PackagesStatus {
+            managed_packages: managed_pkg_count,
+            managed_services: managed_svc_count,
+            managed_dotfiles: managed_dot_count,
+            last_apply: last_apply_ts.clone(),
+            ..Default::default()
+        });
+
+    // Security level
+    let security_status = ctx
+        .security_service()
+        .calculate()
+        .ok()
+        .map(|r| SecurityStatus {
+            level: r.level.label().to_string(),
+            score: r.score,
+            max_score: r.max_score,
+        });
+
     // Get sync status
     let sync_info = sync_service.status().ok();
 
@@ -149,6 +237,24 @@ pub fn execute(ctx: &AppContext) -> Result<()> {
 
     // Check service availability (NFR-11)
     let availability = ServiceAvailability::check();
+
+    // Full scan for drift (only with --full and not --dry-run)
+    let drift_summary = if full && !dry_run {
+        let drift_service = ctx.drift_service();
+        use iron_core::services::drift::DriftService;
+        drift_service
+            .detect(&host_id)
+            .ok()
+            .map(|report| DriftSummary {
+                total_drifts: report.summary.total_drifts,
+                packages_missing: report.summary.packages_missing,
+                packages_extra: report.summary.packages_extra,
+                configs_drifted: report.summary.configs_drifted,
+                services_drifted: report.summary.services_drifted,
+            })
+    } else {
+        None
+    };
 
     if output.is_json() {
         let data = StatusData {
@@ -170,6 +276,8 @@ pub fn execute(ctx: &AppContext) -> Result<()> {
                 total: all_modules.len(),
                 enabled: enabled_modules.len(),
             },
+            packages: packages_status,
+            security: security_status,
             sync: SyncStatusData {
                 status: sync_info
                     .as_ref()
@@ -190,8 +298,9 @@ pub fn execute(ctx: &AppContext) -> Result<()> {
                 snapshots: availability_to_service_data("Snapshots", &availability.snapshots),
                 aur: availability_to_service_data("AUR Helper", &availability.aur),
             },
+            drift: drift_summary,
         };
-        output.json(&data);
+        output.json_envelope("status", &data, start);
         return Ok(());
     }
 
@@ -234,6 +343,39 @@ pub fn execute(ctx: &AppContext) -> Result<()> {
     output.kv("Total", all_modules.len());
     output.kv("Enabled", enabled_modules.len());
 
+    // Package/service/dotfile counts (from DesiredState + managed tracking)
+    if let Some(d) = &desired {
+        output.subheader("Declared State");
+        output.kv("Packages (declared)", d.packages.len());
+        if !d.aur_packages.is_empty() {
+            output.kv("AUR Packages", d.aur_packages.len());
+        }
+        output.kv("Services", d.services.len());
+        output.kv("Dotfiles", d.dotfiles.len());
+    }
+
+    // Managed resource counts
+    if managed_pkg_count > 0 || managed_svc_count > 0 || managed_dot_count > 0 {
+        output.subheader("Managed Resources");
+        output.kv("Packages", managed_pkg_count);
+        output.kv("Services", managed_svc_count);
+        output.kv("Dotfiles", managed_dot_count);
+    }
+
+    // Last apply timestamp
+    if let Some(ref ts) = last_apply_ts {
+        output.kv("Last Apply", ts);
+    }
+
+    // Security level
+    if let Some(sec) = &security_status {
+        output.subheader("Security");
+        output.kv(
+            "Level",
+            format!("{} ({}/{} pts)", sec.level, sec.score, sec.max_score),
+        );
+    }
+
     // Sync status
     output.subheader("Sync");
     if let Some(info) = &sync_info {
@@ -262,6 +404,32 @@ pub fn execute(ctx: &AppContext) -> Result<()> {
         output.list_item_status(&format!("{:?}", status), badge);
     } else {
         output.list_item_status("Unknown", StatusBadge::Inactive);
+    }
+
+    // Drift summary (--full only)
+    if let Some(drift) = &drift_summary {
+        output.subheader("Drift");
+        if drift.total_drifts == 0 {
+            output.list_item_status("No drift detected", StatusBadge::Ok);
+        } else {
+            output.list_item_status(
+                &format!(
+                    "{} item(s) drifted -- run `iron diff` for details",
+                    drift.total_drifts
+                ),
+                StatusBadge::Warning,
+            );
+            output.verbose(&format!(
+                "  {} pkg missing, {} pkg extra, {} config, {} service",
+                drift.packages_missing,
+                drift.packages_extra,
+                drift.configs_drifted,
+                drift.services_drifted,
+            ));
+        }
+    } else if full && dry_run {
+        output.subheader("Drift");
+        output.info("[DRY RUN] Drift scan skipped.");
     }
 
     // Services availability (NFR-11: Graceful degradation)

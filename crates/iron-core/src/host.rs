@@ -1,6 +1,7 @@
 //! Host management - Hardware catalog and system configuration
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::Path;
 
 /// Represents a physical or virtual machine
@@ -26,6 +27,23 @@ pub struct Host {
 
     /// Currently active bundle
     pub active_bundle: Option<String>,
+
+    // ── F1-001: Desired-state fields (source of truth) ──────────────
+    /// F1-001: Declared bundle for this host (desired state)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bundle: Option<String>,
+
+    /// F1-001: Declared profile for this host (desired state)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<String>,
+
+    /// F1-001: Extra modules beyond what the profile includes
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extra_modules: Vec<String>,
+
+    /// F1-001: Template variables for this host
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub variables: HashMap<String, String>,
 }
 
 /// Hardware specifications for a host
@@ -41,6 +59,7 @@ pub struct HardwareSpec {
     pub ram_mb: Option<u64>,
 
     /// Monitor configurations
+    #[serde(default)]
     pub monitors: Vec<MonitorConfig>,
 
     /// Machine chassis type
@@ -186,6 +205,10 @@ mod tests {
             }),
             installed_bundles: vec!["hyprland".to_string(), "niri".to_string()],
             active_bundle: Some("hyprland".to_string()),
+            bundle: None,
+            profile: None,
+            extra_modules: vec![],
+            variables: HashMap::new(),
         }
     }
 
@@ -305,12 +328,20 @@ mod tests {
             install_params: None,
             installed_bundles: vec![],
             active_bundle: None,
+            bundle: None,
+            profile: None,
+            extra_modules: vec![],
+            variables: HashMap::new(),
         };
 
         assert!(minimal.description.is_none());
         assert!(minimal.hardware.cpu.is_none());
         assert!(minimal.install_params.is_none());
         assert!(minimal.active_bundle.is_none());
+        assert!(minimal.bundle.is_none());
+        assert!(minimal.profile.is_none());
+        assert!(minimal.extra_modules.is_empty());
+        assert!(minimal.variables.is_empty());
     }
 
     #[test]
@@ -335,5 +366,90 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let result = Host::load(temp_dir.path());
         assert!(result.is_err());
+    }
+
+    // ── F1-001: Desired-state fields tests ──────────────────────────
+
+    #[test]
+    fn test_host_backward_compat_no_new_fields() {
+        let toml_str = r#"
+            id = "legacy"
+            name = "Legacy Host"
+            installed_bundles = []
+            [hardware]
+        "#;
+        let host: Host = toml::from_str(toml_str).unwrap();
+        assert!(host.bundle.is_none());
+        assert!(host.profile.is_none());
+        assert!(host.extra_modules.is_empty());
+        assert!(host.variables.is_empty());
+    }
+
+    #[test]
+    fn test_host_roundtrip_with_desired_state() {
+        let mut host = create_test_host();
+        host.bundle = Some("hyprland".to_string());
+        host.profile = Some("developer".to_string());
+        host.extra_modules = vec!["gaming".to_string(), "vm-tools".to_string()];
+        host.variables = HashMap::from([
+            ("terminal".to_string(), "kitty".to_string()),
+            ("primary_monitor".to_string(), "DP-1".to_string()),
+        ]);
+
+        let serialized = toml::to_string_pretty(&host).unwrap();
+        let deserialized: Host = toml::from_str(&serialized).unwrap();
+
+        assert_eq!(deserialized.bundle, Some("hyprland".to_string()));
+        assert_eq!(deserialized.profile, Some("developer".to_string()));
+        assert_eq!(deserialized.extra_modules, vec!["gaming", "vm-tools"]);
+        assert_eq!(
+            deserialized.variables.get("terminal"),
+            Some(&"kitty".to_string())
+        );
+    }
+
+    #[test]
+    fn test_host_desired_state_save_load() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut host = create_test_host();
+        host.bundle = Some("niri".to_string());
+        host.profile = Some("minimal".to_string());
+        host.extra_modules = vec!["ssh-config".to_string()];
+        host.variables = HashMap::from([("browser".to_string(), "firefox".to_string())]);
+
+        host.save(temp_dir.path()).unwrap();
+        let loaded = Host::load(temp_dir.path()).unwrap();
+
+        assert_eq!(loaded.bundle, Some("niri".to_string()));
+        assert_eq!(loaded.profile, Some("minimal".to_string()));
+        assert_eq!(loaded.extra_modules, vec!["ssh-config"]);
+        assert_eq!(
+            loaded.variables.get("browser"),
+            Some(&"firefox".to_string())
+        );
+    }
+
+    #[test]
+    fn test_host_skip_serializing_empty_fields() {
+        let host = create_test_host(); // bundle/profile/extra_modules/variables are all empty/None
+        let serialized = toml::to_string_pretty(&host).unwrap();
+        // Empty optional/vec/map fields should NOT appear in TOML
+        // Use line-start matching to avoid matching 'active_bundle'
+        assert!(
+            !serialized.lines().any(|l| l.starts_with("bundle ")),
+            "bundle field should be skipped when None"
+        );
+        assert!(
+            !serialized.lines().any(|l| l.starts_with("profile ")),
+            "profile field should be skipped when None"
+        );
+        assert!(
+            !serialized.contains("extra_modules"),
+            "extra_modules should be skipped when empty"
+        );
+        assert!(
+            !serialized.contains("[variables]"),
+            "variables should be skipped when empty"
+        );
     }
 }

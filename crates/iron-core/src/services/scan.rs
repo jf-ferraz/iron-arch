@@ -125,11 +125,7 @@ const KNOWN_HOME_DOTFILES: &[(&str, &str)] = &[
 /// System scan service — discovers existing system state.
 pub trait ScanService {
     /// Run a full system scan, comparing against the provided bundles and modules.
-    fn scan(
-        &self,
-        bundles: &[Bundle],
-        modules: &[Module],
-    ) -> IronResult<ScanReport>;
+    fn scan(&self, bundles: &[Bundle], modules: &[Module]) -> IronResult<ScanReport>;
 }
 
 /// Default implementation of `ScanService`.
@@ -196,11 +192,7 @@ impl DefaultScanService {
     }
 
     /// Find packages from bundle/module definitions that are already installed.
-    fn find_installed_overlap(
-        &self,
-        bundles: &[Bundle],
-        modules: &[Module],
-    ) -> Vec<String> {
+    fn find_installed_overlap(&self, bundles: &[Bundle], modules: &[Module]) -> Vec<String> {
         // Collect all managed package names
         let mut managed: std::collections::HashSet<String> = std::collections::HashSet::new();
         for b in bundles {
@@ -326,11 +318,7 @@ impl DefaultScanService {
 }
 
 impl ScanService for DefaultScanService {
-    fn scan(
-        &self,
-        bundles: &[Bundle],
-        modules: &[Module],
-    ) -> IronResult<ScanReport> {
+    fn scan(&self, bundles: &[Bundle], modules: &[Module]) -> IronResult<ScanReport> {
         let existing_configs = self.discover_configs();
         let installed_packages = self.find_installed_overlap(bundles, modules);
         let potential_conflicts = self.detect_conflicts(&existing_configs, modules);
@@ -512,6 +500,10 @@ mod tests {
             status_check: None,
             priority: None,
             requires_root: false,
+            security_points: 0,
+            hook_behavior: crate::module::HookBehavior::default(),
+            dotfiles_sync: false,
+            dotfiles_sync_target: None,
         }];
 
         let svc = setup_scan_service(tmp.path());
@@ -551,6 +543,10 @@ mod tests {
             status_check: None,
             priority: None,
             requires_root: false,
+            security_points: 0,
+            hook_behavior: crate::module::HookBehavior::default(),
+            dotfiles_sync: false,
+            dotfiles_sync_target: None,
         }];
 
         let svc = setup_scan_service(Path::new("/home/user"));
@@ -589,6 +585,10 @@ mod tests {
             status_check: None,
             priority: None,
             requires_root: false,
+            security_points: 0,
+            hook_behavior: crate::module::HookBehavior::default(),
+            dotfiles_sync: false,
+            dotfiles_sync_target: None,
         }];
 
         let svc = setup_scan_service(Path::new("/home/user"));
@@ -600,8 +600,7 @@ mod tests {
 
     #[test]
     fn test_recommendations_clean_system() {
-        let recs =
-            DefaultScanService::generate_recommendations(&[], &[], 0);
+        let recs = DefaultScanService::generate_recommendations(&[], &[], 0);
         assert_eq!(recs.len(), 1);
         assert!(recs[0].contains("Clean system"));
     }
@@ -636,7 +635,12 @@ mod tests {
         assert!(report.installed_packages.is_empty());
         assert!(report.potential_conflicts.is_empty());
         assert_eq!(report.summary.configs_scanned, 0);
-        assert!(report.recommendations.iter().any(|r| r.contains("Clean system")));
+        assert!(
+            report
+                .recommendations
+                .iter()
+                .any(|r| r.contains("Clean system"))
+        );
     }
 
     #[test]
@@ -649,6 +653,11 @@ mod tests {
         let report = svc.scan(&[], &[]).unwrap();
 
         assert_eq!(report.summary.configs_scanned, 2);
-        assert!(report.recommendations.iter().any(|r| r.contains("unmanaged")));
+        assert!(
+            report
+                .recommendations
+                .iter()
+                .any(|r| r.contains("unmanaged"))
+        );
     }
 }

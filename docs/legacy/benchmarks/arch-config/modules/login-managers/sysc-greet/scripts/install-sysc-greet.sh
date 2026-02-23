@@ -28,9 +28,9 @@ CONFIG_DIR="$MODULE_DIR/config"
 echo -e "${BLUE}Applying custom sysc-greet configuration...${NC}"
 
 # Backup existing configs if they exist
-if [ -f /etc/greetd/hyprland-greeter-config.conf ]; then
-    echo -e "${YELLOW}Backing up existing hyprland-greeter-config.conf${NC}"
-    cp /etc/greetd/hyprland-greeter-config.conf /etc/greetd/hyprland-greeter-config.conf.backup
+if [ -f /etc/greetd/niri-greeter-config.kdl ]; then
+    echo -e "${YELLOW}Backing up existing niri-greeter-config.kdl${NC}"
+    cp /etc/greetd/niri-greeter-config.kdl /etc/greetd/niri-greeter-config.kdl.backup
 fi
 
 if [ -f /etc/greetd/config.toml ]; then
@@ -45,10 +45,10 @@ fi
 
 # Copy configuration files
 echo -e "${BLUE}Installing greetd configurations...${NC}"
-if [ -f "$CONFIG_DIR/hyprland-greeter-config.conf" ]; then
-    cp "$CONFIG_DIR/hyprland-greeter-config.conf" /etc/greetd/hyprland-greeter-config.conf
-    chmod 644 /etc/greetd/hyprland-greeter-config.conf
-    echo -e "${GREEN}✓ Installed hyprland-greeter-config.conf${NC}"
+if [ -f "$CONFIG_DIR/niri-greeter-config.kdl" ]; then
+    cp "$CONFIG_DIR/niri-greeter-config.kdl" /etc/greetd/niri-greeter-config.kdl
+    chmod 644 /etc/greetd/niri-greeter-config.kdl
+    echo -e "${GREEN}✓ Installed niri-greeter-config.kdl${NC}"
 fi
 
 if [ -f "$CONFIG_DIR/config.toml" ]; then
@@ -75,10 +75,10 @@ else
     echo -e "${YELLOW}  Using default sysc-greet wallpaper${NC}"
 fi
 
-# Update hyprland-greeter-config.conf to use catppuccin theme
+# Update niri-greeter-config.kdl to use catppuccin theme
 echo -e "${BLUE}Configuring catppuccin theme...${NC}"
-if grep -q "sysc-greet" /etc/greetd/hyprland-greeter-config.conf; then
-    sed -i 's|/usr/local/bin/sysc-greet|/usr/local/bin/sysc-greet -theme catppuccin|g' /etc/greetd/hyprland-greeter-config.conf
+if grep -q "sysc-greet" /etc/greetd/niri-greeter-config.kdl; then
+    sed -i 's|/usr/local/bin/sysc-greet|/usr/local/bin/sysc-greet -theme catppuccin|g' /etc/greetd/niri-greeter-config.kdl
     echo -e "${GREEN}✓ Theme set to catppuccin${NC}"
 fi
 

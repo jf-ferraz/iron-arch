@@ -2,6 +2,7 @@
 //!
 //! Main rendering functions for all views.
 
+mod apply;
 mod bundles;
 mod clean;
 mod config;
@@ -18,6 +19,7 @@ mod recovery;
 mod secrets;
 mod security;
 mod settings;
+mod snapshot;
 mod system_scan;
 pub mod theme;
 mod update;
@@ -32,6 +34,7 @@ use crate::widgets::{
 use ratatui::prelude::*;
 
 // Re-export for external use
+pub use apply::{render_apply, render_drift_detail};
 pub use bundles::{render_bundle_detail, render_bundles};
 pub use clean::{render_clean_system, render_cleanup_preview, render_cleanup_results};
 pub use config::render_config_manager;
@@ -48,6 +51,7 @@ pub use recovery::render_recovery;
 pub use secrets::render_secrets;
 pub use security::render_security_modules;
 pub use settings::render_settings;
+pub use snapshot::render_snapshots;
 pub use system_scan::render_system_scan;
 pub use update::{render_sync, render_update_preview};
 pub use wizard::render_setup_wizard;
@@ -98,6 +102,9 @@ pub fn render(frame: &mut Frame, app: &App) {
         View::ModuleCreator => render_module_creator(frame, layout[1], app),
         View::SystemScan => render_system_scan(frame, layout[1], app),
         View::HostSelection => render_host_selection(frame, layout[1], app),
+        View::Apply => render_apply(frame, layout[1], app),
+        View::DriftDetail => render_drift_detail(frame, layout[1], app),
+        View::Snapshots => render_snapshots(frame, layout[1], app),
     }
 
     // Render footer

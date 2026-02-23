@@ -23,6 +23,12 @@ pub trait SystemService: Send + Sync {
 
     /// Stop a running service.
     fn stop_service(&self, name: &str) -> IronResult<()>;
+
+    /// F1-013: Check if a service is enabled at boot.
+    /// Default returns false (safe for NoopSystemService and tests).
+    fn is_enabled(&self, _name: &str) -> IronResult<bool> {
+        Ok(false)
+    }
 }
 
 /// No-op system service for testing and environments without systemd.

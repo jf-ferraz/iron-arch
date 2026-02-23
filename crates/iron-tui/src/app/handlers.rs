@@ -568,6 +568,21 @@ impl App {
                     self.divergence_selected = 0;
                     true
                 }
+                // F1-010: Apply from Dashboard
+                KeyCode::Char('a') => {
+                    self.navigate(View::Apply);
+                    true
+                }
+                // F1-018: Drift detail from Dashboard
+                KeyCode::Char('D') => {
+                    self.navigate(View::DriftDetail);
+                    true
+                }
+                // F2-007: Snapshot timeline from Dashboard
+                KeyCode::Char('t') => {
+                    self.navigate(View::Snapshots);
+                    true
+                }
                 _ => false,
             },
             _ => false,
@@ -608,9 +623,9 @@ impl App {
                 self.navigate(View::SetupWizard);
                 self.init_wizard();
             }
-            KeyCode::Char('y') => self.navigate(View::Sync),        // Git sync
-            KeyCode::Char('S') => self.navigate(View::Secrets),     // Shift+S = Secrets
-            KeyCode::Char('R') => self.navigate(View::Recovery),    // Shift+R = Recovery
+            KeyCode::Char('y') => self.navigate(View::Sync), // Git sync
+            KeyCode::Char('S') => self.navigate(View::Secrets), // Shift+S = Secrets
+            KeyCode::Char('R') => self.navigate(View::Recovery), // Shift+R = Recovery
             KeyCode::Char('H') => {
                 self.load_hosts();
                 self.navigate(View::HostSelection);
@@ -786,7 +801,8 @@ impl App {
                     } else {
                         // D-010: Enforce [a-z0-9][a-z0-9-]* pattern
                         let c_lower = c.to_ascii_lowercase();
-                        if c_lower.is_ascii_lowercase() || c_lower.is_ascii_digit()
+                        if c_lower.is_ascii_lowercase()
+                            || c_lower.is_ascii_digit()
                             || (c == '-' && !self.profile_builder_name.is_empty())
                         {
                             self.profile_builder_name.push(c_lower);
@@ -825,20 +841,16 @@ impl App {
                             for selected_id in &self.profile_builder_selected_modules {
                                 // Check if the new module conflicts with selected
                                 if module.conflicts_with(selected_id) {
-                                    conflict_warnings.push(format!(
-                                        "'{}' conflicts with '{}'",
-                                        id, selected_id
-                                    ));
+                                    conflict_warnings
+                                        .push(format!("'{}' conflicts with '{}'", id, selected_id));
                                 }
                                 // Check if selected module conflicts with the new one
                                 if let Some(sel_mod) =
                                     self.modules.iter().find(|m| m.id == *selected_id)
                                     && sel_mod.conflicts_with(&id)
                                 {
-                                    conflict_warnings.push(format!(
-                                        "'{}' conflicts with '{}'",
-                                        selected_id, id
-                                    ));
+                                    conflict_warnings
+                                        .push(format!("'{}' conflicts with '{}'", selected_id, id));
                                 }
                             }
                             // Still add (user may choose to override), but show warning
@@ -857,9 +869,7 @@ impl App {
                                     .depends
                                     .iter()
                                     .filter(|dep| {
-                                        !self
-                                            .profile_builder_selected_modules
-                                            .contains(dep)
+                                        !self.profile_builder_selected_modules.contains(dep)
                                     })
                                     .cloned()
                                     .collect();
@@ -925,7 +935,8 @@ impl App {
                     0 => {
                         // D-010: Enforce [a-z0-9][a-z0-9-]* pattern
                         let c_lower = c.to_ascii_lowercase();
-                        if c_lower.is_ascii_lowercase() || c_lower.is_ascii_digit()
+                        if c_lower.is_ascii_lowercase()
+                            || c_lower.is_ascii_digit()
                             || (c == '-' && !self.module_creator_name.is_empty())
                         {
                             self.module_creator_name.push(c_lower);
@@ -956,14 +967,12 @@ impl App {
                 // F-010: Left/Right to cycle kind when kind field is active
                 KeyCode::Left => {
                     if self.module_creator_active_field == 3 {
-                        self.module_creator_kind_index =
-                            (self.module_creator_kind_index + 5) % 6;
+                        self.module_creator_kind_index = (self.module_creator_kind_index + 5) % 6;
                     }
                 }
                 KeyCode::Right => {
                     if self.module_creator_active_field == 3 {
-                        self.module_creator_kind_index =
-                            (self.module_creator_kind_index + 1) % 6;
+                        self.module_creator_kind_index = (self.module_creator_kind_index + 1) % 6;
                     }
                 }
                 _ => {}
@@ -1009,12 +1018,10 @@ impl App {
                         }
                     }
                 }
-                KeyCode::Char(c) => {
-                    match self.module_creator_dotfile_field {
-                        0 => self.module_creator_dotfile_source.push(c),
-                        _ => self.module_creator_dotfile_target.push(c),
-                    }
-                }
+                KeyCode::Char(c) => match self.module_creator_dotfile_field {
+                    0 => self.module_creator_dotfile_source.push(c),
+                    _ => self.module_creator_dotfile_target.push(c),
+                },
                 _ => {}
             },
             // Step 2 — Preview
@@ -1054,6 +1061,8 @@ impl App {
             View::Doctor | View::Secrets | View::Recovery | View::SystemScan => View::Dashboard,
             // HostSelection cycles back to Dashboard
             View::HostSelection => View::Dashboard,
+            // F1-010/F1-018: Apply and Drift cycle back to Dashboard
+            View::Apply | View::DriftDetail | View::Snapshots => View::Dashboard,
             // Wizard sub-views go back to their parent list
             View::ProfileBuilder => View::Profiles,
             View::ModuleCreator => View::Modules,
@@ -1085,6 +1094,8 @@ impl App {
             View::Doctor | View::Secrets | View::Recovery | View::SystemScan => View::Dashboard,
             // HostSelection cycles back to Dashboard
             View::HostSelection => View::Dashboard,
+            // F1-010/F1-018: Apply and Drift cycle back to Dashboard
+            View::Apply | View::DriftDetail | View::Snapshots => View::Dashboard,
             // Wizard sub-views go back to their parent list
             View::ProfileBuilder => View::Profiles,
             View::ModuleCreator => View::Modules,
@@ -1222,6 +1233,10 @@ mod tests {
             status_check: None,
             priority: None,
             requires_root: false,
+            security_points: 0,
+            hook_behavior: iron_core::module::HookBehavior::default(),
+            dotfiles_sync: false,
+            dotfiles_sync_target: None,
         }
     }
 
@@ -2186,6 +2201,10 @@ mod tests {
                 install_params: None,
                 installed_bundles: vec![],
                 active_bundle: None,
+                bundle: None,
+                profile: None,
+                extra_modules: vec![],
+                variables: std::collections::HashMap::new(),
             },
             Host {
                 id: "laptop".to_string(),
@@ -2195,6 +2214,10 @@ mod tests {
                 install_params: None,
                 installed_bundles: vec![],
                 active_bundle: None,
+                bundle: None,
+                profile: None,
+                extra_modules: vec![],
+                variables: std::collections::HashMap::new(),
             },
         ];
         app.selected_index = 0;
@@ -2239,6 +2262,10 @@ mod tests {
             install_params: None,
             installed_bundles: vec![],
             active_bundle: None,
+            bundle: None,
+            profile: None,
+            extra_modules: vec![],
+            variables: std::collections::HashMap::new(),
         }];
 
         assert_eq!(app.current_list_len(), 1);

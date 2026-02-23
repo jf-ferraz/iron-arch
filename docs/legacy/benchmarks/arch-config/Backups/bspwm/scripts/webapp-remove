@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+
+# webapp-remove - Remove web application desktop entries
+# This script removes desktop entries created by webapp-install
+
+ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
+PROFILE_DIR="$HOME/.local/share/webapp-profiles"
+DESKTOP_DIR="$HOME/.local/share/applications"
+
+# Function to sanitize app name for filenames
+sanitize_name() {
+    echo "$1" | tr '[:upper:]' '[:lower:]' | tr ' ' '-'
+}
+
+# Function to list installed webapps
+list_webapps() {
+    if [[ ! -d "$DESKTOP_DIR" ]]; then
+        echo "No webapps installed."
+        return
+    fi
+
+    echo "Installed webapps:"
+    local count=0
+    for desktop_file in "$DESKTOP_DIR"/*.desktop; do
+        if [[ -f "$desktop_file" ]] && grep -q "Categories=.*WebApp" "$desktop_file" 2>/dev/null; then
+            local name=$(grep "^Name=" "$desktop_file" | cut -d= -f2)
+            echo "  - $name"
+            ((count++))
+        fi
+    done
+
+    if [[ $count -eq 0 ]]; then
+        echo "  (none found)"
+    fi
+}
+
+# Function to get webapp names
+get_webapp_names() {
+    if [[ ! -d "$DESKTOP_DIR" ]]; then
+        return
+    fi
+
+    for desktop_file in "$DESKTOP_DIR"/*.desktop; do
+        if [[ -f "$desktop_file" ]] && grep -q "Categories=.*WebApp" "$desktop_file" 2>/dev/null; then
+            grep "^Name=" "$desktop_file" | cut -d= -f2
+        fi
+    done
+}
+
+# Function to remove a webapp
+remove_webapp() {
+    local app_name="$1"
+    local sanitized_name=$(sanitize_name "$app_name")
+
+    local desktop_file="$DESKTOP_DIR/$sanitized_name.desktop"
+    local icon_path="$ICON_DIR/$sanitized_name.png"
+    local profile_path="$PROFILE_DIR/$sanitized_name"
+
+    # Check if webapp exists
+    if [[ ! -f "$desktop_file" ]]; then
+        echo "Error: Web app '$app_name' not found."
+        echo "Use --list to see installed webapps."
+        return 1
+    fi
+
+    # Verify it's a webapp
+    if ! grep -q "Categories=.*WebApp" "$desktop_file" 2>/dev/null; then
+        echo "Error: '$app_name' is not a webapp."
+        return 1
+    fi
+
+    echo "Removing webapp '$app_name'..."
+
+    # Remove desktop file
+    if [[ -f "$desktop_file" ]]; then
+        rm -f "$desktop_file"
+        echo "  ✓ Removed desktop entry"
+    fi
+
+    # Remove icon
+    if [[ -f "$icon_path" ]]; then
+        rm -f "$icon_path"
+        echo "  ✓ Removed icon"
+    fi
+
+    # Remove profile directory
+    if [[ -d "$profile_path" ]]; then
+        rm -rf "$profile_path"
+        echo "  ✓ Removed profile data"
+    fi
+
+    # Update icon cache
+    if command -v gtk-update-icon-cache &> /dev/null; then
+        gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" 2>/dev/null
+    fi
+
+    echo "✓ Web app '$app_name' removed successfully!"
+}
+
+# Show help
+show_help() {
+    cat << EOF
+Usage: webapp-remove [OPTIONS] [APP_NAME]
+
+Remove a web application desktop entry.
+
+Arguments:
+    APP_NAME    Name of the application to remove
+
+Options:
+    -h, --help    Show this help message
+    -l, --list    List all installed webapps
+
+Examples:
+    # Interactive mode
+    webapp-remove
+
+    # Direct mode
+    webapp-remove "YouTube Music"
+
+    # List webapps
+    webapp-remove --list
+EOF
+}
+
+# Parse arguments
+case "$1" in
+    -h|--help)
+        show_help
+        exit 0
+        ;;
+    -l|--list)
+        list_webapps
+        exit 0
+        ;;
+    "")
+        # Interactive mode
+        mapfile -t webapp_array < <(get_webapp_names)
+
+        if [[ ${#webapp_array[@]} -eq 0 ]]; then
+            echo "No webapps installed."
+            exit 0
+        fi
+
+        if command -v gum &> /dev/null; then
+            APP_NAME=$(printf '%s\n' "${webapp_array[@]}" | gum choose --header "Select webapp to remove:")
+        else
+            echo "Installed webapps:"
+            for i in "${!webapp_array[@]}"; do
+                echo "  $((i+1)). ${webapp_array[$i]}"
+            done
+            read -p "Enter number to remove: " selection
+            APP_NAME="${webapp_array[$((selection-1))]}"
+        fi
+
+        if [[ -z "$APP_NAME" ]]; then
+            echo "No webapp selected."
+            exit 0
+        fi
+
+        remove_webapp "$APP_NAME"
+        ;;
+    *)
+        # Direct mode with app name
+        remove_webapp "$1"
+        ;;
+esac

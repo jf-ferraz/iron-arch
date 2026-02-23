@@ -1,8 +1,0 @@
-version = 1
-
-default_host = "desktop"
-
-[[hosts]]
-id = "desktop"
-description = "Main desktop profile"
-overlay_dir = "hosts/desktop"

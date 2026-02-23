@@ -40,7 +40,8 @@ const LEGACY_SECURITY_IDS: &[&str] = &["firewalld", "auditd", "selinux", "clamav
 
 /// Check if a module is a security module (by kind or legacy ID)
 fn is_security_module(module: &iron_core::Module) -> bool {
-    matches!(module.kind, ModuleKind::SecurityHardening) || LEGACY_SECURITY_IDS.contains(&module.id.as_str())
+    matches!(module.kind, ModuleKind::SecurityHardening)
+        || LEGACY_SECURITY_IDS.contains(&module.id.as_str())
 }
 
 /// Render the security modules view
@@ -67,11 +68,7 @@ fn render_header(frame: &mut Frame, area: Rect, app: &App) {
         .filter(|m| is_security_module(m) && app.active_modules.contains(&m.id))
         .count();
 
-    let total_count = app
-        .modules
-        .iter()
-        .filter(|m| is_security_module(m))
-        .count();
+    let total_count = app.modules.iter().filter(|m| is_security_module(m)).count();
 
     let header_text = Line::from(vec![
         Span::styled("Security Modules", Style::default().fg(theme::TEXT).bold()),
@@ -247,6 +244,10 @@ mod tests {
             status_check: None,
             priority: None,
             requires_root: false,
+            security_points: 0,
+            hook_behavior: iron_core::module::HookBehavior::default(),
+            dotfiles_sync: false,
+            dotfiles_sync_target: None,
         };
         assert!(is_security_module(&module));
 

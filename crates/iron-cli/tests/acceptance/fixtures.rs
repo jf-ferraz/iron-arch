@@ -34,10 +34,13 @@ impl TestFixture {
         fixture
     }
 
-    /// Run iron command with fixture's root directory
+    /// Run iron command with fixture's root directory.
+    /// Sets `IRON_STATE_DIR` to the iron root so state files
+    /// are written alongside config in the temp directory.
     pub fn run_iron(&self, args: &[&str]) -> assert_cmd::assert::Assert {
         Command::cargo_bin("iron")
             .expect("iron binary not found")
+            .env("IRON_STATE_DIR", &self.iron_root)
             .args(args)
             .arg("--root")
             .arg(&self.iron_root)
@@ -48,6 +51,7 @@ impl TestFixture {
     pub fn run_iron_json(&self, args: &[&str]) -> serde_json::Value {
         let output = Command::cargo_bin("iron")
             .expect("iron binary not found")
+            .env("IRON_STATE_DIR", &self.iron_root)
             .args(args)
             .arg("--root")
             .arg(&self.iron_root)

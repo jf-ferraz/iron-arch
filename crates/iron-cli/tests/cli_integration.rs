@@ -126,8 +126,65 @@ modules = []
     fs::write(profile_dir.join("profile.toml"), profile).unwrap();
 }
 
+/// Find the envelope JSON object in multi-line stdout.
+///
+/// JSON mode can produce leading info/status lines before the main envelope.
+/// This helper finds the object containing `"ok"` and `"meta"` keys.
+fn find_envelope_json(stdout: &str) -> Option<serde_json::Value> {
+    // Try parsing the whole string first
+    if let Ok(val) = serde_json::from_str::<serde_json::Value>(stdout) {
+        if val.get("ok").is_some() && val.get("meta").is_some() {
+            return Some(val);
+        }
+    }
+    // Otherwise, look for a multi-line JSON object starting with '{'
+    // that contains envelope keys
+    let mut brace_depth = 0i32;
+    let mut start = None;
+    for (i, ch) in stdout.char_indices() {
+        match ch {
+            '{' => {
+                if brace_depth == 0 {
+                    start = Some(i);
+                }
+                brace_depth += 1;
+            }
+            '}' => {
+                brace_depth -= 1;
+                if brace_depth == 0 {
+                    if let Some(s) = start {
+                        let candidate = &stdout[s..=i];
+                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(candidate) {
+                            if val.get("ok").is_some() && val.get("meta").is_some() {
+                                return Some(val);
+                            }
+                        }
+                    }
+                    start = None;
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 /// Get iron command with --no-color for predictable output
 #[allow(deprecated)]
+/// Get iron command for testing.
+///
+/// F3-006: When a `root` path is provided, `IRON_STATE_DIR` is set to that
+/// path so that the real XDG state directory does not interfere with tests.
+/// This should be used whenever `--root <dir>` is passed on the command line.
+fn iron_at(root: &std::path::Path) -> Command {
+    let mut cmd = Command::cargo_bin("iron").unwrap();
+    cmd.arg("--no-color");
+    cmd.env("IRON_STATE_DIR", root);
+    cmd
+}
+
+/// Get iron command without state dir isolation (for tests that do not
+/// pass --root or that test global behavior).
 fn iron() -> Command {
     let mut cmd = Command::cargo_bin("iron").unwrap();
     cmd.arg("--no-color");
@@ -148,11 +205,15 @@ mod basic {
     use super::*;
 
     #[test]
-    fn no_command_shows_welcome() {
+    fn no_command_json_shows_welcome() {
+        // F0-001: bare `iron` launches TUI (can't test in headless).
+        // JSON mode still outputs structured welcome for machine consumers.
         iron()
+            .arg("-f")
+            .arg("json")
             .assert()
             .success()
-            .stdout(predicate::str::contains("Welcome to Iron"));
+            .stdout(predicate::str::contains("iron"));
     }
 
     #[test]
@@ -195,7 +256,7 @@ mod init {
     fn init_creates_directories() {
         let dir = TempDir::new().unwrap();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("init")
@@ -217,7 +278,7 @@ mod init {
     fn init_creates_state_file() {
         let dir = TempDir::new().unwrap();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("init")
@@ -233,7 +294,7 @@ mod init {
     fn init_creates_host_config() {
         let dir = TempDir::new().unwrap();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("init")
@@ -249,7 +310,7 @@ mod init {
     fn init_warns_when_already_initialized() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("init")
@@ -262,7 +323,7 @@ mod init {
     fn init_force_reinitializes() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("init")
@@ -278,7 +339,7 @@ mod init {
     fn init_with_custom_name() {
         let dir = TempDir::new().unwrap();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("init")
@@ -303,7 +364,7 @@ mod status {
     fn status_requires_init() {
         let dir = create_test_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("status")
@@ -318,7 +379,7 @@ mod status {
     fn status_shows_host_info() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("status")
@@ -332,7 +393,7 @@ mod status {
     fn status_json_output() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("--format")
@@ -347,7 +408,7 @@ mod status {
     fn status_shows_no_active_bundle() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("status")
@@ -362,7 +423,7 @@ mod status {
     fn status_verbose_flag() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("status")
@@ -384,7 +445,7 @@ mod doctor {
     fn doctor_requires_init() {
         let dir = create_test_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("doctor")
@@ -399,7 +460,7 @@ mod doctor {
     fn doctor_checks_directories() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("doctor")
@@ -413,7 +474,7 @@ mod doctor {
     fn doctor_checks_state_file() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("doctor")
@@ -426,7 +487,7 @@ mod doctor {
     fn doctor_checks_host_config() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("doctor")
@@ -440,7 +501,7 @@ mod doctor {
         let dir = create_initialized_iron_dir();
         // No git repo - should show warning
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("doctor")
@@ -461,7 +522,7 @@ mod bundle {
     fn bundle_list_requires_init() {
         let dir = create_test_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("bundle")
@@ -479,7 +540,7 @@ mod bundle {
         create_test_bundle(&dir, "hyprland");
         create_test_bundle(&dir, "gnome");
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("bundle")
@@ -494,7 +555,7 @@ mod bundle {
     fn bundle_list_empty() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("bundle")
@@ -512,7 +573,7 @@ mod bundle {
     fn bundle_status_no_active_bundle() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("bundle")
@@ -527,7 +588,7 @@ mod bundle {
         let dir = create_initialized_iron_dir();
         create_test_bundle(&dir, "hyprland");
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("bundle")
@@ -542,7 +603,7 @@ mod bundle {
     fn bundle_install_nonexistent() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("bundle")
@@ -566,7 +627,7 @@ mod profile {
     fn profile_list_requires_init() {
         let dir = create_test_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("profile")
@@ -584,7 +645,7 @@ mod profile {
         create_test_profile(&dir, "developer");
         create_test_profile(&dir, "minimal");
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("profile")
@@ -600,7 +661,7 @@ mod profile {
         let dir = create_initialized_iron_dir();
         create_test_profile(&dir, "developer");
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("profile")
@@ -615,7 +676,7 @@ mod profile {
     fn profile_show_nonexistent() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("profile")
@@ -638,7 +699,7 @@ mod module {
     fn module_list_requires_init() {
         let dir = create_test_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("module")
@@ -656,7 +717,7 @@ mod module {
         create_test_module(&dir, "nvim");
         create_test_module(&dir, "kitty");
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("module")
@@ -672,7 +733,7 @@ mod module {
         let dir = create_initialized_iron_dir();
         create_test_module(&dir, "nvim");
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("module")
@@ -688,7 +749,7 @@ mod module {
         let dir = create_initialized_iron_dir();
         create_test_module(&dir, "nvim");
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("module")
@@ -707,7 +768,7 @@ mod module {
     fn module_enable_nonexistent() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("module")
@@ -724,7 +785,7 @@ mod module {
         create_test_module(&dir, "nvim");
 
         // First enable the module
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("module")
@@ -734,7 +795,7 @@ mod module {
             .success();
 
         // Then disable it
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("module")
@@ -754,7 +815,7 @@ mod module {
     fn module_disable_nonexistent() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("module")
@@ -778,7 +839,7 @@ mod host {
     fn host_list_empty_shows_warning() {
         let dir = create_test_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("host")
@@ -793,7 +854,7 @@ mod host {
     fn host_list_shows_hosts() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("host")
@@ -807,7 +868,7 @@ mod host {
     fn host_current_shows_active() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("host")
@@ -821,7 +882,7 @@ mod host {
     fn host_catalog_shows_hardware() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("host")
@@ -848,7 +909,7 @@ mod sync {
     fn sync_status_requires_init() {
         let dir = create_test_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("sync")
@@ -864,7 +925,7 @@ mod sync {
     fn sync_status_without_git() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("sync")
@@ -887,7 +948,7 @@ mod secrets {
     fn secrets_status_requires_init() {
         let dir = create_test_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("secrets")
@@ -903,7 +964,7 @@ mod secrets {
     fn secrets_status_shows_state() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("secrets")
@@ -925,7 +986,7 @@ mod update {
     fn update_requires_init() {
         let dir = create_test_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("update")
@@ -940,7 +1001,7 @@ mod update {
     fn update_dry_run() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("update")
@@ -962,7 +1023,7 @@ mod clean {
     fn clean_requires_init() {
         let dir = create_test_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("clean")
@@ -977,10 +1038,11 @@ mod clean {
     fn clean_with_no_flags() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("clean")
+            .arg("--dry-run")
             .assert()
             .success()
             .stdout(predicate::str::contains("Clean").or(predicate::str::contains("clean")));
@@ -990,11 +1052,12 @@ mod clean {
     fn clean_symlinks_flag() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("clean")
             .arg("--symlinks")
+            .arg("--dry-run")
             .assert()
             .success()
             .stdout(predicate::str::contains("symlink").or(predicate::str::contains("Symlink")));
@@ -1004,11 +1067,12 @@ mod clean {
     fn clean_orphans_flag() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("clean")
             .arg("--orphans")
+            .arg("--dry-run")
             .assert()
             .success()
             .stdout(
@@ -1023,11 +1087,12 @@ mod clean {
     fn clean_cache_flag() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("clean")
             .arg("--cache")
+            .arg("--dry-run")
             .assert()
             .success()
             .stdout(
@@ -1041,11 +1106,12 @@ mod clean {
     fn clean_all_flag() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("clean")
             .arg("--all")
+            .arg("--dry-run")
             .assert()
             .success()
             .stdout(predicate::str::contains("Clean").or(predicate::str::contains("clean")));
@@ -1063,7 +1129,7 @@ mod recover {
     fn recover_requires_init() {
         let dir = create_test_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("recover")
@@ -1079,7 +1145,7 @@ mod recover {
     fn recover_export_creates_output() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("recover")
@@ -1093,7 +1159,7 @@ mod recover {
     fn recover_script_generates_script() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("recover")
@@ -1115,7 +1181,7 @@ mod output_format {
     fn json_format_produces_valid_json() {
         let dir = create_initialized_iron_dir();
 
-        let output = iron()
+        let output = iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("--format")
@@ -1139,7 +1205,7 @@ mod output_format {
     fn verbose_flag_accepted() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("--verbose")
@@ -1152,7 +1218,7 @@ mod output_format {
     fn quiet_flag_accepted() {
         let dir = create_initialized_iron_dir();
 
-        iron()
+        iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("--quiet")
@@ -1165,7 +1231,7 @@ mod output_format {
     fn no_color_flag_removes_ansi() {
         let dir = create_initialized_iron_dir();
 
-        let output = iron()
+        let output = iron_at(dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("status")
@@ -1185,6 +1251,7 @@ mod output_format {
         let dir = create_initialized_iron_dir();
 
         let output = iron_raw()
+            .env("IRON_STATE_DIR", dir.path())
             .arg("--root")
             .arg(dir.path())
             .arg("status")
@@ -1196,5 +1263,543 @@ mod output_format {
         // (unless terminal detection disables it)
         // This test just ensures the command works
         assert!(!stdout.is_empty(), "Output should not be empty");
+    }
+}
+
+// =============================================================================
+// Status Enhancement Tests (F3-004)
+// =============================================================================
+
+mod status_enhanced {
+    use super::*;
+
+    #[test]
+    fn status_dry_run_succeeds() {
+        let dir = create_initialized_iron_dir();
+
+        iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("status")
+            .arg("--dry-run")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("test-host"));
+    }
+
+    #[test]
+    fn status_full_dry_run_shows_drift_skip_message() {
+        let dir = create_initialized_iron_dir();
+
+        iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("status")
+            .arg("--full")
+            .arg("--dry-run")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("DRY RUN"));
+    }
+
+    #[test]
+    fn status_json_dry_run_returns_envelope() {
+        let dir = create_initialized_iron_dir();
+
+        let output = iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("--format")
+            .arg("json")
+            .arg("status")
+            .arg("--dry-run")
+            .assert()
+            .success();
+
+        let stdout = String::from_utf8_lossy(&output.get_output().stdout);
+        let json = find_envelope_json(&stdout).expect("Status JSON should contain envelope");
+
+        // Verify envelope structure
+        assert_eq!(json["ok"], true, "Envelope should indicate success");
+        assert_eq!(
+            json["command"], "status",
+            "Envelope command should be 'status'"
+        );
+        assert!(json["data"].is_object(), "Envelope should have data object");
+        assert!(json["meta"].is_object(), "Envelope should have meta object");
+        assert!(
+            json["meta"]["version"].is_string(),
+            "Meta should have version"
+        );
+        assert!(
+            json["meta"]["timestamp"].is_string(),
+            "Meta should have timestamp"
+        );
+
+        // Verify status data fields
+        let data = &json["data"];
+        assert!(data["host"].is_object(), "Data should have host object");
+        assert_eq!(data["host"]["id"], "test-host");
+        assert!(
+            data["modules"].is_object(),
+            "Data should have modules object"
+        );
+        assert!(
+            data["packages"].is_object(),
+            "Data should have packages object"
+        );
+    }
+
+    #[test]
+    fn status_shows_modules_section() {
+        let dir = create_initialized_iron_dir();
+        create_test_module(&dir, "nvim");
+
+        iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("status")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("Modules"))
+            .stdout(predicate::str::contains("Total"));
+    }
+}
+
+// =============================================================================
+// Plan Command Tests (F3-005)
+// =============================================================================
+
+mod plan {
+    use super::*;
+
+    #[test]
+    fn plan_requires_init() {
+        let dir = create_test_iron_dir();
+
+        iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("plan")
+            .arg("--dry-run")
+            .assert()
+            .failure()
+            .stderr(
+                predicate::str::contains("not initialized").or(predicate::str::contains("init")),
+            );
+    }
+
+    #[test]
+    fn plan_dry_run_succeeds() {
+        let dir = create_initialized_iron_dir();
+
+        iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("plan")
+            .arg("--dry-run")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("DRY RUN"));
+    }
+
+    #[test]
+    fn plan_json_dry_run_returns_envelope() {
+        let dir = create_initialized_iron_dir();
+
+        let output = iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("--format")
+            .arg("json")
+            .arg("plan")
+            .arg("--dry-run")
+            .assert()
+            .success();
+
+        let stdout = String::from_utf8_lossy(&output.get_output().stdout);
+        // JSON output may have leading info lines; find the envelope object
+        let json = find_envelope_json(&stdout).expect("Plan JSON should contain envelope");
+
+        // Verify envelope structure
+        assert_eq!(json["ok"], true, "Envelope should indicate success");
+        assert_eq!(json["command"], "plan", "Envelope command should be 'plan'");
+        assert!(json["data"].is_object(), "Envelope should have data object");
+        assert!(json["meta"].is_object(), "Envelope should have meta object");
+        assert!(
+            json["meta"]["duration_ms"].is_number(),
+            "Meta should have duration_ms"
+        );
+    }
+
+    #[test]
+    fn plan_dry_run_shows_empty_plan() {
+        let dir = create_initialized_iron_dir();
+
+        iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("plan")
+            .arg("--dry-run")
+            .assert()
+            .success()
+            .stdout(
+                predicate::str::contains("nothing to do")
+                    .or(predicate::str::contains("DRY RUN"))
+                    .or(predicate::str::contains("desired state")),
+            );
+    }
+}
+
+// =============================================================================
+// Apply confirmation UX
+// =============================================================================
+
+mod apply_confirmation {
+    use super::*;
+
+    #[test]
+    fn apply_dry_run_succeeds() {
+        let dir = create_initialized_iron_dir();
+
+        iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("apply")
+            .arg("--dry-run")
+            .assert()
+            .success()
+            .stdout(
+                predicate::str::contains("DRY RUN").or(predicate::str::contains("desired state")),
+            );
+    }
+
+    #[test]
+    fn apply_dry_run_with_yes_succeeds() {
+        let dir = create_initialized_iron_dir();
+
+        iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("apply")
+            .arg("--dry-run")
+            .arg("--yes")
+            .assert()
+            .success();
+    }
+
+    #[test]
+    fn apply_dry_run_with_prune_succeeds() {
+        let dir = create_initialized_iron_dir();
+
+        iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("apply")
+            .arg("--dry-run")
+            .arg("--prune")
+            .assert()
+            .success();
+    }
+
+    #[test]
+    fn apply_requires_init() {
+        let dir = create_test_iron_dir();
+
+        iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("apply")
+            .arg("--dry-run")
+            .assert()
+            .failure()
+            .stderr(
+                predicate::str::contains("not initialized").or(predicate::str::contains("init")),
+            );
+    }
+
+    #[test]
+    fn apply_dry_run_never_prompts() {
+        // dry-run should succeed without stdin input
+        let dir = create_initialized_iron_dir();
+
+        iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("apply")
+            .arg("--dry-run")
+            .assert()
+            .success();
+    }
+
+    // ── Granular prune flag integration ──
+
+    #[test]
+    fn apply_dry_run_prune_packages_flag() {
+        let dir = create_initialized_iron_dir();
+
+        iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("apply")
+            .arg("--dry-run")
+            .arg("--prune-packages")
+            .assert()
+            .success();
+    }
+
+    #[test]
+    fn apply_dry_run_prune_services_flag() {
+        let dir = create_initialized_iron_dir();
+
+        iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("apply")
+            .arg("--dry-run")
+            .arg("--prune-services")
+            .assert()
+            .success();
+    }
+
+    #[test]
+    fn apply_dry_run_prune_dotfiles_flag() {
+        let dir = create_initialized_iron_dir();
+
+        iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("apply")
+            .arg("--dry-run")
+            .arg("--prune-dotfiles")
+            .assert()
+            .success();
+    }
+
+    #[test]
+    fn apply_dry_run_all_prune_flags_combined() {
+        let dir = create_initialized_iron_dir();
+
+        iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("apply")
+            .arg("--dry-run")
+            .arg("--prune-packages")
+            .arg("--prune-services")
+            .arg("--prune-dotfiles")
+            .assert()
+            .success();
+    }
+
+    #[test]
+    fn plan_dry_run_with_prune_succeeds() {
+        let dir = create_initialized_iron_dir();
+
+        iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("plan")
+            .arg("--dry-run")
+            .arg("--prune")
+            .assert()
+            .success();
+    }
+
+    #[test]
+    fn plan_dry_run_with_prune_packages_succeeds() {
+        let dir = create_initialized_iron_dir();
+
+        iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("plan")
+            .arg("--dry-run")
+            .arg("--prune-packages")
+            .assert()
+            .success();
+    }
+}
+
+// =============================================================================
+// Envelope Format Validation (F3-003b)
+// =============================================================================
+
+mod envelope_integration {
+    use super::*;
+
+    #[test]
+    fn doctor_json_uses_envelope() {
+        let dir = create_initialized_iron_dir();
+
+        let output = iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("--format")
+            .arg("json")
+            .arg("doctor")
+            .assert()
+            .success();
+
+        let stdout = String::from_utf8_lossy(&output.get_output().stdout);
+        let json = find_envelope_json(&stdout).expect("Doctor JSON should contain envelope");
+
+        assert_eq!(json["ok"], true);
+        assert_eq!(json["command"], "doctor");
+        assert!(json["data"].is_object());
+        assert!(json["error"].is_null());
+        assert!(json["meta"]["host"].is_string());
+    }
+
+    #[test]
+    fn scan_json_uses_envelope() {
+        let dir = create_initialized_iron_dir();
+
+        let output = iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("--format")
+            .arg("json")
+            .arg("scan")
+            .assert()
+            .success();
+
+        let stdout = String::from_utf8_lossy(&output.get_output().stdout);
+        let json = find_envelope_json(&stdout).expect("Scan JSON should contain envelope");
+
+        assert_eq!(json["ok"], true);
+        assert_eq!(json["command"], "scan");
+        assert!(json["data"].is_object());
+        assert!(json["meta"]["timestamp"].is_string());
+    }
+
+    #[test]
+    fn validate_json_uses_envelope() {
+        let dir = create_initialized_iron_dir();
+
+        let output = iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("--format")
+            .arg("json")
+            .arg("validate")
+            .assert()
+            .success();
+
+        let stdout = String::from_utf8_lossy(&output.get_output().stdout);
+        let json = find_envelope_json(&stdout).expect("Validate JSON should contain envelope");
+
+        assert_eq!(json["ok"], true);
+        assert_eq!(json["command"], "validate");
+        assert!(json["meta"].is_object());
+    }
+}
+
+// =============================================================================
+// F3-016: History CLI Integration Tests
+// =============================================================================
+
+mod history_integration {
+    use super::*;
+
+    #[test]
+    fn history_list_exits_success_on_initialized_dir() {
+        let dir = create_initialized_iron_dir();
+
+        iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("history")
+            .assert()
+            .success();
+    }
+
+    #[test]
+    fn history_list_subcommand_exits_success() {
+        let dir = create_initialized_iron_dir();
+
+        iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("history")
+            .arg("list")
+            .assert()
+            .success();
+    }
+
+    #[test]
+    fn history_last_exits_success_on_empty_history() {
+        let dir = create_initialized_iron_dir();
+
+        iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("history")
+            .arg("last")
+            .assert()
+            .success();
+    }
+
+    #[test]
+    fn history_show_out_of_range_exits_success() {
+        let dir = create_initialized_iron_dir();
+
+        // show index 99 on empty history should still exit 0
+        iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("history")
+            .arg("show")
+            .arg("99")
+            .assert()
+            .success();
+    }
+
+    #[test]
+    fn history_limit_flag_accepted() {
+        let dir = create_initialized_iron_dir();
+
+        iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("history")
+            .arg("--limit")
+            .arg("5")
+            .assert()
+            .success();
+    }
+
+    #[test]
+    fn history_json_uses_envelope() {
+        let dir = create_initialized_iron_dir();
+
+        let output = iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("--format")
+            .arg("json")
+            .arg("history")
+            .assert()
+            .success();
+
+        let stdout = String::from_utf8_lossy(&output.get_output().stdout);
+        let json = find_envelope_json(&stdout).expect("History JSON should contain envelope");
+
+        assert_eq!(json["ok"], true);
+        assert_eq!(json["command"], "history");
+    }
+
+    #[test]
+    fn apply_dry_run_accepts_force_hooks_flag() {
+        let dir = create_initialized_iron_dir();
+
+        iron_at(dir.path())
+            .arg("--root")
+            .arg(dir.path())
+            .arg("apply")
+            .arg("--dry-run")
+            .arg("--force-hooks")
+            .assert()
+            .success();
     }
 }

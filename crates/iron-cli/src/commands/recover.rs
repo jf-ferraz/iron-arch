@@ -7,6 +7,7 @@ use anyhow::Result;
 use iron_core::services::recovery::{InstallScriptOptions, RecoveryService};
 use std::fs;
 use std::path::Path;
+use std::time::Instant;
 
 /// Execute recover command
 pub fn execute(
@@ -17,8 +18,9 @@ pub fn execute(
     backup: bool,
     restore: Option<String>,
 ) -> Result<()> {
+    let start = Instant::now();
     if export {
-        return export_state(ctx);
+        return export_state(ctx, start);
     }
 
     if let Some(file) = import {
@@ -66,7 +68,7 @@ fn show_help(ctx: &AppContext) -> Result<()> {
 }
 
 /// Export current state
-fn export_state(ctx: &AppContext) -> Result<()> {
+fn export_state(ctx: &AppContext, start: Instant) -> Result<()> {
     require_init(ctx)?;
 
     let output = &ctx.output;
@@ -111,7 +113,7 @@ fn export_state(ctx: &AppContext) -> Result<()> {
     }
 
     if output.is_json() {
-        output.json(&export_data);
+        output.json_envelope("recover.export", &export_data, start);
     }
 
     Ok(())
@@ -333,7 +335,11 @@ mod tests {
     #[test]
     fn test_execute_restore_route() {
         let restore = Some("./my-backup".to_string());
-        let routed = if restore.is_some() { "restore" } else { "other" };
+        let routed = if restore.is_some() {
+            "restore"
+        } else {
+            "other"
+        };
         assert_eq!(routed, "restore");
     }
 

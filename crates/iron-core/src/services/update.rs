@@ -954,9 +954,7 @@ impl<S: SnapshotManager> DefaultUpdateService<S> {
                 name: "Snapshot".to_string(),
                 status: PreflightStatus::Warning,
                 message: "No snapshots found".to_string(),
-                details: Some(
-                    "A pre-update snapshot will be created automatically".to_string(),
-                ),
+                details: Some("A pre-update snapshot will be created automatically".to_string()),
             },
         }
     }
@@ -1378,9 +1376,7 @@ impl<S: SnapshotManager> UpdateService for DefaultUpdateService<S> {
                 .args([cmd, "-Syu", "--noconfirm"])
                 .status()
         } else {
-            Command::new(cmd)
-                .args(["-Syu", "--noconfirm"])
-                .status()
+            Command::new(cmd).args(["-Syu", "--noconfirm"]).status()
         };
 
         match result {
@@ -1654,41 +1650,43 @@ impl<S: SnapshotManager> UpdateService for DefaultUpdateService<S> {
         if let Ok(output) = Command::new("find")
             .args(["/etc", "-name", "*.pacnew", "-type", "f"])
             .output()
-            && output.status.success() {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                for line in stdout.lines() {
-                    let line = line.trim();
-                    if !line.is_empty() {
-                        let original = line.trim_end_matches(".pacnew").to_string();
-                        conflicts.push(ConfigConflict {
-                            original: original.clone(),
-                            conflict_file: line.to_string(),
-                            conflict_type: ConfigConflictType::Pacnew,
-                            package: Self::find_package_owner(&original),
-                        });
-                    }
+            && output.status.success()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                let line = line.trim();
+                if !line.is_empty() {
+                    let original = line.trim_end_matches(".pacnew").to_string();
+                    conflicts.push(ConfigConflict {
+                        original: original.clone(),
+                        conflict_file: line.to_string(),
+                        conflict_type: ConfigConflictType::Pacnew,
+                        package: Self::find_package_owner(&original),
+                    });
                 }
             }
+        }
 
         // Search for .pacsave files in /etc
         if let Ok(output) = Command::new("find")
             .args(["/etc", "-name", "*.pacsave", "-type", "f"])
             .output()
-            && output.status.success() {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                for line in stdout.lines() {
-                    let line = line.trim();
-                    if !line.is_empty() {
-                        let original = line.trim_end_matches(".pacsave").to_string();
-                        conflicts.push(ConfigConflict {
-                            original: original.clone(),
-                            conflict_file: line.to_string(),
-                            conflict_type: ConfigConflictType::Pacsave,
-                            package: Self::find_package_owner(&original),
-                        });
-                    }
+            && output.status.success()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                let line = line.trim();
+                if !line.is_empty() {
+                    let original = line.trim_end_matches(".pacsave").to_string();
+                    conflicts.push(ConfigConflict {
+                        original: original.clone(),
+                        conflict_file: line.to_string(),
+                        conflict_type: ConfigConflictType::Pacsave,
+                        package: Self::find_package_owner(&original),
+                    });
                 }
             }
+        }
 
         conflicts
     }
@@ -1725,21 +1723,22 @@ impl<S: SnapshotManager> UpdateService for DefaultUpdateService<S> {
         if let Ok(output) = Command::new("systemctl")
             .args(["--failed", "--no-legend", "--no-pager"])
             .output()
-            && output.status.success() {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                for line in stdout.lines() {
-                    let parts: Vec<&str> = line.split_whitespace().collect();
-                    // Format: UNIT LOAD ACTIVE SUB DESCRIPTION...
-                    if parts.len() >= 4 {
-                        failed.push(FailedService {
-                            name: parts[0].to_string(),
-                            load_state: parts[1].to_string(),
-                            active_state: parts[2].to_string(),
-                            description: parts[4..].join(" "),
-                        });
-                    }
+            && output.status.success()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                // Format: UNIT LOAD ACTIVE SUB DESCRIPTION...
+                if parts.len() >= 4 {
+                    failed.push(FailedService {
+                        name: parts[0].to_string(),
+                        load_state: parts[1].to_string(),
+                        active_state: parts[2].to_string(),
+                        description: parts[4..].join(" "),
+                    });
                 }
             }
+        }
 
         failed
     }
@@ -1749,19 +1748,20 @@ impl<S: SnapshotManager> DefaultUpdateService<S> {
     /// Find which package owns a file using pacman -Qo
     fn find_package_owner(file_path: &str) -> Option<String> {
         if let Ok(output) = Command::new("pacman").args(["-Qo", file_path]).output()
-            && output.status.success() {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                // Output format: "/path/to/file is owned by package version"
-                if let Some(line) = stdout.lines().next() {
-                    let parts: Vec<&str> = line.split(" is owned by ").collect();
-                    if parts.len() >= 2 {
-                        // Get package name (without version)
-                        if let Some(pkg) = parts[1].split_whitespace().next() {
-                            return Some(pkg.to_string());
-                        }
+            && output.status.success()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            // Output format: "/path/to/file is owned by package version"
+            if let Some(line) = stdout.lines().next() {
+                let parts: Vec<&str> = line.split(" is owned by ").collect();
+                if parts.len() >= 2 {
+                    // Get package name (without version)
+                    if let Some(pkg) = parts[1].split_whitespace().next() {
+                        return Some(pkg.to_string());
                     }
                 }
             }
+        }
         None
     }
 }
@@ -1822,7 +1822,7 @@ mod tests {
                 new_version: "121.0".to_string(),
                 risk: UpdateRisk::Low,
                 risk_reason: None,
-            ..Default::default()
+                ..Default::default()
             },
             PackageUpdate {
                 name: "linux".to_string(),
@@ -1830,7 +1830,7 @@ mod tests {
                 new_version: "6.6.2".to_string(),
                 risk: UpdateRisk::Critical,
                 risk_reason: Some("Kernel".to_string()),
-            ..Default::default()
+                ..Default::default()
             },
         ];
 
@@ -1887,7 +1887,7 @@ mod tests {
             new_version: "121.0".to_string(),
             risk: UpdateRisk::Low,
             risk_reason: None,
-        ..Default::default()
+            ..Default::default()
         };
 
         assert_eq!(update.name, "firefox");
@@ -1905,7 +1905,7 @@ mod tests {
             new_version: "6.6.2".to_string(),
             risk: UpdateRisk::Critical,
             risk_reason: Some("Kernel update requires reboot".to_string()),
-        ..Default::default()
+            ..Default::default()
         };
 
         assert!(update.risk_reason.is_some());
@@ -1920,7 +1920,7 @@ mod tests {
             new_version: "2.0".to_string(),
             risk: UpdateRisk::Medium,
             risk_reason: Some("Test".to_string()),
-        ..Default::default()
+            ..Default::default()
         };
 
         let cloned = update.clone();
@@ -1954,7 +1954,7 @@ mod tests {
             new_version: "121.0".to_string(),
             risk: UpdateRisk::Low,
             risk_reason: None,
-        ..Default::default()
+            ..Default::default()
         }];
 
         let plan = UpdatePlan {
@@ -2165,7 +2165,7 @@ mod tests {
             new_version: "121.0".to_string(),
             risk: UpdateRisk::Low,
             risk_reason: None,
-        ..Default::default()
+            ..Default::default()
         }];
 
         let overall = service.calculate_overall_risk(&packages);
@@ -2183,7 +2183,7 @@ mod tests {
                 new_version: "121.0".to_string(),
                 risk: UpdateRisk::Low,
                 risk_reason: None,
-            ..Default::default()
+                ..Default::default()
             },
             PackageUpdate {
                 name: "mesa".to_string(),
@@ -2191,7 +2191,7 @@ mod tests {
                 new_version: "23.3".to_string(),
                 risk: UpdateRisk::Medium,
                 risk_reason: Some("Graphics".to_string()),
-            ..Default::default()
+                ..Default::default()
             },
         ];
 
@@ -2210,7 +2210,7 @@ mod tests {
                 new_version: "121.0".to_string(),
                 risk: UpdateRisk::Low,
                 risk_reason: None,
-            ..Default::default()
+                ..Default::default()
             },
             PackageUpdate {
                 name: "nvidia".to_string(),
@@ -2218,7 +2218,7 @@ mod tests {
                 new_version: "545.30".to_string(),
                 risk: UpdateRisk::High,
                 risk_reason: Some("NVIDIA".to_string()),
-            ..Default::default()
+                ..Default::default()
             },
         ];
 
@@ -2853,7 +2853,7 @@ mod tests {
                     new_version: "121.0".to_string(),
                     risk: UpdateRisk::Low,
                     risk_reason: None,
-                ..Default::default()
+                    ..Default::default()
                 },
                 PackageUpdate {
                     name: "linux".to_string(),
@@ -2861,7 +2861,7 @@ mod tests {
                     new_version: "6.6.2".to_string(),
                     risk: UpdateRisk::Critical,
                     risk_reason: Some("Kernel".to_string()),
-                ..Default::default()
+                    ..Default::default()
                 },
             ],
             overall_risk: UpdateRisk::Critical,

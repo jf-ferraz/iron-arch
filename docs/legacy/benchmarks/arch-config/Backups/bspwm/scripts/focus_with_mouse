@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+
+# Focus node in the specified direction and move mouse to center of window
+
+direction="$1"
+
+# Focus the node
+bspc node -f "$direction"
+
+# Check if maim (screenshot tool) is running
+if pgrep -x maim > /dev/null; then
+    # Don't move mouse if screenshot is in progress
+    exit 0
+fi
+
+# Get the focused window ID
+window_id=$(bspc query -N -n focused)
+
+if [ -n "$window_id" ]; then
+    # Get window geometry (x, y, width, height)
+    eval $(xdotool getwindowgeometry --shell "$window_id")
+
+    # Calculate center position
+    center_x=$((X + WIDTH / 2))
+    center_y=$((Y + HEIGHT / 2))
+
+    # Move mouse to center of focused window
+    xdotool mousemove "$center_x" "$center_y"
+fi

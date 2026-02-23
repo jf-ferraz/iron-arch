@@ -1,0 +1,12 @@
+[Unit]
+Description=Lock screen on resume from suspend
+After=suspend.target hibernate.target hybrid-sleep.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/betterlockscreen --lock
+User=%I
+Environment="DISPLAY=:0" "XAUTHORITY=/home/%I/.Xauthority"
+
+[Install]
+WantedBy=suspend.target hibernate.target hybrid-sleep.target

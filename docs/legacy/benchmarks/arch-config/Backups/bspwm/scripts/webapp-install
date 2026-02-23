@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+
+# webapp-install - Create web application desktop entries
+# This script creates desktop entries for web apps using Chromium in app mode
+
+ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
+PROFILE_DIR="$HOME/.local/share/webapp-profiles"
+DESKTOP_DIR="$HOME/.local/share/applications"
+
+# Create required directories
+mkdir -p "$ICON_DIR"
+mkdir -p "$PROFILE_DIR"
+mkdir -p "$DESKTOP_DIR"
+
+# Function to sanitize app name for filenames
+sanitize_name() {
+    echo "$1" | tr '[:upper:]' '[:lower:]' | tr ' ' '-'
+}
+
+# Function to show usage
+show_help() {
+    cat << EOF
+Usage: webapp-install [OPTIONS] [NAME] [URL] [ICON]
+
+Create a web application desktop entry using Chromium in app mode.
+
+Arguments:
+    NAME    Application name
+    URL     Application URL
+    ICON    Icon URL or local file path
+
+Options:
+    -h, --help              Show this help message
+    -e, --exec COMMAND      Custom execution command
+    -m, --mime TYPES        MIME type associations (comma-separated)
+
+Examples:
+    # Interactive mode
+    webapp-install
+
+    # Direct mode
+    webapp-install "YouTube Music" "https://music.youtube.com" "https://music.youtube.com/img/favicon.png"
+
+    # With custom options
+    webapp-install -m "text/html" "My App" "https://example.com" "/path/to/icon.png"
+EOF
+}
+
+# Parse arguments
+CUSTOM_EXEC=""
+MIME_TYPES=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -e|--exec)
+            CUSTOM_EXEC="$2"
+            shift 2
+            ;;
+        -m|--mime)
+            MIME_TYPES="$2"
+            shift 2
+            ;;
+        *)
+            if [[ -z "$APP_NAME" ]]; then
+                APP_NAME="$1"
+            elif [[ -z "$APP_URL" ]]; then
+                APP_URL="$1"
+            elif [[ -z "$APP_ICON" ]]; then
+                APP_ICON="$1"
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Interactive mode if no arguments provided
+if [[ -z "$APP_NAME" ]]; then
+    if command -v gum &> /dev/null; then
+        APP_NAME=$(gum input --placeholder "Enter application name")
+        APP_URL=$(gum input --placeholder "Enter application URL")
+        APP_ICON=$(gum input --placeholder "Enter icon URL or path")
+    else
+        read -p "Enter application name: " APP_NAME
+        read -p "Enter application URL: " APP_URL
+        read -p "Enter icon URL or path: " APP_ICON
+    fi
+fi
+
+# Validate inputs
+if [[ -z "$APP_NAME" ]] || [[ -z "$APP_URL" ]] || [[ -z "$APP_ICON" ]]; then
+    echo "Error: Name, URL, and icon are required."
+    show_help
+    exit 1
+fi
+
+# Sanitize app name for files
+SANITIZED_NAME=$(sanitize_name "$APP_NAME")
+ICON_PATH="$ICON_DIR/$SANITIZED_NAME.png"
+DESKTOP_FILE="$DESKTOP_DIR/$SANITIZED_NAME.desktop"
+PROFILE_PATH="$PROFILE_DIR/$SANITIZED_NAME"
+
+# Download or copy icon
+echo "Installing icon..."
+if [[ "$APP_ICON" =~ ^https?:// ]]; then
+    # Download icon from URL
+    if command -v curl &> /dev/null; then
+        curl -L -o "$ICON_PATH" "$APP_ICON" || {
+            echo "Error: Failed to download icon"
+            exit 1
+        }
+    elif command -v wget &> /dev/null; then
+        wget -O "$ICON_PATH" "$APP_ICON" || {
+            echo "Error: Failed to download icon"
+            exit 1
+        }
+    else
+        echo "Error: curl or wget required to download icon"
+        exit 1
+    fi
+else
+    # Copy local icon file
+    if [[ -f "$APP_ICON" ]]; then
+        cp "$APP_ICON" "$ICON_PATH" || {
+            echo "Error: Failed to copy icon"
+            exit 1
+        }
+    else
+        echo "Error: Icon file not found: $APP_ICON"
+        exit 1
+    fi
+fi
+
+# Create Chromium profile directory
+mkdir -p "$PROFILE_PATH"
+
+# Determine exec command
+if [[ -n "$CUSTOM_EXEC" ]]; then
+    EXEC_CMD="$CUSTOM_EXEC"
+else
+    EXEC_CMD="chromium --user-data-dir=\"$PROFILE_PATH\" --app=\"$APP_URL\""
+fi
+
+# Create desktop entry
+echo "Creating desktop entry..."
+cat > "$DESKTOP_FILE" << EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=$APP_NAME
+Comment=Web application: $APP_NAME
+Exec=$EXEC_CMD
+Icon=$SANITIZED_NAME
+Categories=Network;WebApp;
+Terminal=false
+StartupNotify=true
+EOF
+
+# Add MIME types if provided
+if [[ -n "$MIME_TYPES" ]]; then
+    echo "MimeType=$MIME_TYPES;" >> "$DESKTOP_FILE"
+fi
+
+# Make desktop file executable
+chmod +x "$DESKTOP_FILE"
+
+# Update icon cache
+if command -v gtk-update-icon-cache &> /dev/null; then
+    gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" 2>/dev/null
+fi
+
+echo "✓ Web app '$APP_NAME' installed successfully!"
+echo "  Desktop file: $DESKTOP_FILE"
+echo "  Profile: $PROFILE_PATH"
+echo "  Icon: $ICON_PATH"

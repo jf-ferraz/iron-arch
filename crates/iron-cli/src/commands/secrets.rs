@@ -9,6 +9,7 @@ use anyhow::Result;
 use iron_core::services::secrets::{SecretsService, SecretsStatus};
 use serde::Serialize;
 use std::path::Path;
+use std::time::Instant;
 
 #[derive(Serialize)]
 struct SecretsInfo {
@@ -26,10 +27,11 @@ struct KeyInfo {
 
 /// Execute secrets command
 pub fn execute(ctx: &AppContext, action: SecretsAction) -> Result<()> {
+    let start = Instant::now();
     require_init(ctx)?;
 
     match action {
-        SecretsAction::Status => status(ctx),
+        SecretsAction::Status => status(ctx, start),
         SecretsAction::Init => init(ctx),
         SecretsAction::Unlock { key } => unlock(ctx, key),
         SecretsAction::Lock => lock(ctx),
@@ -40,7 +42,7 @@ pub fn execute(ctx: &AppContext, action: SecretsAction) -> Result<()> {
 }
 
 /// Show secrets status
-fn status(ctx: &AppContext) -> Result<()> {
+fn status(ctx: &AppContext, start: Instant) -> Result<()> {
     let output = &ctx.output;
     let secrets_service = ctx.secrets_service();
 
@@ -67,7 +69,7 @@ fn status(ctx: &AppContext) -> Result<()> {
                 })
                 .collect(),
         };
-        output.json(&info);
+        output.json_envelope("secrets.status", &info, start);
         return Ok(());
     }
 
@@ -392,9 +394,7 @@ mod tests {
     fn test_secrets_action_dispatch_coverage() {
         // Verify that all SecretsAction variants are handled
         // (compile-time guarantee via exhaustive match in execute())
-        let actions = vec![
-            "Status", "Unlock", "Lock", "Link", "AddKey", "ExportKey",
-        ];
+        let actions = vec!["Status", "Unlock", "Lock", "Link", "AddKey", "ExportKey"];
         assert_eq!(actions.len(), 6);
     }
 }

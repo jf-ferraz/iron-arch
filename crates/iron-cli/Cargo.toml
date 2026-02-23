@@ -23,6 +23,7 @@ serde.workspace = true
 serde_json.workspace = true
 chrono = { workspace = true, features = ["serde"] }
 walkdir.workspace = true
+indicatif = "0.17"
 
 [dev-dependencies]
 assert_cmd.workspace = true

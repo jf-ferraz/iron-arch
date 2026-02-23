@@ -7,16 +7,19 @@ use crate::output::StatusBadge;
 use anyhow::Result;
 use iron_core::services::clean::{CleanupCategory, CleanupService, DefaultCleanupService};
 
+/// Options for the clean command.
+pub struct CleanOptions {
+    pub orphans: bool,
+    pub cache: bool,
+    pub symlinks: bool,
+    pub journal: bool,
+    pub logs: bool,
+    pub all: bool,
+    pub dry_run: bool,
+}
+
 /// Execute clean command
-pub fn execute(
-    ctx: &AppContext,
-    orphans: bool,
-    cache: bool,
-    symlinks: bool,
-    journal: bool,
-    logs: bool,
-    all: bool,
-) -> Result<()> {
+pub fn execute(ctx: &AppContext, opts: CleanOptions) -> Result<()> {
     require_init(ctx)?;
 
     let output = &ctx.output;
@@ -29,25 +32,25 @@ pub fn execute(
         ));
 
     // Build category list from flags
-    let has_any_flag = orphans || cache || symlinks || journal || logs;
-    let categories: Vec<CleanupCategory> = if all || !has_any_flag {
+    let has_any_flag = opts.orphans || opts.cache || opts.symlinks || opts.journal || opts.logs;
+    let categories: Vec<CleanupCategory> = if opts.all || !has_any_flag {
         CleanupCategory::safe().to_vec()
     } else {
         let mut cats = Vec::new();
-        if orphans {
+        if opts.orphans {
             cats.push(CleanupCategory::OrphanPackages);
         }
-        if cache {
+        if opts.cache {
             cats.push(CleanupCategory::PackageCache);
         }
-        if symlinks {
+        if opts.symlinks {
             // F-006: Wire --symlinks to BrokenSymlinks category
             cats.push(CleanupCategory::BrokenSymlinks);
         }
-        if journal {
+        if opts.journal {
             cats.push(CleanupCategory::SystemdJournal);
         }
-        if logs {
+        if opts.logs {
             cats.push(CleanupCategory::AppLogs);
         }
         cats
@@ -66,8 +69,8 @@ pub fn execute(
         ));
     }
 
-    // Execute (dry_run=false for real cleanup)
-    let summary = service.execute(&categories, false);
+    // Execute cleanup (dry_run skips sudo operations)
+    let summary = service.execute(&categories, opts.dry_run);
 
     output.separator();
 
