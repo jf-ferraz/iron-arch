@@ -16,6 +16,7 @@ pub fn execute(ctx: &AppContext, action: InstallAction) -> Result<()> {
             target,
             emit_script,
         } => plan(ctx, &host, &target, emit_script),
+        InstallAction::Wizard { host, target } => wizard(ctx, &host, &target),
     }
 }
 
@@ -68,4 +69,11 @@ fn plan(ctx: &AppContext, host_id: &str, target: &str, emit_script: bool) -> Res
     output.info("Use --emit-script to generate a reviewable shell script.");
 
     Ok(())
+}
+
+fn wizard(ctx: &AppContext, host_id: &str, target: &str) -> Result<()> {
+    let host_service = ctx.host_service();
+    let host = host_service.load_host(host_id)?;
+    let plan = InstallPlan::from_host(&host, target)?;
+    iron_tui::run_install_wizard(ctx.root.clone(), plan)
 }

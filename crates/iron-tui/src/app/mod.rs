@@ -9,6 +9,7 @@ use crate::message::{MessageLevel, StatusMessage};
 use crate::ui::operation_log::OperationFilter;
 use crate::widgets::ProgressTracker;
 use crate::wizard::{TextInput, WizardState};
+use crate::install_wizard::InstallWizardState;
 use iron_core::{
     ArchNewsItem, Bundle, Module, NoopPackageManager, NoopSystemService, PackageManager,
     PackageUpdate, Profile, RiskLevel, SystemService,
@@ -163,6 +164,11 @@ pub struct App {
     /// Detected snapshot backend (Timeshift, Snapper, or None)
     pub snapshot_backend: iron_core::snapshot::SnapshotBackend,
     // -------------------------------------------------------------------------
+    // Install Wizard State
+    // -------------------------------------------------------------------------
+    /// Integrated Arch install wizard state.
+    pub install_wizard: Option<InstallWizardState>,
+    // -------------------------------------------------------------------------
     // Profile Builder State (Phase 4.4)
     // -------------------------------------------------------------------------
     /// Current step in the profile builder wizard (0=name, 1=modules, 2=preview, 3=done)
@@ -290,12 +296,8 @@ pub enum View {
     SystemScan,
     /// Host selection for multi-machine setups (S1-P2-001)
     HostSelection,
-    /// F1-010: Apply system state view
-    Apply,
-    /// F1-018: Drift detection detail view
-    DriftDetail,
-    /// F2-007: Snapshot timeline view
-    Snapshots,
+    /// Integrated Arch installation wizard
+    InstallWizard,
 }
 
 /// Actions that require confirmation
@@ -415,6 +417,7 @@ impl App {
             encrypted_files: Vec::new(),
             last_backup: None,
             snapshot_backend: iron_core::snapshot::detect_backend(),
+            install_wizard: None,
             profile_builder_step: 0,
             profile_builder_name: String::new(),
             profile_builder_description: String::new(),
