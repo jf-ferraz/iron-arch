@@ -13,7 +13,7 @@
 #
 set -Eeuo pipefail
 
-REPO="${REPO:-$HOME/dev/projects/iron-arch}"   # iron tool source (branch: dev)
+REPO="${REPO:-$HOME/Documents/projects/iron-arch}"   # iron tool source (branch: dev)
 CFG="${CFG:-$HOME/iron}"                        # iron-config dotfiles repo
 SANDBOX="${SANDBOX:-/tmp/iron-apply-test}"      # throwaway deploy target ($HOME)
 IRON="$REPO/target/release/iron"
