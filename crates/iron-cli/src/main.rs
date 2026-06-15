@@ -63,6 +63,7 @@ fn main() -> Result<()> {
         Some(Commands::Module { action }) => commands::module::execute(&ctx, action),
         Some(Commands::Import { action }) => commands::import::execute(&ctx, action),
         Some(Commands::Host { action }) => commands::host::execute(&ctx, action),
+        Some(Commands::Install { action }) => commands::install::execute(&ctx, action),
         Some(Commands::Sync { action }) => commands::sync::execute(&ctx, action),
         Some(Commands::Secrets { action }) => commands::secrets::execute(&ctx, action),
         Some(Commands::Apply {
