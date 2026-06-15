@@ -529,6 +529,14 @@ pub enum ImportAction {
         /// Comma-separated app ids to import (default: all detected)
         #[arg(long, value_delimiter = ',')]
         only: Option<Vec<String>>,
+
+        /// Also add the imported modules to this profile (created if missing)
+        #[arg(long)]
+        into_profile: Option<String>,
+
+        /// Guess package names from app directory names (default off — dotfiles only)
+        #[arg(long)]
+        guess_packages: bool,
     },
 }
 

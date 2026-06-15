@@ -12,6 +12,7 @@
 //! a small alias map) — the generated `module.toml` is meant to be reviewed.
 
 use crate::module::{DotfileMapping, HookBehavior, Module, ModuleKind};
+use crate::profile::Profile;
 use anyhow::{Context, Result};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -64,6 +65,7 @@ pub struct HomeManagerImporter {
     home_files: PathBuf,
     modules_dir: PathBuf,
     only: Option<Vec<String>>,
+    guess_packages: bool,
 }
 
 impl HomeManagerImporter {
@@ -73,13 +75,23 @@ impl HomeManagerImporter {
     /// a `home-files/` directory directly. `modules_dir` is where modules are
     /// written (typically `<iron-root>/modules`). `only`, if set, restricts the
     /// import to those app ids.
+    ///
+    /// Package guessing is off by default — imported modules are dotfiles-only, so
+    /// `iron apply` deploys configs without risking `pacman` on guessed names.
     pub fn new(input: &Path, modules_dir: &Path, only: Option<Vec<String>>) -> Result<Self> {
         let home_files = resolve_home_files(input)?;
         Ok(Self {
             home_files,
             modules_dir: modules_dir.to_path_buf(),
             only,
+            guess_packages: false,
         })
+    }
+
+    /// Enable best-effort package guessing (from the app directory name).
+    pub fn with_package_guessing(mut self, yes: bool) -> Self {
+        self.guess_packages = yes;
+        self
     }
 
     /// The resolved `home-files` root.
@@ -170,9 +182,14 @@ impl HomeManagerImporter {
     ) -> Result<PlannedModule> {
         let file_count = count_files(&src)?;
         let already_exists = self.modules_dir.join(&id).join("module.toml").exists();
+        let packages = if self.guess_packages {
+            guess_packages(&id)
+        } else {
+            Vec::new()
+        };
         Ok(PlannedModule {
             kind: guess_kind(&id),
-            packages: guess_packages(&id),
+            packages,
             id,
             target,
             rel_source,
@@ -237,6 +254,70 @@ fn build_module(m: &PlannedModule) -> Module {
         dotfiles_sync: false,
         dotfiles_sync_target: None,
     }
+}
+
+/// Result of adding modules to a profile.
+#[derive(Debug, Clone, Serialize)]
+pub struct ProfileUpdate {
+    /// Profile id.
+    pub profile: String,
+    /// Whether the profile was newly created.
+    pub created: bool,
+    /// Module ids newly added (not already present).
+    pub added: Vec<String>,
+    /// Total module count after the update.
+    pub total: usize,
+}
+
+/// Add `module_ids` to a profile under `profiles_dir`, creating the profile if it
+/// doesn't exist. Idempotent: ids already present are not duplicated.
+pub fn add_modules_to_profile(
+    profiles_dir: &Path,
+    profile_name: &str,
+    module_ids: &[String],
+) -> Result<ProfileUpdate> {
+    let dir = profiles_dir.join(profile_name);
+    let (mut profile, created) = if dir.join("profile.toml").exists() {
+        (
+            Profile::load(&dir).with_context(|| {
+                format!("loading existing profile '{profile_name}'")
+            })?,
+            false,
+        )
+    } else {
+        (
+            Profile {
+                id: profile_name.to_string(),
+                name: title_case(profile_name),
+                description: Some("Imported from home-manager.".to_string()),
+                modules: Vec::new(),
+                theme: None,
+                shell: None,
+                extends: None,
+                for_bundle: None,
+            },
+            true,
+        )
+    };
+
+    let mut added = Vec::new();
+    for id in module_ids {
+        if !profile.modules.contains(id) {
+            profile.modules.push(id.clone());
+            added.push(id.clone());
+        }
+    }
+
+    profile
+        .save(&dir)
+        .with_context(|| format!("writing profile '{profile_name}'"))?;
+
+    Ok(ProfileUpdate {
+        profile: profile_name.to_string(),
+        created,
+        total: profile.modules.len(),
+        added,
+    })
 }
 
 /// Guess a module kind from its id.
@@ -396,8 +477,9 @@ mod tests {
         let hf = tmp.path().join("home-files");
         fs::create_dir_all(&hf).unwrap();
         fake_home_files(&hf);
-        let importer =
-            HomeManagerImporter::new(tmp.path(), &tmp.path().join("modules"), None).unwrap();
+        let importer = HomeManagerImporter::new(tmp.path(), &tmp.path().join("modules"), None)
+            .unwrap()
+            .with_package_guessing(true);
         let plan = importer.plan().unwrap();
 
         let fish = plan.modules.iter().find(|m| m.id == "fish").unwrap();
@@ -495,6 +577,73 @@ mod tests {
         let err =
             HomeManagerImporter::new(tmp.path(), &tmp.path().join("modules"), None).unwrap_err();
         assert!(err.to_string().contains("No home-manager files"));
+    }
+
+    #[test]
+    fn packages_empty_by_default() {
+        let tmp = TempDir::new().unwrap();
+        let hf = tmp.path().join("home-files");
+        fs::create_dir_all(&hf).unwrap();
+        fake_home_files(&hf);
+
+        // default: dotfiles-only, no guessed packages
+        let plain =
+            HomeManagerImporter::new(tmp.path(), &tmp.path().join("modules"), None).unwrap();
+        let kitty = plain
+            .plan()
+            .unwrap()
+            .modules
+            .into_iter()
+            .find(|m| m.id == "kitty")
+            .unwrap();
+        assert!(kitty.packages.is_empty());
+
+        // opt-in: guessed
+        let guessed = HomeManagerImporter::new(tmp.path(), &tmp.path().join("modules"), None)
+            .unwrap()
+            .with_package_guessing(true);
+        let kitty = guessed
+            .plan()
+            .unwrap()
+            .modules
+            .into_iter()
+            .find(|m| m.id == "kitty")
+            .unwrap();
+        assert_eq!(kitty.packages, vec!["kitty".to_string()]);
+    }
+
+    #[test]
+    fn add_modules_to_profile_creates_and_dedups() {
+        let tmp = TempDir::new().unwrap();
+        let profiles = tmp.path().join("profiles");
+
+        // first call creates the profile
+        let r1 = add_modules_to_profile(
+            &profiles,
+            "main",
+            &["kitty".to_string(), "fish".to_string()],
+        )
+        .unwrap();
+        assert!(r1.created);
+        assert_eq!(r1.added, vec!["kitty".to_string(), "fish".to_string()]);
+        assert_eq!(r1.total, 2);
+
+        // second call updates, dedups kitty, adds helix
+        let r2 = add_modules_to_profile(
+            &profiles,
+            "main",
+            &["kitty".to_string(), "helix".to_string()],
+        )
+        .unwrap();
+        assert!(!r2.created);
+        assert_eq!(r2.added, vec!["helix".to_string()]);
+        assert_eq!(r2.total, 3);
+
+        // persisted profile is valid and has all three modules
+        let profile = Profile::load(&profiles.join("main")).unwrap();
+        assert_eq!(profile.id, "main");
+        assert_eq!(profile.modules.len(), 3);
+        assert!(profile.modules.contains(&"helix".to_string()));
     }
 
     #[test]

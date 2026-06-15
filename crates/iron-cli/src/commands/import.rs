@@ -7,7 +7,7 @@ use crate::cli::ImportAction;
 use crate::context::AppContext;
 use crate::output::StatusBadge;
 use anyhow::Result;
-use iron_core::import::HomeManagerImporter;
+use iron_core::import::{HomeManagerImporter, add_modules_to_profile};
 use iron_core::validation::expand_home;
 use std::path::Path;
 
@@ -19,22 +19,28 @@ pub fn execute(ctx: &AppContext, action: ImportAction) -> Result<()> {
             dry_run,
             force,
             only,
-        } => home_manager(ctx, &path, dry_run, force, only),
+            into_profile,
+            guess_packages,
+        } => home_manager(ctx, &path, dry_run, force, only, into_profile, guess_packages),
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn home_manager(
     ctx: &AppContext,
     path: &str,
     dry_run: bool,
     force: bool,
     only: Option<Vec<String>>,
+    into_profile: Option<String>,
+    guess_packages: bool,
 ) -> Result<()> {
     let output = &ctx.output;
     let input = expand_home(Path::new(path));
     let modules_dir = ctx.root.join("modules");
 
-    let importer = HomeManagerImporter::new(&input, &modules_dir, only)?;
+    let importer =
+        HomeManagerImporter::new(&input, &modules_dir, only)?.with_package_guessing(guess_packages);
     let plan = importer.plan()?;
 
     if plan.modules.is_empty() {
@@ -53,6 +59,16 @@ fn home_manager(
         Some(importer.execute(&plan, force)?)
     };
 
+    // Add the imported modules to a profile (non-dry-run only), so the result is
+    // directly `iron apply`-able.
+    let profile_update = match (&report, &into_profile) {
+        (Some(_), Some(name)) => {
+            let ids: Vec<String> = plan.modules.iter().map(|m| m.id.clone()).collect();
+            Some(add_modules_to_profile(&ctx.root.join("profiles"), name, &ids)?)
+        }
+        _ => None,
+    };
+
     if output.is_json() {
         output.json(&serde_json::json!({
             "source": importer.home_files().display().to_string(),
@@ -60,6 +76,7 @@ fn home_manager(
             "dry_run": dry_run,
             "plan": plan,
             "report": report,
+            "profile": profile_update,
         }));
         return Ok(());
     }
@@ -99,6 +116,13 @@ fn home_manager(
     match report {
         None => {
             output.info("Dry run — nothing written. Re-run without --dry-run to create the modules.");
+            if let Some(name) = &into_profile {
+                output.info(&format!(
+                    "Would add {} module(s) to profile '{}'.",
+                    plan.modules.len(),
+                    name
+                ));
+            }
         }
         Some(report) => {
             output.subheader("Result");
@@ -116,10 +140,29 @@ fn home_manager(
                 report.created.len(),
                 report.files_copied,
             ));
-            output.info(
-                "Packages are best-effort guesses — review each module.toml. \
-                 Add the modules to a profile to apply them.",
-            );
+
+            if let Some(pu) = &profile_update {
+                output.kv(
+                    if pu.created {
+                        "Profile created"
+                    } else {
+                        "Profile updated"
+                    },
+                    format!("{} ({} module(s), +{} new)", pu.profile, pu.total, pu.added.len()),
+                );
+            }
+
+            if guess_packages {
+                output.info("Package guesses added — review each module.toml before applying.");
+            } else {
+                output.info(
+                    "Modules are dotfiles-only (no packages). Use --guess-packages to add \
+                     best-effort package names, or curate them per module.",
+                );
+            }
+            if into_profile.is_none() {
+                output.info("Tip: pass --into-profile <name> to make the import directly apply-able.");
+            }
         }
     }
 
