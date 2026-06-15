@@ -43,6 +43,9 @@ Thumbs.db
 # Test artifacts
 iron-export-*.json
 iron-install.sh
+# apply-test sandboxes (e.g. created by scripts/test-apply.sh)
+/iron-test/
+iron-apply-test/
 
 # Coverage reports
 tarpaulin-report.*

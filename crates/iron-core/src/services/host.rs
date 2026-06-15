@@ -83,6 +83,119 @@ impl DefaultHostService {
     }
 }
 
+/// Parse `wlr-randr` output into monitor configs.
+///
+/// In `wlr-randr` output, each output name sits at column 0 (e.g.
+/// `DP-1 "Make Model Serial"`) and its properties/modes are indented beneath it.
+/// A prior version called `line.trim()` *before* testing the leading indentation,
+/// so after trimming no line "started with a space" and every property/mode line
+/// was misread as a fresh monitor — producing dozens of phantom entries
+/// (`Make:`, `1920x1080`, `Scale:`, …). We now decide whether a line is an output
+/// header from the *raw* (untrimmed) line.
+fn parse_wlr_randr(output: &str) -> Vec<MonitorConfig> {
+    let mut monitors = Vec::new();
+    let mut name = String::new();
+    let mut resolution = String::new();
+    let mut refresh: Option<u32> = None;
+    let mut scale: Option<f32> = None;
+
+    for raw_line in output.lines() {
+        // Indentation is significant — evaluate it before trimming.
+        let is_header = !raw_line.is_empty() && !raw_line.starts_with(char::is_whitespace);
+        let line = raw_line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        if is_header {
+            if !name.is_empty() {
+                monitors.push(MonitorConfig {
+                    output: name.clone(),
+                    resolution: resolution.clone(),
+                    refresh_rate: refresh,
+                    scale,
+                });
+            }
+            name = line.split_whitespace().next().unwrap_or("").to_string();
+            resolution = String::new();
+            refresh = Some(60);
+            scale = Some(1.0);
+        } else if line.contains("current") {
+            // e.g. "2560x1440 px, 143.998 Hz (preferred, current)"
+            if let Some(res) = line.split_whitespace().next() {
+                resolution = res.to_string();
+            }
+            if let Some(rate) = parse_refresh_hz(line) {
+                refresh = Some(rate);
+            }
+        } else if let Some(rest) = line.strip_prefix("Scale:")
+            && let Ok(s) = rest.trim().parse()
+        {
+            scale = Some(s);
+        }
+    }
+
+    if !name.is_empty() {
+        monitors.push(MonitorConfig {
+            output: name,
+            resolution,
+            refresh_rate: refresh,
+            scale,
+        });
+    }
+
+    monitors
+}
+
+/// Extract a refresh rate (Hz, rounded) from a `wlr-randr` mode line, handling
+/// both `"60.000 Hz"` (separate token) and `"60.000Hz"` (joined) forms.
+fn parse_refresh_hz(line: &str) -> Option<u32> {
+    let tokens: Vec<&str> = line.split_whitespace().collect();
+    let hz = tokens.iter().enumerate().find_map(|(i, tok)| {
+        // "60.000Hz" — numeric prefix joined to the unit.
+        if let Some(num) = tok.strip_suffix("Hz")
+            && !num.is_empty()
+        {
+            return num.parse::<f32>().ok();
+        }
+        // "60.000 Hz" — the unit is its own token; the rate is the one before it.
+        if *tok == "Hz" && i > 0 {
+            return tokens[i - 1].parse::<f32>().ok();
+        }
+        None
+    })?;
+    Some(hz.round() as u32)
+}
+
+/// Parse `xrandr --query` output (X11 fallback) into monitor configs.
+fn parse_xrandr(output: &str) -> Vec<MonitorConfig> {
+    let mut monitors = Vec::new();
+    for line in output.lines() {
+        if line.contains(" connected") {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if !parts.is_empty() {
+                let output_name = parts[0].to_string();
+                let resolution = parts
+                    .iter()
+                    .find(|s| {
+                        s.contains('x') && s.chars().all(|c| c.is_numeric() || c == 'x' || c == '+')
+                    })
+                    .map(|s| s.split('+').next().unwrap_or(*s))
+                    .unwrap_or("unknown")
+                    .to_string();
+
+                monitors.push(MonitorConfig {
+                    output: output_name,
+                    resolution,
+                    refresh_rate: Some(60),
+                    scale: Some(1.0),
+                });
+            }
+        }
+    }
+    monitors
+}
+
 impl HostService for DefaultHostService {
     fn detect_hardware(&self) -> IronResult<HardwareSpec> {
         // Detect CPU
@@ -152,92 +265,18 @@ impl HostService for DefaultHostService {
     }
 
     fn detect_monitors(&self) -> IronResult<Vec<MonitorConfig>> {
-        let mut monitors = Vec::new();
-
-        // Try wlr-randr for Wayland
+        // Wayland: prefer wlr-randr.
         if let Some(output) = self.run_command("wlr-randr", &[]) {
-            let mut current_output = String::new();
-            let mut current_resolution = String::new();
-            let mut current_refresh: Option<u32> = None;
-            let mut current_scale: Option<f32> = None;
-
-            for line in output.lines() {
-                let line = line.trim();
-                if !line.starts_with(' ') && !line.is_empty() {
-                    // Save previous monitor
-                    if !current_output.is_empty() {
-                        monitors.push(MonitorConfig {
-                            output: current_output.clone(),
-                            resolution: current_resolution.clone(),
-                            refresh_rate: current_refresh,
-                            scale: current_scale,
-                        });
-                    }
-                    current_output = line.split_whitespace().next().unwrap_or("").to_string();
-                    current_resolution = String::new();
-                    current_refresh = Some(60);
-                    current_scale = Some(1.0);
-                } else if line.contains("current") {
-                    // Parse resolution and refresh
-                    if let Some(res) = line.split_whitespace().next() {
-                        current_resolution = res.to_string();
-                    }
-                    if line.contains("Hz")
-                        && let Some(hz) = line.split_whitespace().find(|s| s.ends_with("Hz"))
-                        && let Ok(rate) = hz.trim_end_matches("Hz").parse::<f32>()
-                    {
-                        current_refresh = Some(rate as u32);
-                    }
-                } else if line.starts_with("Scale:")
-                    && let Some(scale) = line.split(':').nth(1)
-                    && let Ok(s) = scale.trim().parse()
-                {
-                    current_scale = Some(s);
-                }
-            }
-
-            // Save last monitor
-            if !current_output.is_empty() {
-                monitors.push(MonitorConfig {
-                    output: current_output,
-                    resolution: current_resolution,
-                    refresh_rate: current_refresh,
-                    scale: current_scale,
-                });
+            let monitors = parse_wlr_randr(&output);
+            if !monitors.is_empty() {
+                return Ok(monitors);
             }
         }
-
-        // Fallback to xrandr for X11
-        if monitors.is_empty()
-            && let Some(output) = self.run_command("xrandr", &["--query"])
-        {
-            for line in output.lines() {
-                if line.contains(" connected") {
-                    let parts: Vec<&str> = line.split_whitespace().collect();
-                    if !parts.is_empty() {
-                        let output_name = parts[0].to_string();
-                        let resolution = parts
-                            .iter()
-                            .find(|s| {
-                                s.contains('x')
-                                    && s.chars().all(|c| c.is_numeric() || c == 'x' || c == '+')
-                            })
-                            .map(|s| s.split('+').next().unwrap_or(*s))
-                            .unwrap_or("unknown")
-                            .to_string();
-
-                        monitors.push(MonitorConfig {
-                            output: output_name,
-                            resolution,
-                            refresh_rate: Some(60),
-                            scale: Some(1.0),
-                        });
-                    }
-                }
-            }
+        // X11 fallback: xrandr.
+        if let Some(output) = self.run_command("xrandr", &["--query"]) {
+            return Ok(parse_xrandr(&output));
         }
-
-        Ok(monitors)
+        Ok(Vec::new())
     }
 
     fn hostname(&self) -> IronResult<String> {
@@ -449,6 +488,74 @@ mod tests {
         let monitors = service.detect_monitors().unwrap();
         // Just verify it doesn't panic
         let _ = monitors.len();
+    }
+
+    #[test]
+    fn test_parse_wlr_randr_ignores_indented_lines() {
+        // Realistic two-output dump. Before the indentation fix this produced one
+        // "monitor" per line (Make:, Model:, every mode, Scale:, Adaptive Sync, …).
+        let output = "\
+DP-1 \"Goldstar Company Ltd LG ULTRAGEAR 0x0001\"
+  Make: Goldstar Company Ltd
+  Model: LG ULTRAGEAR
+  Serial: 0x0001
+  Physical size: 600x340 mm
+  Enabled: yes
+  Modes:
+    2560x1440 px, 59.951000 Hz
+    2560x1440 px, 143.998001 Hz (preferred, current)
+    1920x1080 px, 60.000000 Hz
+  Position: 0,0
+  Transform: normal
+  Scale: 1.000000
+  Adaptive Sync: disabled
+DP-2 \"Dell Inc. DELL U2415 7MT0184\"
+  Make: Dell Inc.
+  Model: DELL U2415
+  Enabled: yes
+  Modes:
+    1920x1200 px, 59.950001 Hz (preferred, current)
+    1920x1080 px, 60.000000 Hz
+  Position: 2560,0
+  Transform: normal
+  Scale: 1.250000
+";
+        let monitors = parse_wlr_randr(output);
+        assert_eq!(
+            monitors.len(),
+            2,
+            "expected exactly 2 outputs, got {monitors:?}"
+        );
+
+        assert_eq!(monitors[0].output, "DP-1");
+        assert_eq!(monitors[0].resolution, "2560x1440");
+        assert_eq!(monitors[0].refresh_rate, Some(144)); // 143.998 -> 144
+        assert!((monitors[0].scale.unwrap() - 1.0).abs() < 1e-6);
+
+        assert_eq!(monitors[1].output, "DP-2");
+        assert_eq!(monitors[1].resolution, "1920x1200");
+        assert_eq!(monitors[1].refresh_rate, Some(60)); // 59.95 -> 60
+        assert!((monitors[1].scale.unwrap() - 1.25).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_parse_wlr_randr_empty() {
+        assert!(parse_wlr_randr("").is_empty());
+    }
+
+    #[test]
+    fn test_parse_xrandr_connected_only() {
+        let output = "\
+Screen 0: minimum 320 x 200, current 3840 x 1080, maximum 16384 x 16384
+DP-1 connected primary 1920x1080+0+0 (normal left inverted right) 510mm x 290mm
+HDMI-1 connected 1920x1080+1920+0 (normal left inverted right) 510mm x 290mm
+DP-2 disconnected (normal left inverted right)
+";
+        let monitors = parse_xrandr(output);
+        assert_eq!(monitors.len(), 2);
+        assert_eq!(monitors[0].output, "DP-1");
+        assert_eq!(monitors[0].resolution, "1920x1080");
+        assert_eq!(monitors[1].output, "HDMI-1");
     }
 
     #[test]
