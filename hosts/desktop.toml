@@ -1,6 +1,27 @@
 id = "desktop"
 name = "Desktop Workstation"
 installed_bundles = []
+active_bundle = "hyprland"
+
+[install_params]
+bootloader = "SystemdBoot"
+kernel = "linux"
+microcode = "amd-ucode"
+gpu_drivers = ["vulkan-radeon", "mesa-utils"]
+filesystem = "ext4"
+encrypted = false
+
+[[install_params.partitions]]
+device = "/dev/nvme0n1p5"
+mount_point = "/boot"
+filesystem = "vfat"
+size = "1G"
+
+[[install_params.partitions]]
+device = "/dev/nvme0n1p6"
+mount_point = "/"
+filesystem = "ext4"
+size = "remaining"
 
 [hardware]
 cpu = "AMD Ryzen 7 9800X3D 8-Core Processor"

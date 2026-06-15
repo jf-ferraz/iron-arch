@@ -11,6 +11,7 @@ pub mod history;
 pub mod host;
 pub mod import;
 pub mod init;
+pub mod install;
 pub mod module;
 pub mod plan;
 pub mod profile;
