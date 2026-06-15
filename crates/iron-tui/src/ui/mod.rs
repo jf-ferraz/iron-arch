@@ -8,6 +8,7 @@ mod config;
 mod dashboard;
 mod doctor;
 mod host_selection;
+mod install_wizard;
 mod maintenance;
 mod module_creator;
 mod modules;
@@ -38,6 +39,7 @@ pub use config::render_config_manager;
 pub use dashboard::render_dashboard;
 pub use doctor::render_doctor;
 pub use host_selection::render_host_selection;
+pub use install_wizard::render_install_wizard;
 pub use maintenance::render_system_maintenance;
 pub use module_creator::render_module_creator;
 pub use modules::{render_module_detail, render_modules};
@@ -98,6 +100,7 @@ pub fn render(frame: &mut Frame, app: &App) {
         View::ModuleCreator => render_module_creator(frame, layout[1], app),
         View::SystemScan => render_system_scan(frame, layout[1], app),
         View::HostSelection => render_host_selection(frame, layout[1], app),
+        View::InstallWizard => render_install_wizard(frame, layout[1], app),
     }
 
     // Render footer

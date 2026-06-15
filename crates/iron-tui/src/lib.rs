@@ -9,6 +9,7 @@
 
 pub mod app;
 pub mod event;
+pub mod install_wizard;
 pub mod message;
 pub mod screen;
 pub mod terminal;
@@ -68,6 +69,32 @@ pub fn run_with_config(
             Event::Tick => {
                 app.tick();
             }
+        }
+    }
+
+    Ok(())
+}
+
+/// Run the integrated Arch installation wizard directly.
+pub fn run_install_wizard(config_dir: PathBuf, plan: iron_core::InstallPlan) -> anyhow::Result<()> {
+    let mut terminal = Terminal::new()?;
+    let mut app = App::new(
+        config_dir,
+        Arc::new(iron_core::NoopPackageManager),
+        Arc::new(iron_core::NoopSystemService),
+    );
+    app.open_install_wizard(plan);
+
+    let events = EventHandler::new(TICK_RATE);
+
+    while !app.should_quit {
+        terminal.draw(|frame| ui::render(frame, &app))?;
+
+        match events.next()? {
+            Event::Key(key) => app.handle_key(key),
+            Event::Mouse(_mouse) => {}
+            Event::Resize(_width, _height) => {}
+            Event::Tick => app.tick(),
         }
     }
 

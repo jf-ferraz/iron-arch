@@ -127,6 +127,11 @@ impl App {
             return;
         }
 
+        if self.view == View::InstallWizard {
+            self.handle_install_wizard_key(key);
+            return;
+        }
+
         // Profile Builder handling
         if self.view == View::ProfileBuilder {
             self.handle_profile_builder_key(key);
@@ -1020,6 +1025,8 @@ impl App {
             View::Doctor | View::Secrets | View::Recovery | View::SystemScan => View::Dashboard,
             // HostSelection cycles back to Dashboard
             View::HostSelection => View::Dashboard,
+            // Direct installer cycles back to Dashboard
+            View::InstallWizard => View::Dashboard,
             // Wizard sub-views go back to their parent list
             View::ProfileBuilder => View::Profiles,
             View::ModuleCreator => View::Modules,
@@ -1051,6 +1058,8 @@ impl App {
             View::Doctor | View::Secrets | View::Recovery | View::SystemScan => View::Dashboard,
             // HostSelection cycles back to Dashboard
             View::HostSelection => View::Dashboard,
+            // Direct installer cycles back to Dashboard
+            View::InstallWizard => View::Dashboard,
             // Wizard sub-views go back to their parent list
             View::ProfileBuilder => View::Profiles,
             View::ModuleCreator => View::Modules,

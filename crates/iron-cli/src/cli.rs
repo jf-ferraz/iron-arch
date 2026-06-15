@@ -281,6 +281,16 @@ pub enum InstallAction {
         #[arg(long)]
         emit_script: bool,
     },
+    /// Launch the integrated interactive installation wizard
+    Wizard {
+        /// Host ID to install
+        #[arg(short = 'H', long)]
+        host: String,
+
+        /// Target mountpoint for the new system
+        #[arg(short, long, default_value = "/mnt")]
+        target: String,
+    },
 }
 
 /// Profile subcommands
