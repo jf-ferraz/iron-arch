@@ -107,6 +107,10 @@ iron module list             # List all modules
 iron module enable <id>      # Enable a module
 iron module disable <id>     # Disable a module
 
+iron import hm <path>        # Scaffold modules from a `home-manager build` output
+iron import hm <path> --dry-run        # Preview the modules without writing
+iron import hm <path> --only kitty,fish # Import selected apps only
+
 iron host list               # List configured hosts
 iron host current            # Show current host
 iron host catalog            # Catalog hardware

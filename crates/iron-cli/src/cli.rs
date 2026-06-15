@@ -134,6 +134,12 @@ pub enum Commands {
         action: ModuleAction,
     },
 
+    /// Import existing dotfiles into Iron modules
+    Import {
+        #[command(subcommand)]
+        action: ImportAction,
+    },
+
     /// Host management
     Host {
         #[command(subcommand)]
@@ -500,6 +506,29 @@ pub enum ModuleAction {
         /// Module kind (AppConfig, SystemConfig, DevTools, Shell)
         #[arg(short, long, default_value = "AppConfig")]
         kind: String,
+    },
+}
+
+/// Import subcommands
+#[derive(Subcommand)]
+pub enum ImportAction {
+    /// Scaffold modules from a home-manager build (`home-manager build` → `result`)
+    #[command(visible_alias = "hm")]
+    HomeManager {
+        /// Path to the generation (`result` symlink / generation dir) or its `home-files/` directory
+        path: String,
+
+        /// Preview the modules that would be created without writing anything
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Overwrite modules that already exist
+        #[arg(long)]
+        force: bool,
+
+        /// Comma-separated app ids to import (default: all detected)
+        #[arg(long, value_delimiter = ',')]
+        only: Option<Vec<String>>,
     },
 }
 

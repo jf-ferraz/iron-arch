@@ -9,6 +9,7 @@ pub mod diff;
 pub mod doctor;
 pub mod history;
 pub mod host;
+pub mod import;
 pub mod init;
 pub mod module;
 pub mod plan;

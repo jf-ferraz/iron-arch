@@ -17,6 +17,7 @@ pub mod envelope;
 pub mod error;
 pub mod fs_trait;
 pub mod host;
+pub mod import;
 pub mod logging;
 pub mod module;
 pub mod packages;
