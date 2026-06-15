@@ -42,11 +42,17 @@ fi
 # 3) Fresh host init. This exercises the FIXED monitor catalog and produces a host
 #    file WITHOUT a 'profile' key, which we then prepend at top level — dodging the
 #    TOML "scalar after table" rule that bites if a tool re-serializes the host.
-h "Initializing host '$HOST_ID' (fresh)"
+h "Initializing host '$HOST_ID' (fresh, --force)"
 rm -f "$CFG"/hosts/*.toml 2>/dev/null || true
-"$IRON" --root "$CFG" init </dev/null
+# --force: `iron init` is a no-op (exit 0, no host file) if already initialized,
+# since init-state lives outside hosts/*.toml. --force regenerates regardless.
+"$IRON" --root "$CFG" init --force </dev/null
 HOSTFILE="$CFG/hosts/$HOST_ID.toml"
-[ -f "$HOSTFILE" ] || HOSTFILE="$(find "$CFG/hosts" -name '*.toml' | head -n1)"
+[ -f "$HOSTFILE" ] || HOSTFILE="$(find "$CFG/hosts" -name '*.toml' 2>/dev/null | head -n1)"
+if [ -z "${HOSTFILE:-}" ] || [ ! -f "$HOSTFILE" ]; then
+  no "host file was not created at $CFG/hosts/ — init likely failed; aborting"
+  exit 1
+fi
 ok "host file: $HOSTFILE"
 
 # 3a) Sanity-check the monitor catalog (the bug we fixed produced ~78 phantom rows).
