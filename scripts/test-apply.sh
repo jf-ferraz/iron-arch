@@ -91,9 +91,15 @@ chk "kitty base16 (relative include)"  "$SANDBOX/.config/kitty/colors-base16.con
 chk "yazi syntect theme"               "$SANDBOX/.config/yazi/base16-fer-glass.tmTheme"
 chk "fish base16 (sourced)"            "$SANDBOX/.config/fish/colors-base16.fish"
 chk "fastfetch logo (~ expansion)"     "$SANDBOX/.config/fastfetch/logo.txt"
+chk "niri-smart-terminal (Mod+T)"      "$SANDBOX/.local/bin/niri-smart-terminal"
+if [ -x "$SANDBOX/.local/bin/niri-smart-terminal" ]; then
+  ok "niri-smart-terminal is executable"
+else
+  no "niri-smart-terminal is NOT executable (Mod+T would fail)"
+fi
 
 h "Deployed tree (sandbox, depth 2)"
-find "$SANDBOX/.config" -maxdepth 2 2>/dev/null | sort || true
+find "$SANDBOX/.config" "$SANDBOX/.local" -maxdepth 2 2>/dev/null | sort || true
 
 h "Done"
 echo "   Sandbox: $SANDBOX   (remove with: rm -rf '$SANDBOX')"
