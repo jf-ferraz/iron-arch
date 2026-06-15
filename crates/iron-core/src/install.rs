@@ -690,7 +690,7 @@ EOF
         for phase in &self.phases {
             script.push_str(&format!(
                 " '{}'",
-                shell_escape_single(&phase.id.as_script_id())
+                shell_escape_single(phase.id.as_script_id())
             ));
         }
         script.push_str(" )\n");
@@ -715,7 +715,7 @@ EOF
         for phase in &self.phases {
             script.push_str(&format!(
                 "\nif begin_phase '{}' '{}'; then\n",
-                shell_escape_single(&phase.id.as_script_id()),
+                shell_escape_single(phase.id.as_script_id()),
                 shell_escape_single(&phase.name)
             ));
             for step in &phase.steps {
@@ -748,7 +748,7 @@ EOF
             }
             script.push_str(&format!(
                 "  finish_phase '{}'\n",
-                shell_escape_single(&phase.id.as_script_id())
+                shell_escape_single(phase.id.as_script_id())
             ));
             script.push_str("fi\n");
         }

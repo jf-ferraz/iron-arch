@@ -511,7 +511,7 @@ mod tests {
     #[test]
     fn test_warning_code_clone() {
         let code = WarningCode::MissingDirectory;
-        let cloned = code.clone();
+        let cloned = code;
         assert_eq!(code, cloned);
     }
 
@@ -803,7 +803,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let escape_path = temp_dir.path().join("../../etc");
 
-        let result = validate_path(&escape_path, temp_dir.path());
+        let _result = validate_path(&escape_path, temp_dir.path());
         // This should either fail or the path doesn't exist
         // The behavior depends on canonicalization
     }

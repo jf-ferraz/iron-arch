@@ -564,6 +564,7 @@ impl MockCommandExecutor {
         }
     }
 
+    #[allow(dead_code)] // unused mock constructor kept for API symmetry with new()
     pub fn with_config(config: CommandConfig) -> Self {
         Self {
             config,

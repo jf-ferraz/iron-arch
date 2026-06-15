@@ -128,14 +128,6 @@ modules = []
     fs::write(profile_dir.join("profile.toml"), profile).unwrap();
 }
 
-/// Get iron command with --no-color
-#[allow(deprecated)]
-fn iron() -> Command {
-    let mut cmd = Command::cargo_bin("iron").unwrap();
-    cmd.arg("--no-color");
-    cmd
-}
-
 /// Get iron command with state directory isolated to a given path.
 /// F3-006: Prevents the real XDG state dir from interfering with tests.
 fn iron_at(root: &std::path::Path) -> Command {
@@ -167,10 +159,10 @@ fn try_parse_json(output: &str) -> Option<Value> {
                 _ => {}
             }
         }
-        if end_pos > 0 {
-            if let Ok(v) = serde_json::from_str(&json_part[..end_pos]) {
-                return Some(v);
-            }
+        if end_pos > 0
+            && let Ok(v) = serde_json::from_str(&json_part[..end_pos])
+        {
+            return Some(v);
         }
     }
 
@@ -192,10 +184,10 @@ fn try_parse_json(output: &str) -> Option<Value> {
                 _ => {}
             }
         }
-        if end_pos > 0 {
-            if let Ok(v) = serde_json::from_str(&json_part[..end_pos]) {
-                return Some(v);
-            }
+        if end_pos > 0
+            && let Ok(v) = serde_json::from_str(&json_part[..end_pos])
+        {
+            return Some(v);
         }
     }
 

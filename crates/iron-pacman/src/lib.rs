@@ -1587,7 +1587,7 @@ Install Reason  : Explicitly installed";
     #[test]
     fn test_aur_helper_clone() {
         let h1 = AurHelper::Paru;
-        let h2 = h1.clone();
+        let h2 = h1;
         assert_eq!(h1, h2);
     }
 

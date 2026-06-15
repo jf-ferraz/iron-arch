@@ -279,8 +279,7 @@ mod tests {
     #[test]
     fn test_themed_block_has_borders() {
         let _block = themed_block("Test", MAUVE);
-        // Block should be created without panic
-        assert!(true);
+        // Reaching here without a panic is the assertion.
     }
 
     #[test]

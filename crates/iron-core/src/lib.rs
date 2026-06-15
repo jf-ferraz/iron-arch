@@ -10,6 +10,8 @@
 //! - Configuration validation
 //! - Snapshot management
 
+#![cfg_attr(test, allow(clippy::field_reassign_with_default))]
+
 pub mod actual_state;
 pub mod availability;
 pub mod bundle;

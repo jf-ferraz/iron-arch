@@ -839,7 +839,7 @@ mod tests {
     #[test]
     fn test_update_phase_clone_copy() {
         let phase = UpdatePhase::Installing;
-        let cloned = phase.clone();
+        let cloned = phase;
         let copied = phase; // Copy trait
 
         assert_eq!(cloned, UpdatePhase::Installing);

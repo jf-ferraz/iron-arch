@@ -782,7 +782,7 @@ mod tests {
 
     #[test]
     fn test_timeshift_manager_default() {
-        let manager = TimeshiftManager::default();
+        let manager = TimeshiftManager;
         assert_eq!(manager.backend(), SnapshotBackend::Timeshift);
     }
 
@@ -1003,7 +1003,7 @@ mod tests {
             .expect("should execute");
 
         // The mock output should be parseable
-        let snapshots = parse_timeshift_list_output(&output);
+        let _snapshots = parse_timeshift_list_output(&output);
         // Mocks generate simplified output, so we verify the mock works
         assert!(output.contains("First backup"));
         assert!(output.contains("Second backup"));

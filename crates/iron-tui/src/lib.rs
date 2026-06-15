@@ -7,6 +7,8 @@
 //! - Profile builder
 //! - Update preview with risk scores
 
+#![cfg_attr(test, allow(clippy::field_reassign_with_default))]
+
 pub mod app;
 pub mod event;
 pub mod install_wizard;
@@ -307,7 +309,7 @@ mod tests {
     #[test]
     fn test_view_enum_clone() {
         let view = View::SetupWizard;
-        let cloned = view.clone();
+        let cloned = view;
         assert_eq!(view, cloned);
     }
 
@@ -367,7 +369,7 @@ mod tests {
     #[test]
     fn test_health_status_clone() {
         let status = HealthStatus::Warning;
-        let cloned = status.clone();
+        let cloned = status;
         assert_eq!(status, cloned);
     }
 

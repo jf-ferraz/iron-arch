@@ -488,7 +488,7 @@ mod tests {
         let hyprland_profiles = service.for_bundle("hyprland").unwrap();
 
         // Should include hyprland-specific and generic (no for_bundle specified)
-        assert!(hyprland_profiles.len() >= 1);
+        assert!(!hyprland_profiles.is_empty());
 
         let ids: Vec<&str> = hyprland_profiles.iter().map(|p| p.id.as_str()).collect();
         assert!(ids.contains(&"hyprland-profile") || ids.contains(&"generic"));

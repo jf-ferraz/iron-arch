@@ -539,7 +539,7 @@ mod tests {
     #[test]
     fn test_secrets_status_clone() {
         let status = SecretsStatus::Locked;
-        let cloned = status.clone();
+        let cloned = status;
         assert_eq!(status, cloned);
     }
 

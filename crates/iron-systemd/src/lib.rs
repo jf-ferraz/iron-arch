@@ -843,18 +843,10 @@ sshd.service               loaded active running OpenSSH Daemon"#;
     // ==========================================================================
 
     /// Mock service manager for testing
+    #[derive(Default)]
     pub struct MockServiceManager {
         pub services: std::collections::HashMap<String, ServiceInfo>,
         pub fail_operations: bool,
-    }
-
-    impl Default for MockServiceManager {
-        fn default() -> Self {
-            Self {
-                services: std::collections::HashMap::new(),
-                fail_operations: false,
-            }
-        }
     }
 
     impl MockServiceManager {

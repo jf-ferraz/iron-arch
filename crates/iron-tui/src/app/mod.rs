@@ -5,11 +5,11 @@
 mod actions;
 mod handlers;
 
+use crate::install_wizard::InstallWizardState;
 use crate::message::{MessageLevel, StatusMessage};
 use crate::ui::operation_log::OperationFilter;
 use crate::widgets::ProgressTracker;
 use crate::wizard::{TextInput, WizardState};
-use crate::install_wizard::InstallWizardState;
 use iron_core::{
     ArchNewsItem, Bundle, Module, NoopPackageManager, NoopSystemService, PackageManager,
     PackageUpdate, Profile, RiskLevel, SystemService,

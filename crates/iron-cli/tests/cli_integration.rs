@@ -132,10 +132,11 @@ modules = []
 /// This helper finds the object containing `"ok"` and `"meta"` keys.
 fn find_envelope_json(stdout: &str) -> Option<serde_json::Value> {
     // Try parsing the whole string first
-    if let Ok(val) = serde_json::from_str::<serde_json::Value>(stdout) {
-        if val.get("ok").is_some() && val.get("meta").is_some() {
-            return Some(val);
-        }
+    if let Ok(val) = serde_json::from_str::<serde_json::Value>(stdout)
+        && val.get("ok").is_some()
+        && val.get("meta").is_some()
+    {
+        return Some(val);
     }
     // Otherwise, look for a multi-line JSON object starting with '{'
     // that contains envelope keys
@@ -154,10 +155,11 @@ fn find_envelope_json(stdout: &str) -> Option<serde_json::Value> {
                 if brace_depth == 0 {
                     if let Some(s) = start {
                         let candidate = &stdout[s..=i];
-                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(candidate) {
-                            if val.get("ok").is_some() && val.get("meta").is_some() {
-                                return Some(val);
-                            }
+                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(candidate)
+                            && val.get("ok").is_some()
+                            && val.get("meta").is_some()
+                        {
+                            return Some(val);
                         }
                     }
                     start = None;

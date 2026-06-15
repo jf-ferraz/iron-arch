@@ -509,7 +509,7 @@ mod tests {
     #[test]
     fn test_sync_status_clone() {
         let status = SyncStatus::Diverged;
-        let cloned = status.clone();
+        let cloned = status;
         assert_eq!(status, cloned);
     }
 

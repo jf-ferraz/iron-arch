@@ -76,7 +76,11 @@ fn home_manager(
     let profile_update = match (&report, &into_profile) {
         (Some(_), Some(name)) => {
             let ids: Vec<String> = plan.modules.iter().map(|m| m.id.clone()).collect();
-            Some(add_modules_to_profile(&ctx.root.join("profiles"), name, &ids)?)
+            Some(add_modules_to_profile(
+                &ctx.root.join("profiles"),
+                name,
+                &ids,
+            )?)
         }
         _ => None,
     };
@@ -133,14 +137,19 @@ fn home_manager(
         output.info(&format!(
             "Skipped {} top-level director{} (import manually if needed): {}",
             plan.skipped_dirs.len(),
-            if plan.skipped_dirs.len() == 1 { "y" } else { "ies" },
+            if plan.skipped_dirs.len() == 1 {
+                "y"
+            } else {
+                "ies"
+            },
             plan.skipped_dirs.join(", "),
         ));
     }
 
     match report {
         None => {
-            output.info("Dry run — nothing written. Re-run without --dry-run to create the modules.");
+            output
+                .info("Dry run — nothing written. Re-run without --dry-run to create the modules.");
             if let Some(name) = &into_profile {
                 output.info(&format!(
                     "Would add {} module(s) to profile '{}'.",
@@ -187,7 +196,12 @@ fn home_manager(
                     } else {
                         "Profile updated"
                     },
-                    format!("{} ({} module(s), +{} new)", pu.profile, pu.total, pu.added.len()),
+                    format!(
+                        "{} ({} module(s), +{} new)",
+                        pu.profile,
+                        pu.total,
+                        pu.added.len()
+                    ),
                 );
             }
 
@@ -200,7 +214,9 @@ fn home_manager(
                 );
             }
             if into_profile.is_none() {
-                output.info("Tip: pass --into-profile <name> to make the import directly apply-able.");
+                output.info(
+                    "Tip: pass --into-profile <name> to make the import directly apply-able.",
+                );
             }
 
             if !report.modules_with_store_refs.is_empty() {

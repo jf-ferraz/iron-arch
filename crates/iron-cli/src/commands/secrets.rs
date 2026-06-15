@@ -394,7 +394,7 @@ mod tests {
     fn test_secrets_action_dispatch_coverage() {
         // Verify that all SecretsAction variants are handled
         // (compile-time guarantee via exhaustive match in execute())
-        let actions = vec!["Status", "Unlock", "Lock", "Link", "AddKey", "ExportKey"];
+        let actions = ["Status", "Unlock", "Lock", "Link", "AddKey", "ExportKey"];
         assert_eq!(actions.len(), 6);
     }
 }

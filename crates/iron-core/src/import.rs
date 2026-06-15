@@ -314,9 +314,8 @@ pub fn add_modules_to_profile(
     let dir = profiles_dir.join(profile_name);
     let (mut profile, created) = if dir.join("profile.toml").exists() {
         (
-            Profile::load(&dir).with_context(|| {
-                format!("loading existing profile '{profile_name}'")
-            })?,
+            Profile::load(&dir)
+                .with_context(|| format!("loading existing profile '{profile_name}'"))?,
             false,
         )
     } else {
@@ -646,7 +645,14 @@ mod tests {
 
         // second run: kitty now exists, so it's skipped without --force
         let plan2 = importer.plan().unwrap();
-        assert!(plan2.modules.iter().find(|m| m.id == "kitty").unwrap().already_exists);
+        assert!(
+            plan2
+                .modules
+                .iter()
+                .find(|m| m.id == "kitty")
+                .unwrap()
+                .already_exists
+        );
         let report2 = importer.execute(&plan2, false).unwrap();
         assert!(report2.skipped.contains(&"kitty".to_string()));
         assert!(!report2.created.contains(&"kitty".to_string()));
@@ -805,7 +811,11 @@ mod tests {
 
         // execute without stripping: refs remain, module flagged
         let report = importer.execute(&plan, false).unwrap();
-        assert!(report.modules_with_store_refs.contains(&"myapp".to_string()));
+        assert!(
+            report
+                .modules_with_store_refs
+                .contains(&"myapp".to_string())
+        );
         assert_eq!(report.stripped_refs, 0);
         let conf = fs::read_to_string(modules.join("myapp/config/myapp/conf")).unwrap();
         assert!(conf.contains("/nix/store/h-fzf-1/bin/fzf"));
@@ -821,7 +831,11 @@ mod tests {
         assert!(conf.contains("run fzf")); // bin path stripped
         assert!(conf.contains("/nix/store/h-x/etc/y")); // non-bin path kept
         // still flagged because a non-bin store ref remains
-        assert!(report.modules_with_store_refs.contains(&"myapp".to_string()));
+        assert!(
+            report
+                .modules_with_store_refs
+                .contains(&"myapp".to_string())
+        );
     }
 
     #[test]

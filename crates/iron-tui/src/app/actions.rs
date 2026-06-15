@@ -2542,7 +2542,7 @@ depends = []
         app.load_hosts();
         // Should not panic; may or may not find hosts depending on the test env
         // The key is that it doesn't crash
-        assert!(app.discovered_hosts.len() == 0 || app.discovered_hosts.len() > 0);
+        assert!(app.discovered_hosts.is_empty() || !app.discovered_hosts.is_empty());
     }
 
     #[test]

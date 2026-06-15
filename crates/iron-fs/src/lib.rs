@@ -1026,6 +1026,7 @@ mod tests {
         let config_path = temp_dir.path().join("nonexistent.toml");
 
         #[derive(Deserialize)]
+        #[allow(dead_code)] // field defines the deserialization schema; never read
         struct DummyConfig {
             key: String,
         }
@@ -1053,6 +1054,7 @@ mod tests {
         use serde::Deserialize;
 
         #[derive(Deserialize)]
+        #[allow(dead_code)] // field defines the deserialization schema; never read
         struct DummyConfig {
             key: String,
         }
@@ -1709,7 +1711,7 @@ mod tests {
         let file_path = temp_dir.path().join("invalid.txt");
 
         // Write invalid UTF-8 bytes
-        fs::write(&file_path, &[0xFF, 0xFE, 0x00, 0x01]).unwrap();
+        fs::write(&file_path, [0xFF, 0xFE, 0x00, 0x01]).unwrap();
 
         let result = read_file_string(&file_path);
         assert!(result.is_err());
@@ -1836,7 +1838,7 @@ mod tests {
 
         let files = traverse::find_files(temp_dir.path(), &opts).unwrap();
         // Should find file.txt from both real_dir and link_dir
-        assert!(files.len() >= 1);
+        assert!(!files.is_empty());
     }
 
     // ==========================================================================
@@ -1967,6 +1969,7 @@ mod tests {
         fs::write(&config_path, "this is not valid toml {{{").unwrap();
 
         #[derive(Deserialize)]
+        #[allow(dead_code)] // field defines the deserialization schema; never read
         struct DummyConfig {
             key: String,
         }

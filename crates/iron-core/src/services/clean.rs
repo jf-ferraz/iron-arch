@@ -1608,7 +1608,7 @@ mod tests {
     #[test]
     fn test_default_cleanup_service_creation() {
         let service = DefaultCleanupService::new();
-        assert!(service.home_dir.exists() || service.home_dir == PathBuf::from("/home"));
+        assert!(service.home_dir.exists() || service.home_dir == Path::new("/home"));
     }
 
     #[test]

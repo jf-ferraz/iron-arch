@@ -2498,7 +2498,7 @@ installed_bundles = []
         state_mgr.record_managed_service("old.service").unwrap();
 
         use crate::packages::NoopPackageManager;
-        let pkg_mgr = Arc::new(NoopPackageManager::default());
+        let pkg_mgr = Arc::new(NoopPackageManager);
         use crate::system_service::NoopSystemService;
         let svc_mgr = Arc::new(NoopSystemService);
 
@@ -2546,7 +2546,7 @@ installed_bundles = []
         // Do NOT record "random.service" as managed
 
         use crate::packages::NoopPackageManager;
-        let pkg_mgr = Arc::new(NoopPackageManager::default());
+        let pkg_mgr = Arc::new(NoopPackageManager);
         use crate::system_service::NoopSystemService;
         let svc_mgr = Arc::new(NoopSystemService);
 
@@ -2593,7 +2593,7 @@ installed_bundles = []
             .unwrap();
 
         use crate::packages::NoopPackageManager;
-        let pkg_mgr = Arc::new(NoopPackageManager::default());
+        let pkg_mgr = Arc::new(NoopPackageManager);
         use crate::system_service::NoopSystemService;
         let svc_mgr = Arc::new(NoopSystemService);
 
@@ -2658,7 +2658,7 @@ link = true
             .unwrap();
 
         use crate::packages::NoopPackageManager;
-        let pkg_mgr = Arc::new(NoopPackageManager::default());
+        let pkg_mgr = Arc::new(NoopPackageManager);
         use crate::system_service::NoopSystemService;
         let svc_mgr = Arc::new(NoopSystemService);
 
@@ -2708,7 +2708,7 @@ link = true
         state_mgr.enable_module("old-module").unwrap();
 
         use crate::packages::NoopPackageManager;
-        let pkg_mgr = Arc::new(NoopPackageManager::default());
+        let pkg_mgr = Arc::new(NoopPackageManager);
         use crate::system_service::NoopSystemService;
         let svc_mgr = Arc::new(NoopSystemService);
 
@@ -2746,7 +2746,7 @@ link = true
         let root = tmp.path();
         let state_mgr = StateManager::new(root.to_path_buf()).unwrap();
         use crate::packages::NoopPackageManager;
-        let pkg_mgr = Arc::new(NoopPackageManager::default());
+        let pkg_mgr = Arc::new(NoopPackageManager);
         use crate::system_service::NoopSystemService;
         let svc_mgr = Arc::new(NoopSystemService);
 
@@ -2773,7 +2773,7 @@ link = true
         let root = tmp.path();
         let state_mgr = StateManager::new(root.to_path_buf()).unwrap();
         use crate::packages::NoopPackageManager;
-        let pkg_mgr = Arc::new(NoopPackageManager::default());
+        let pkg_mgr = Arc::new(NoopPackageManager);
         use crate::system_service::NoopSystemService;
         let svc_mgr = Arc::new(NoopSystemService);
 
@@ -2794,7 +2794,7 @@ link = true
         let root = tmp.path();
         let state_mgr = StateManager::new(root.to_path_buf()).unwrap();
         use crate::packages::NoopPackageManager;
-        let pkg_mgr = Arc::new(NoopPackageManager::default());
+        let pkg_mgr = Arc::new(NoopPackageManager);
         use crate::system_service::NoopSystemService;
         let svc_mgr = Arc::new(NoopSystemService);
 
@@ -2817,7 +2817,7 @@ link = true
         let root = tmp.path();
         let state_mgr = StateManager::new(root.to_path_buf()).unwrap();
         use crate::packages::NoopPackageManager;
-        let pkg_mgr = Arc::new(NoopPackageManager::default());
+        let pkg_mgr = Arc::new(NoopPackageManager);
         use crate::system_service::NoopSystemService;
         let svc_mgr = Arc::new(NoopSystemService);
 
@@ -2870,7 +2870,7 @@ link = true
             .unwrap();
 
         use crate::packages::NoopPackageManager;
-        let pkg_mgr = Arc::new(NoopPackageManager::default());
+        let pkg_mgr = Arc::new(NoopPackageManager);
         use crate::system_service::NoopSystemService;
         let svc_mgr = Arc::new(NoopSystemService);
 
@@ -3323,7 +3323,7 @@ link = true
         state_mgr.record_managed_service("stopped.service").unwrap();
 
         use crate::packages::NoopPackageManager;
-        let pkg_mgr = Arc::new(NoopPackageManager::default());
+        let pkg_mgr = Arc::new(NoopPackageManager);
         use crate::system_service::NoopSystemService;
         let svc_mgr = Arc::new(NoopSystemService);
 
@@ -3363,7 +3363,7 @@ link = true
         let root = tmp.path();
         let state_mgr = StateManager::new(root.to_path_buf()).unwrap();
         use crate::packages::NoopPackageManager;
-        let pkg_mgr = Arc::new(NoopPackageManager::default());
+        let pkg_mgr = Arc::new(NoopPackageManager);
         use crate::system_service::NoopSystemService;
         let svc_mgr = Arc::new(NoopSystemService);
 
@@ -3413,7 +3413,7 @@ link = true
             .unwrap();
 
         use crate::packages::NoopPackageManager;
-        let pkg_mgr = Arc::new(NoopPackageManager::default());
+        let pkg_mgr = Arc::new(NoopPackageManager);
         use crate::system_service::NoopSystemService;
         let svc_mgr = Arc::new(NoopSystemService);
 
@@ -3451,7 +3451,7 @@ link = true
         let root = tmp.path();
         let state_mgr = StateManager::new(root.to_path_buf()).unwrap();
         use crate::packages::NoopPackageManager;
-        let pkg_mgr = Arc::new(NoopPackageManager::default());
+        let pkg_mgr = Arc::new(NoopPackageManager);
         use crate::system_service::NoopSystemService;
         let svc_mgr = Arc::new(NoopSystemService);
 
@@ -3498,7 +3498,7 @@ link = true
         let root = tmp.path();
         let state_mgr = StateManager::new(root.to_path_buf()).unwrap();
         use crate::packages::NoopPackageManager;
-        let pkg_mgr = Arc::new(NoopPackageManager::default());
+        let pkg_mgr = Arc::new(NoopPackageManager);
         use crate::system_service::NoopSystemService;
         let svc_mgr = Arc::new(NoopSystemService);
 
