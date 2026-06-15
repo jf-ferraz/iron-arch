@@ -1096,6 +1096,27 @@ impl DefaultApplyService {
                 .to_string_lossy()
                 .to_string();
 
+            // Module that owns this dotfile — resolved up front so we can build
+            // the canonical source path the deployed symlink should point at.
+            let module_id = desired
+                .modules
+                .iter()
+                .find(|mid| {
+                    loaded_modules
+                        .get(*mid)
+                        .map(|m| m.dotfiles.iter().any(|d| d.target == dotfile.target))
+                        .unwrap_or(false)
+                })
+                .cloned()
+                .unwrap_or_else(|| "unknown".to_string());
+
+            // Absolute path the deployed symlink is expected to point at.
+            let expected_source = self
+                .iron_root
+                .join("modules")
+                .join(&module_id)
+                .join(&dotfile.source);
+
             // Look up this file in the actual state scan results
             let actual_file = actual
                 .managed_files
@@ -1104,14 +1125,14 @@ impl DefaultApplyService {
 
             let needs_action = match actual_file {
                 Some(af) => match af.file_type {
+                    // Re-link unless the symlink ALREADY points at the canonical
+                    // source. This previously compared only the final path
+                    // component, so a symlink into an unrelated directory whose
+                    // last component happened to match (e.g. ~/.config/niri ->
+                    // .../arch-config/.../niri vs the iron module's config/niri)
+                    // was wrongly treated as correct and never re-pointed.
                     crate::actual_state::FileStateType::Symlink => match &af.symlink_target {
-                        Some(current) => !dotfile.source.ends_with(
-                            Path::new(current)
-                                .file_name()
-                                .unwrap_or_default()
-                                .to_str()
-                                .unwrap_or_default(),
-                        ),
+                        Some(current) => Path::new(current) != expected_source.as_path(),
                         None => true,
                     },
                     crate::actual_state::FileStateType::Missing => true,
@@ -1124,25 +1145,8 @@ impl DefaultApplyService {
             };
 
             if needs_action {
-                let module_id = desired
-                    .modules
-                    .iter()
-                    .find(|mid| {
-                        loaded_modules
-                            .get(*mid)
-                            .map(|m| m.dotfiles.iter().any(|d| d.target == dotfile.target))
-                            .unwrap_or(false)
-                    })
-                    .cloned()
-                    .unwrap_or_else(|| "unknown".to_string());
-
                 // F3-008: Template detection at plan time
-                let source_path = self
-                    .iron_root
-                    .join("modules")
-                    .join(&module_id)
-                    .join(&dotfile.source);
-                let source_content = std::fs::read_to_string(&source_path).ok();
+                let source_content = std::fs::read_to_string(&expected_source).ok();
 
                 let has_templates = source_content
                     .as_ref()
@@ -2691,6 +2695,107 @@ link = true
         assert!(
             remove_action.is_none(),
             "Should NOT remove a dotfile still in desired state"
+        );
+    }
+
+    #[test]
+    fn test_compute_plan_relinks_symlink_pointing_elsewhere() {
+        // Regression: a dotfile target that is ALREADY a symlink but points at
+        // the wrong source must be re-linked. Previously the planner compared
+        // only the final path component, so an old symlink like
+        // ~/.config/test/config -> /elsewhere/config was treated as correct
+        // (both end in "config") and never re-pointed at the iron module.
+        use crate::actual_state::{ActualFileState, FileStateType};
+
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        fs::create_dir_all(root.join("hosts")).unwrap();
+        fs::create_dir_all(root.join("modules/test-mod/config")).unwrap();
+        fs::write(
+            root.join("modules/test-mod/module.toml"),
+            r#"
+id = "test-mod"
+name = "test"
+kind = "AppConfig"
+packages = []
+aur_packages = []
+conflicts = []
+depends = []
+
+[[dotfiles]]
+source = "config"
+target = "/home/user/.config/test/config"
+link = true
+"#,
+        )
+        .unwrap();
+        fs::create_dir_all(root.join("bundles")).unwrap();
+        fs::create_dir_all(root.join("profiles")).unwrap();
+        let state_mgr = StateManager::new(root.to_path_buf()).unwrap();
+
+        use crate::packages::NoopPackageManager;
+        use crate::system_service::NoopSystemService;
+        let service = DefaultApplyService::new(
+            root,
+            state_mgr,
+            Arc::new(NoopPackageManager),
+            Arc::new(NoopSystemService),
+        );
+
+        let desired = DesiredState {
+            modules: vec!["test-mod".to_string()],
+            dotfiles: vec![DotfileMapping {
+                source: "config".to_string(),
+                target: "/home/user/.config/test/config".to_string(),
+                link: true,
+            }],
+            ..Default::default()
+        };
+
+        let make_actual = |symlink_to: &str| ActualState {
+            hostname: "test".into(),
+            installed_packages: HashSet::new(),
+            aur_packages: HashSet::new(),
+            services: vec![],
+            managed_files: vec![ActualFileState {
+                target: "/home/user/.config/test/config".to_string(),
+                exists: true,
+                symlink_target: Some(symlink_to.to_string()),
+                checksum: None,
+                file_type: FileStateType::Symlink,
+            }],
+            scanned_at: chrono::Utc::now(),
+        };
+
+        // (a) points at an unrelated dir whose last component matches -> re-link
+        let plan = service
+            .compute_plan(&desired, &make_actual("/some/other/place/config"))
+            .unwrap();
+        assert!(
+            plan.actions.iter().any(|a| matches!(
+                a,
+                ApplyAction::CreateSymlink { target, .. }
+                    if target == "/home/user/.config/test/config"
+            )),
+            "symlink pointing elsewhere must be re-linked, got: {:?}",
+            plan.actions
+        );
+
+        // (b) already points at the canonical iron source -> no re-link (idempotent)
+        let correct = root
+            .join("modules/test-mod/config")
+            .to_string_lossy()
+            .to_string();
+        let plan = service
+            .compute_plan(&desired, &make_actual(&correct))
+            .unwrap();
+        assert!(
+            !plan
+                .actions
+                .iter()
+                .any(|a| matches!(a, ApplyAction::CreateSymlink { .. })),
+            "correctly-linked dotfile must not be re-linked, got: {:?}",
+            plan.actions
         );
     }
 
