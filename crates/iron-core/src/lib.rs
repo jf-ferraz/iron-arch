@@ -49,7 +49,10 @@ pub use error::{
     SnapshotError, StateError, ValidationError,
 };
 pub use host::{BootloaderType, ChassisType, HardwareSpec, Host, InstallParams, MonitorConfig};
-pub use install::{InstallPhase, InstallPhaseId, InstallPlan, InstallStep};
+pub use install::{
+    InstallEvent, InstallPhase, InstallPhaseId, InstallPlan, InstallRunConfig, InstallRunMode,
+    InstallRunner, InstallStatus, InstallStep,
+};
 pub use module::{DotfileMapping, Module, ModuleKind, ModuleState};
 pub use packages::{
     ArchNewsItem, CleanCacheResult, InstalledPackage, NoopPackageManager, PackageManager,

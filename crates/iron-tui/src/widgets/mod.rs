@@ -51,6 +51,7 @@ pub fn render_header(frame: &mut Frame, area: Rect, app: &App) {
         View::Apply => ("Apply", "[a]"),
         View::DriftDetail => ("Drift Detection", "[D]"),
         View::Snapshots => ("Snapshots", "[t]"),
+        View::InstallWizard => ("Install Wizard", "[I]"),
     };
 
     // Build header content
@@ -261,6 +262,12 @@ pub fn render_footer(frame: &mut Frame, area: Rect, app: &App) {
             ("[d]", "Delete"),
             ("[Esc]", "Back"),
         ],
+        View::InstallWizard => vec![
+            ("[j/k]", "Phase"),
+            ("[d]", "Dry-run"),
+            ("[r]", "Run"),
+            ("[Esc]", "Quit"),
+        ],
     };
 
     let mut spans: Vec<Span> = vec![Span::raw("  ")];
@@ -435,6 +442,12 @@ fn get_view_keybindings(view: View) -> Vec<(&'static str, &'static str)> {
             ("d", "Delete selected"),
             ("Esc", "Back to Dashboard"),
         ],
+        View::InstallWizard => vec![
+            ("j/k", "Select phase"),
+            ("d", "Dry-run full plan"),
+            ("r", "Type-confirm real run"),
+            ("Esc", "Quit wizard"),
+        ],
     }
 }
 
@@ -470,6 +483,7 @@ pub fn render_help_overlay(frame: &mut Frame, area: Rect, app: &App) {
         View::Doctor => "System Doctor",
         View::Secrets => "Secrets",
         View::Recovery => "Recovery",
+        View::InstallWizard => "Install Wizard",
         View::ProfileBuilder => "New Profile",
         View::ModuleCreator => "New Module",
         _ => "View",
@@ -956,6 +970,7 @@ mod tests {
                 View::Apply => "Apply",
                 View::DriftDetail => "Drift Detection",
                 View::Snapshots => "Snapshots",
+                View::InstallWizard => "Install Wizard",
             };
             assert_eq!(name, expected_name);
         }

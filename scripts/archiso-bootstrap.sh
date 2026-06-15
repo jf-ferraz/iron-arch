@@ -17,7 +17,7 @@ BRANCH="${IRON_BRANCH:-main}"
 WORKDIR="${IRON_WORKDIR:-/tmp/iron-bootstrap}"
 HOST_ID="${IRON_HOST:-desktop}"
 TARGET_MOUNT="${IRON_TARGET:-/mnt}"
-RUN_PLAN=false
+RUN_WIZARD=false
 ASSUME_YES=false
 LOG_FILE="${IRON_BOOTSTRAP_LOG:-/tmp/iron-bootstrap.log}"
 
@@ -33,7 +33,7 @@ Options:
   --workdir DIR      Working directory, default /tmp/iron-bootstrap
   --host ID          Iron host ID, default desktop
   --target DIR       Target mountpoint, default /mnt
-  --run              Execute the generated install plan after review prompt
+  --run              Launch the integrated install wizard after bootstrap
   --yes              Non-interactive confirmations for this bootstrap script
   -h, --help         Show this help
 EOF
@@ -62,7 +62,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --run)
-            RUN_PLAN=true
+            RUN_WIZARD=true
             shift
             ;;
         --yes)
@@ -174,12 +174,20 @@ emit_plan() {
     chmod +x "$plan_path"
     log "Generated: $plan_path"
     log "Iron binary: $iron_bin"
+    log "Iron config source: $WORKDIR/iron"
+    log "Recommended wizard:"
+    log "  $iron_bin --root $WORKDIR/iron install wizard --host $HOST_ID --target $TARGET_MOUNT"
+    log "Fallback shell installer:"
     log "Review it with: less $plan_path"
-    log "Run it with:    IRON_BIN=$iron_bin bash $plan_path"
+    log "List phases:    IRON_BIN=$iron_bin IRON_CONFIG_SRC=$WORKDIR/iron bash $plan_path --list-phases"
+    log "Dry run:        IRON_BIN=$iron_bin IRON_CONFIG_SRC=$WORKDIR/iron bash $plan_path --dry-run"
+    log "Menu:           IRON_BIN=$iron_bin IRON_CONFIG_SRC=$WORKDIR/iron bash $plan_path --menu"
+    log "Run all:        IRON_BIN=$iron_bin IRON_CONFIG_SRC=$WORKDIR/iron bash $plan_path --run"
 
-    if [[ "$RUN_PLAN" == "true" ]]; then
-        confirm "Execute generated install plan now?" || die "Install plan execution cancelled."
-        IRON_BIN="$iron_bin" bash "$plan_path"
+    if [[ "$RUN_WIZARD" == "true" ]]; then
+        confirm "Launch integrated Iron install wizard now?" || die "Install wizard launch cancelled."
+        IRON_BIN="$iron_bin" IRON_CONFIG_SRC="$WORKDIR/iron" \
+            "$iron_bin" --root "$WORKDIR/iron" install wizard --host "$HOST_ID" --target "$TARGET_MOUNT"
     fi
 }
 
