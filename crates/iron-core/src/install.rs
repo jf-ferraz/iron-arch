@@ -316,14 +316,12 @@ impl InstallPlan {
 
         let mut warnings = vec![
             "Review backup status before running disk or bootstrap phases.".to_string(),
-            "Disk partitioning is planned as manual by default; no wipe command is generated."
-                .to_string(),
+            "Disk partitioning is planned as manual by default; no wipe command is generated.".to_string(),
         ];
 
         if install.encrypted {
             warnings.push(
-                "Encryption is requested; LUKS formatting/opening must be confirmed manually in phase 2."
-                    .to_string(),
+                "Encryption is requested; LUKS formatting/opening must be confirmed manually in phase 2.".to_string(),
             );
         }
 
@@ -349,7 +347,7 @@ impl InstallPlan {
     pub fn to_shell_script(&self) -> String {
         let mut script = String::from(
             r#"#!/usr/bin/env bash
-set -Eeuo pipefail
+	set -Eeuo pipefail
 
 LOG_FILE="${LOG_FILE:-/tmp/iron-install.log}"
 ASSUME_YES="${ASSUME_YES:-false}"
@@ -685,13 +683,11 @@ EOF
         );
         script.push_str(&format!("# Iron install plan for {}\n", self.host_id));
         script.push_str(&format!("TARGET_MOUNT=\"{}\"\n\n", self.target_mount));
+
         script.push_str("LIST_PHASES=false\n");
         script.push_str("PHASE_IDS=(");
         for phase in &self.phases {
-            script.push_str(&format!(
-                " '{}'",
-                shell_escape_single(&phase.id.as_script_id())
-            ));
+            script.push_str(&format!(" '{}'", shell_escape_single(&phase.id.as_script_id())));
         }
         script.push_str(" )\n");
         script.push_str("PHASE_NAMES=(");
@@ -718,19 +714,14 @@ EOF
                 shell_escape_single(&phase.id.as_script_id()),
                 shell_escape_single(&phase.name)
             ));
+
             for step in &phase.steps {
-                script.push_str(&format!(
-                    "  log ' -> {}'\n",
-                    shell_escape_single(&step.description)
-                ));
+                script.push_str(&format!("  log ' -> {}'\n", shell_escape_single(&step.description)));
                 if let Some(command) = &step.command {
                     if step.destructive {
                         script.push_str(&format!(
                             "  confirm '{}' || exit 1\n",
-                            shell_escape_single(&format!(
-                                "Run destructive step '{}'?",
-                                step.description
-                            ))
+                            shell_escape_single(&format!("Run destructive step '{}'?", step.description))
                         ));
                     }
                     script.push_str("  ");
@@ -739,17 +730,12 @@ EOF
                 } else {
                     script.push_str(&format!(
                         "  manual_step '{}'\n",
-                        shell_escape_single(&format!(
-                            "Manual checkpoint complete: {}?",
-                            step.description
-                        ))
+                        shell_escape_single(&format!("Manual checkpoint complete: {}?", step.description))
                     ));
                 }
             }
-            script.push_str(&format!(
-                "  finish_phase '{}'\n",
-                shell_escape_single(&phase.id.as_script_id())
-            ));
+
+            script.push_str(&format!("  finish_phase '{}'\n", shell_escape_single(&phase.id.as_script_id())));
             script.push_str("fi\n");
         }
         script.push_str("\nlog 'Install plan finished. Review logs before rebooting.'\n");
@@ -858,10 +844,7 @@ fn disk_phase(install: &InstallParams, target_mount: &str) -> InstallPhase {
     for partition in sorted_partitions_for_mount(&install.partitions) {
         if partition.mount_point != "/" {
             steps.push(command_step(
-                &format!(
-                    "create-mountpoint-{}",
-                    mountpoint_id(&partition.mount_point)
-                ),
+                &format!("create-mountpoint-{}", mountpoint_id(&partition.mount_point)),
                 &format!("Create mountpoint for {}", partition.mount_point),
                 vec![
                     "mkdir".to_string(),
