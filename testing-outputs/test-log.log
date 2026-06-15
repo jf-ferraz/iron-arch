@@ -1,0 +1,159 @@
+╭  :: ~/iron-arch ::  dev
+╰─› scripts/test-apply.sh
+
+==> Building iron (release) from /home/laraj/Documents/projects/iron-arch
+ccd5c3a (HEAD -> dev) fix: project path at desktop
+    Finished `release` profile [optimized] target(s) in 0.04s
+   ✓ built /home/laraj/Documents/projects/iron-arch/target/release/iron
+iron 0.1.0
+
+==> Updating config repo /home/laraj/iron
+Already up to date.
+
+==> Initializing host 'archlinux' (fresh, --force)
+
+Iron Initialization
+  Host ID: archlinux
+  Host Name: archlinux's Iron Host
+
+Creating directories
+  ● modules
+  ● profiles
+  ● bundles
+  ● hosts
+  ● secrets
+
+Detecting hardware
+  CPU: AMD Ryzen 7 9800X3D 8-Core Processor
+  GPU: Advanced Micro Devices, Inc. [AMD/ATI] Navi 44 [Radeon RX 9060 XT] (rev c0)
+  RAM: 31189 MB
+  Chassis: Desktop
+  Monitors: 2
+
+Creating host configuration
+  ● Host config: hosts/archlinux.toml
+  ● Set as active host
+────────────────────────────────────────────────────────────
+✓ Iron initialized for host 'archlinux'
+ℹ Next steps:
+  • iron bundle list    - View available bundles
+  • iron bundle install - Install a desktop environment
+  • iron go             - Launch TUI dashboard
+   ✓ host file: /home/laraj/iron/hosts/archlinux.toml
+
+==> Cataloged monitors: 2
+output = "DP-1"
+output = "DP-2"
+   ✓ monitor count looks sane
+   ✓ profile line: profile = "main"
+
+==> iron apply --dry-run (preview only)
+
+Iron Apply
+ℹ Computing system apply plan...
+
+Plan [CAUTION]
+ℹ   [+] Link ~/.config/fastfetch -> config/fastfetch (fastfetch)
+ℹ   [+] Link ~/.config/fish -> config/fish (fish)
+ℹ   [+] Link ~/.config/git -> config/git (git)
+ℹ   [+] Link ~/.config/helix -> config/helix (helix)
+ℹ   [+] Link ~/.config/kitty -> config/kitty (kitty)
+ℹ   [+] Link ~/.config/lazygit -> config/lazygit (lazygit)
+ℹ   [+] Link ~/.config/yazi -> config/yazi (yazi)
+ℹ   [+] Activate module: fastfetch
+ℹ   [+] Activate module: fish
+ℹ   [+] Activate module: git
+ℹ   [+] Activate module: helix
+ℹ   [+] Activate module: lazygit
+ℹ   [+] Activate module: niri
+ℹ   [+] Activate module: yazi
+ℹ   [!] Remove symlink: ~/.config/kitty
+────────────────────────────────────────────────────────────
+ℹ Summary: +7 link, -1 file, +7 mod (14 additive, 1 destructive)
+ℹ   1 removal action(s) shown but will not execute. Use --prune to include.
+ℹ [dry-run] Would prompt: This will modify/remove files. Proceed? [y/N]
+✓ [DRY RUN] No changes made.
+
+==> Applying full 'main' profile into sandbox HOME=/tmp/iron-apply-test
+
+Iron Apply
+⠏ Plan computed
+Plan [CAUTION]
+ℹ   [+] Link ~/.config/fastfetch -> config/fastfetch (fastfetch)
+ℹ   [+] Link ~/.config/fish -> config/fish (fish)
+ℹ   [+] Link ~/.config/git -> config/git (git)
+ℹ   [+] Link ~/.config/helix -> config/helix (helix)
+ℹ   [+] Link ~/.config/kitty -> config/kitty (kitty)
+ℹ   [+] Link ~/.config/lazygit -> config/lazygit (lazygit)
+ℹ   [+] Link ~/.config/niri -> config/niri (niri)
+ℹ   [+] Link ~/.config/yazi -> config/yazi (yazi)
+ℹ   [+] Activate module: fastfetch
+ℹ   [+] Activate module: fish
+ℹ   [+] Activate module: git
+ℹ   [+] Activate module: helix
+ℹ   [+] Activate module: lazygit
+ℹ   [+] Activate module: niri
+ℹ   [+] Activate module: yazi
+ℹ   [!] Remove symlink: /home/laraj/.config/helix
+ℹ   [!] Remove symlink: /home/laraj/.config/niri
+ℹ   [!] Remove symlink: /home/laraj/.config/yazi
+ℹ   [!] Remove symlink: ~/.config/kitty
+ℹ   [!] Remove symlink: /home/laraj/.config/lazygit
+ℹ   [!] Remove symlink: /home/laraj/.config/git
+ℹ   [!] Remove symlink: /home/laraj/.config/fastfetch
+ℹ   [!] Remove symlink: /home/laraj/.config/fish
+ℹ   [!] Remove symlink: /home/laraj/.config/kitty
+────────────────────────────────────────────────────────────
+ℹ Summary: +8 link, -9 file, +7 mod (15 additive, 9 destructive)
+ℹ   9 removal action(s) shown but will not execute. Use --prune to include.
+⠏ Apply complete                                                                                                                                                                                     ────────────────────────────────────────────────────────────
+  ● [+] Link ~/.config/fastfetch -> config/fastfetch (fastfetch)
+  ● [+] Link ~/.config/fish -> config/fish (fish)
+  ● [+] Link ~/.config/git -> config/git (git)
+  ● [+] Link ~/.config/helix -> config/helix (helix)
+  ● [+] Link ~/.config/kitty -> config/kitty (kitty)
+  ● [+] Link ~/.config/lazygit -> config/lazygit (lazygit)
+  ● [+] Link ~/.config/niri -> config/niri (niri)
+  ● [+] Link ~/.config/yazi -> config/yazi (yazi)
+  ● [+] Activate module: fastfetch
+  ● [+] Activate module: fish
+  ● [+] Activate module: git
+  ● [+] Activate module: helix
+  ● [+] Activate module: lazygit
+  ● [+] Activate module: niri
+  ● [+] Activate module: yazi
+  ● [!] Remove symlink: /home/laraj/.config/helix
+  ● [!] Remove symlink: /home/laraj/.config/niri
+  ● [!] Remove symlink: /home/laraj/.config/yazi
+  ● [!] Remove symlink: ~/.config/kitty
+  ● [!] Remove symlink: /home/laraj/.config/lazygit
+  ● [!] Remove symlink: /home/laraj/.config/git
+  ● [!] Remove symlink: /home/laraj/.config/fastfetch
+  ● [!] Remove symlink: /home/laraj/.config/fish
+  ● [!] Remove symlink: /home/laraj/.config/kitty
+────────────────────────────────────────────────────────────
+✓ Apply complete: 15 succeeded, 0 failed (0.0s)
+
+  ▸ Summary: 15 succeeded
+
+==> Verifying deployed configs + vendored theme paths
+   ✓ kitty config -> /tmp/iron-apply-test/.config/kitty/kitty.conf
+   ✓ kitty base16 (relative include) -> /tmp/iron-apply-test/.config/kitty/colors-base16.conf
+   ✓ yazi syntect theme -> /tmp/iron-apply-test/.config/yazi/base16-fer-glass.tmTheme
+   ✓ fish base16 (sourced) -> /tmp/iron-apply-test/.config/fish/colors-base16.fish
+   ✓ fastfetch logo (~ expansion) -> /tmp/iron-apply-test/.config/fastfetch/logo.txt
+
+==> Deployed tree (sandbox, depth 2)
+/tmp/iron-apply-test/.config
+/tmp/iron-apply-test/.config/fastfetch
+/tmp/iron-apply-test/.config/fish
+/tmp/iron-apply-test/.config/git
+/tmp/iron-apply-test/.config/helix
+/tmp/iron-apply-test/.config/kitty
+/tmp/iron-apply-test/.config/lazygit
+/tmp/iron-apply-test/.config/niri
+/tmp/iron-apply-test/.config/yazi
+
+==> Done
+   Sandbox: /tmp/iron-apply-test   (remove with: rm -rf '/tmp/iron-apply-test')
+   Your real $HOME/.config was NOT modified.

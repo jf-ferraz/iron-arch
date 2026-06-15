@@ -23,7 +23,7 @@ Thumbs.db
 # Iron runtime state
 /state/
 /logs/
-*.log
+#*.log
 
 # Secrets (handled by git-crypt)
 # secrets/ is encrypted, not ignored
