@@ -537,6 +537,11 @@ pub enum ImportAction {
         /// Guess package names from app directory names (default off — dotfiles only)
         #[arg(long)]
         guess_packages: bool,
+
+        /// Rewrite `/nix/store/<pkg>/bin/<x>` references to bare `<x>` in copied
+        /// files (other store paths are left intact and reported)
+        #[arg(long)]
+        strip_store_paths: bool,
     },
 }
 

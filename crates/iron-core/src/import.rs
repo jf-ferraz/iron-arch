@@ -32,6 +32,8 @@ pub struct PlannedModule {
     pub rel_source: String,
     /// Number of files that would be copied.
     pub file_count: usize,
+    /// Number of files containing `/nix/store/` references (dead on Arch).
+    pub store_refs: usize,
     /// Whether `modules/<id>/module.toml` already exists.
     pub already_exists: bool,
     /// Absolute path of the source under `home-files` (not serialized).
@@ -57,6 +59,14 @@ pub struct ImportReport {
     pub skipped: Vec<String>,
     /// Total files copied across all created modules.
     pub files_copied: usize,
+    /// Files modified by `--strip-store-paths`.
+    pub stripped_files: usize,
+    /// Total `/nix/store/.../bin/` prefixes rewritten to bare binary names.
+    pub stripped_refs: usize,
+    /// Created modules that STILL contain `/nix/store/` references after the
+    /// import (and any stripping) — these need manual fixing before they work
+    /// on Arch.
+    pub modules_with_store_refs: Vec<String>,
 }
 
 /// Imports a home-manager `home-files` tree into Iron modules.
@@ -66,6 +76,7 @@ pub struct HomeManagerImporter {
     modules_dir: PathBuf,
     only: Option<Vec<String>>,
     guess_packages: bool,
+    strip_store_paths: bool,
 }
 
 impl HomeManagerImporter {
@@ -85,12 +96,21 @@ impl HomeManagerImporter {
             modules_dir: modules_dir.to_path_buf(),
             only,
             guess_packages: false,
+            strip_store_paths: false,
         })
     }
 
     /// Enable best-effort package guessing (from the app directory name).
     pub fn with_package_guessing(mut self, yes: bool) -> Self {
         self.guess_packages = yes;
+        self
+    }
+
+    /// Rewrite `/nix/store/<hash>-<name>/bin/<x>` references in copied files to
+    /// the bare binary name `<x>` (the common, safe case). Other store references
+    /// are left intact and reported via [`ImportReport::modules_with_store_refs`].
+    pub fn with_store_path_stripping(mut self, yes: bool) -> Self {
+        self.strip_store_paths = yes;
         self
     }
 
@@ -165,6 +185,19 @@ impl HomeManagerImporter {
                 .with_context(|| format!("copying files for module '{}'", m.id))?;
             report.files_copied += copied;
 
+            if self.strip_store_paths {
+                let (files, refs) = strip_store_paths_in_tree(&dst)
+                    .with_context(|| format!("stripping store paths in module '{}'", m.id))?;
+                report.stripped_files += files;
+                report.stripped_refs += refs;
+            }
+
+            // After any stripping, flag modules that still carry /nix/store/ refs
+            // (non-`/bin/` paths we don't auto-rewrite) — they need manual fixing.
+            if count_store_ref_files(&dst)? > 0 {
+                report.modules_with_store_refs.push(m.id.clone());
+            }
+
             build_module(m)
                 .save(&module_dir)
                 .with_context(|| format!("writing module.toml for '{}'", m.id))?;
@@ -181,6 +214,7 @@ impl HomeManagerImporter {
         rel_source: String,
     ) -> Result<PlannedModule> {
         let file_count = count_files(&src)?;
+        let store_refs = count_store_ref_files(&src)?;
         let already_exists = self.modules_dir.join(&id).join("module.toml").exists();
         let packages = if self.guess_packages {
             guess_packages(&id)
@@ -194,6 +228,7 @@ impl HomeManagerImporter {
             target,
             rel_source,
             file_count,
+            store_refs,
             already_exists,
             src,
         })
@@ -432,6 +467,83 @@ fn make_writable(path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Count text files under `path` that contain a `/nix/store/` reference.
+fn count_store_ref_files(path: &Path) -> Result<usize> {
+    let meta = std::fs::metadata(path)?;
+    if meta.is_dir() {
+        let mut n = 0;
+        for entry in std::fs::read_dir(path)? {
+            n += count_store_ref_files(&entry?.path())?;
+        }
+        Ok(n)
+    } else {
+        // Non-UTF8 / binary files just won't match; treat read errors as no-ref.
+        match std::fs::read_to_string(path) {
+            Ok(s) if s.contains("/nix/store/") => Ok(1),
+            _ => Ok(0),
+        }
+    }
+}
+
+/// Rewrite `/nix/store/<pkg>/bin/<x>` to bare `<x>`, leaving every other
+/// `/nix/store/` reference untouched. Returns the new content and the count of
+/// rewrites. Exact (no regex): only a `/bin/` directly after the single store
+/// package component is stripped.
+fn strip_store_paths(content: &str) -> (String, usize) {
+    const MARK: &str = "/nix/store/";
+    const BIN: &str = "/bin/";
+    let mut out = String::with_capacity(content.len());
+    let mut count = 0usize;
+    let mut rest = content;
+    while let Some(idx) = rest.find(MARK) {
+        out.push_str(&rest[..idx]);
+        let after = &rest[idx..]; // starts at "/nix/store/"
+        // The package component is everything up to the next '/'.
+        if let Some(slash_rel) = after[MARK.len()..].find('/') {
+            let tail = &after[MARK.len() + slash_rel..]; // starts with '/', e.g. "/bin/fzf"
+            if let Some(remainder) = tail.strip_prefix(BIN) {
+                // `/nix/store/<pkg>/bin/<x>` -> keep `<x>...`
+                rest = remainder;
+                count += 1;
+                continue;
+            }
+        }
+        // Not a `/bin/` path: emit the marker and keep scanning past it.
+        out.push_str(MARK);
+        rest = &after[MARK.len()..];
+    }
+    out.push_str(rest);
+    (out, count)
+}
+
+/// Apply [`strip_store_paths`] to every text file under `path`. Returns
+/// (files changed, total rewrites).
+fn strip_store_paths_in_tree(path: &Path) -> Result<(usize, usize)> {
+    let meta = std::fs::metadata(path)?;
+    if meta.is_dir() {
+        let (mut files, mut refs) = (0, 0);
+        for entry in std::fs::read_dir(path)? {
+            let (f, r) = strip_store_paths_in_tree(&entry?.path())?;
+            files += f;
+            refs += r;
+        }
+        Ok((files, refs))
+    } else {
+        match std::fs::read_to_string(path) {
+            Ok(content) if content.contains("/nix/store/") => {
+                let (new, count) = strip_store_paths(&content);
+                if count > 0 {
+                    std::fs::write(path, new)?;
+                    Ok((1, count))
+                } else {
+                    Ok((0, 0))
+                }
+            }
+            _ => Ok((0, 0)),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -644,6 +756,72 @@ mod tests {
         assert_eq!(profile.id, "main");
         assert_eq!(profile.modules.len(), 3);
         assert!(profile.modules.contains(&"helix".to_string()));
+    }
+
+    #[test]
+    fn strip_store_paths_rewrites_only_bin_paths() {
+        // `/bin/` path -> bare binary
+        let (out, n) = strip_store_paths(
+            "exec /nix/store/lirvpf107gv5b2aybwn2bns5xs16q9xy-fzf-0.72.0/bin/fzf --height 40%",
+        );
+        assert_eq!(out, "exec fzf --height 40%");
+        assert_eq!(n, 1);
+
+        // non-`/bin/` store path is left intact
+        let input = "source /nix/store/abc-hm-session-vars.fish/etc/profile.d/hm.fish";
+        let (out, n) = strip_store_paths(input);
+        assert_eq!(out, input);
+        assert_eq!(n, 0);
+
+        // multiple `/bin/` paths in a PATH-style list
+        let (out, n) = strip_store_paths("PATH=/nix/store/h1-a/bin/a:/nix/store/h2-b/bin/b");
+        assert_eq!(out, "PATH=a:b");
+        assert_eq!(n, 2);
+
+        // nothing to do
+        let (out, n) = strip_store_paths("plain text");
+        assert_eq!(out, "plain text");
+        assert_eq!(n, 0);
+    }
+
+    #[test]
+    fn import_flags_and_strips_store_refs() {
+        let tmp = TempDir::new().unwrap();
+        let hf = tmp.path().join("home-files");
+        let app = hf.join(".config/myapp");
+        fs::create_dir_all(&app).unwrap();
+        fs::write(
+            app.join("conf"),
+            "run /nix/store/h-fzf-1/bin/fzf\nsource /nix/store/h-x/etc/y\n",
+        )
+        .unwrap();
+        let modules = tmp.path().join("modules");
+
+        // plan counts the store-ref file
+        let importer = HomeManagerImporter::new(tmp.path(), &modules, None).unwrap();
+        let plan = importer.plan().unwrap();
+        let m = plan.modules.iter().find(|m| m.id == "myapp").unwrap();
+        assert_eq!(m.store_refs, 1);
+
+        // execute without stripping: refs remain, module flagged
+        let report = importer.execute(&plan, false).unwrap();
+        assert!(report.modules_with_store_refs.contains(&"myapp".to_string()));
+        assert_eq!(report.stripped_refs, 0);
+        let conf = fs::read_to_string(modules.join("myapp/config/myapp/conf")).unwrap();
+        assert!(conf.contains("/nix/store/h-fzf-1/bin/fzf"));
+
+        // execute WITH stripping (force overwrite): /bin/ rewritten, non-bin kept
+        let stripper = HomeManagerImporter::new(tmp.path(), &modules, None)
+            .unwrap()
+            .with_store_path_stripping(true);
+        let report = stripper.execute(&stripper.plan().unwrap(), true).unwrap();
+        assert_eq!(report.stripped_refs, 1);
+        assert_eq!(report.stripped_files, 1);
+        let conf = fs::read_to_string(modules.join("myapp/config/myapp/conf")).unwrap();
+        assert!(conf.contains("run fzf")); // bin path stripped
+        assert!(conf.contains("/nix/store/h-x/etc/y")); // non-bin path kept
+        // still flagged because a non-bin store ref remains
+        assert!(report.modules_with_store_refs.contains(&"myapp".to_string()));
     }
 
     #[test]

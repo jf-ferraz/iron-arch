@@ -21,7 +21,17 @@ pub fn execute(ctx: &AppContext, action: ImportAction) -> Result<()> {
             only,
             into_profile,
             guess_packages,
-        } => home_manager(ctx, &path, dry_run, force, only, into_profile, guess_packages),
+            strip_store_paths,
+        } => home_manager(
+            ctx,
+            &path,
+            dry_run,
+            force,
+            only,
+            into_profile,
+            guess_packages,
+            strip_store_paths,
+        ),
     }
 }
 
@@ -34,13 +44,15 @@ fn home_manager(
     only: Option<Vec<String>>,
     into_profile: Option<String>,
     guess_packages: bool,
+    strip_store_paths: bool,
 ) -> Result<()> {
     let output = &ctx.output;
     let input = expand_home(Path::new(path));
     let modules_dir = ctx.root.join("modules");
 
-    let importer =
-        HomeManagerImporter::new(&input, &modules_dir, only)?.with_package_guessing(guess_packages);
+    let importer = HomeManagerImporter::new(&input, &modules_dir, only)?
+        .with_package_guessing(guess_packages)
+        .with_store_path_stripping(strip_store_paths);
     let plan = importer.plan()?;
 
     if plan.modules.is_empty() {
@@ -95,12 +107,25 @@ fn home_manager(
                 m.target.clone(),
                 m.packages.join(", "),
                 m.file_count.to_string(),
+                if m.store_refs > 0 {
+                    m.store_refs.to_string()
+                } else {
+                    String::new()
+                },
                 if m.already_exists { "exists" } else { "new" }.to_string(),
             ]
         })
         .collect();
     output.table(
-        &["module", "kind", "target", "packages?", "files", "status"],
+        &[
+            "module",
+            "kind",
+            "target",
+            "packages?",
+            "files",
+            "nix-paths",
+            "status",
+        ],
         &rows,
     );
 
@@ -123,6 +148,13 @@ fn home_manager(
                     name
                 ));
             }
+            let with_refs = plan.modules.iter().filter(|m| m.store_refs > 0).count();
+            if with_refs > 0 {
+                output.info(&format!(
+                    "{with_refs} module(s) reference /nix/store (see nix-paths column) — dead on \
+                     Arch. Add --strip-store-paths to rewrite the `/bin/` cases on import.",
+                ));
+            }
         }
         Some(report) => {
             output.subheader("Result");
@@ -140,6 +172,13 @@ fn home_manager(
                 report.created.len(),
                 report.files_copied,
             ));
+
+            if report.stripped_refs > 0 {
+                output.info(&format!(
+                    "Stripped {} /nix/store/<pkg>/bin/ reference(s) across {} file(s).",
+                    report.stripped_refs, report.stripped_files
+                ));
+            }
 
             if let Some(pu) = &profile_update {
                 output.kv(
@@ -162,6 +201,20 @@ fn home_manager(
             }
             if into_profile.is_none() {
                 output.info("Tip: pass --into-profile <name> to make the import directly apply-able.");
+            }
+
+            if !report.modules_with_store_refs.is_empty() {
+                output.warning(&format!(
+                    "{} module(s) still reference /nix/store (dead on Arch) — fix before applying: {}",
+                    report.modules_with_store_refs.len(),
+                    report.modules_with_store_refs.join(", "),
+                ));
+                if !strip_store_paths {
+                    output.info(
+                        "Re-run with --strip-store-paths to auto-rewrite the `/bin/` cases; \
+                         the rest need a manual edit.",
+                    );
+                }
             }
         }
     }
