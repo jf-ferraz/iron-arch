@@ -15,6 +15,7 @@ pub mod bundle;
 pub mod error;
 pub mod fs_trait;
 pub mod host;
+pub mod install;
 pub mod logging;
 pub mod module;
 pub mod packages;
@@ -41,6 +42,7 @@ pub use error::{
     SnapshotError, StateError, ValidationError,
 };
 pub use host::{BootloaderType, ChassisType, HardwareSpec, Host, InstallParams, MonitorConfig};
+pub use install::{InstallPhase, InstallPhaseId, InstallPlan, InstallStep};
 pub use module::{DotfileMapping, Module, ModuleKind, ModuleState};
 pub use packages::{
     ArchNewsItem, CleanCacheResult, InstalledPackage, NoopPackageManager, PackageManager,

@@ -7,6 +7,7 @@ pub mod clean;
 pub mod doctor;
 pub mod host;
 pub mod init;
+pub mod install;
 pub mod module;
 pub mod profile;
 pub mod recover;

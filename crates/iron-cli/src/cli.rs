@@ -128,6 +128,12 @@ pub enum Commands {
         action: HostAction,
     },
 
+    /// Arch install planning and bootstrap
+    Install {
+        #[command(subcommand)]
+        action: InstallAction,
+    },
+
     /// Git sync operations
     Sync {
         #[command(subcommand)]
@@ -255,6 +261,25 @@ pub enum BundleAction {
         /// Skip confirmation
         #[arg(short, long)]
         yes: bool,
+    },
+}
+
+/// Install subcommands
+#[derive(Subcommand)]
+pub enum InstallAction {
+    /// Build a reviewable install plan from host configuration
+    Plan {
+        /// Host ID to plan from
+        #[arg(short = 'H', long)]
+        host: String,
+
+        /// Target mountpoint for the new system
+        #[arg(short, long, default_value = "/mnt")]
+        target: String,
+
+        /// Emit a conservative shell script instead of formatted output
+        #[arg(long)]
+        emit_script: bool,
     },
 }
 
