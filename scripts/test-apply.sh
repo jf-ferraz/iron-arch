@@ -13,7 +13,9 @@
 #
 set -Eeuo pipefail
 
-REPO="${REPO:-$HOME/Documents/projects/iron-arch}"   # iron tool source (branch: dev)
+# Repo root auto-detected from this script's location (works on any machine);
+# override with REPO=… if running the script from outside the repo.
+REPO="${REPO:-$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)}"  # iron tool source (branch: dev)
 CFG="${CFG:-$HOME/iron}"                        # iron-config dotfiles repo
 SANDBOX="${SANDBOX:-/tmp/iron-apply-test}"      # throwaway deploy target ($HOME)
 IRON="$REPO/target/release/iron"

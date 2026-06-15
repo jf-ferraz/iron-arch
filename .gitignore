@@ -46,6 +46,8 @@ iron-install.sh
 # apply-test sandboxes (e.g. created by scripts/test-apply.sh)
 /iron-test/
 iron-apply-test/
+# manual test-result dumps (logs / captured host files)
+/testing-outputs/
 
 # Coverage reports
 tarpaulin-report.*
