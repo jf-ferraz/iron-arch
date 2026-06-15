@@ -41,9 +41,10 @@ else
   git clone https://github.com/jf-ferraz/iron-config "$CFG"
 fi
 
-# 3) Fresh host init. This exercises the FIXED monitor catalog and produces a host
-#    file WITHOUT a 'profile' key, which we then prepend at top level — dodging the
-#    TOML "scalar after table" rule that bites if a tool re-serializes the host.
+# 3) Fresh host init regenerates the host config with the corrected monitor
+#    catalog and no 'profile' key; we then add profile = "main" at the top.
+#    (Placing it at the top avoids TOML scoping it into a later [table] — a
+#    hand-editing hazard only; iron's serializer already emits scalars first.)
 h "Initializing host '$HOST_ID' (fresh, --force)"
 rm -f "$CFG"/hosts/*.toml 2>/dev/null || true
 # --force: `iron init` is a no-op (exit 0, no host file) if already initialized,

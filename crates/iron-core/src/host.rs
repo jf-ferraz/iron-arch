@@ -221,6 +221,33 @@ mod tests {
     }
 
     #[test]
+    fn test_host_serializes_scalars_before_tables() {
+        // Guard: `profile`/`bundle`/… are scalars declared (in the struct) after
+        // the `hardware`/`install_params` tables. TOML requires scalars to precede
+        // tables at a given level; the toml serializer reorders them so, so a host
+        // carrying a `profile` must serialize to valid TOML with `profile` ABOVE
+        // `[hardware]` (and round-trip). If this ever regresses, `host catalog
+        // --update` / `host select` would emit a file that mis-scopes `profile`.
+        let mut host = create_test_host();
+        host.profile = Some("main".to_string());
+        host.bundle = Some("hyprland".to_string());
+        host.extra_modules = vec!["docker".to_string()];
+
+        let toml = toml::to_string_pretty(&host).expect("Host must serialize to valid TOML");
+
+        let profile_pos = toml.find("profile =").expect("profile key present");
+        let hw_pos = toml.find("[hardware]").expect("[hardware] table present");
+        assert!(
+            profile_pos < hw_pos,
+            "profile (scalar) must be emitted before [hardware] (table):\n{toml}"
+        );
+
+        let parsed: Host = toml::from_str(&toml).expect("must round-trip");
+        assert_eq!(parsed.profile.as_deref(), Some("main"));
+        assert_eq!(parsed.bundle.as_deref(), Some("hyprland"));
+    }
+
+    #[test]
     fn test_hardware_spec_default() {
         let spec = HardwareSpec::default();
         assert!(spec.cpu.is_none());
